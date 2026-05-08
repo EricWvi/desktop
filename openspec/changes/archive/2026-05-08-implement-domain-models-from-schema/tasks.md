@@ -18,4 +18,4 @@
 
 - [x] 4.1 Add unit tests covering enum conversions, invalid value rejection, and representative entity construction.
 - [x] 4.2 Update relevant `docs/` architecture or modeling documentation if the new domain crate API changes how shared models are consumed.
-- [ ] 4.3 Run the Rust test suite for the affected crates and confirm the new domain models compile cleanly for both desktop and web consumers.
+- [x] 4.3 Run the Rust test suite for the affected crates and confirm the new domain models compile cleanly for both desktop and web consumers.

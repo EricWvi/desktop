@@ -1,0 +1,47 @@
+version: '3'
+
+vars:
+  # Get the list of all local crates, excluding the target directory.
+  # You can also set it manually: CRATES: crate_a crate_b
+  CRATES:
+    sh: cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name' | grep -v "ora-desktop"
+
+tasks:
+  default:
+    cmds:
+      - task: list
+
+  list:
+    desc: List all tasks in the current project
+    cmds:
+      - task --list
+
+  build:
+    desc: Build all crates
+    cmds:
+      - cargo build --workspace
+
+  test:
+    desc: Run tests, excluding the Tauri desktop on Linux
+    summary: |
+      On Linux, this automatically skips the ora-desktop crate during testing.
+      On other systems, it runs the full test suite.
+    cmds:
+      # Use template syntax to detect the current platform.
+      - |
+        {{if eq OS "linux"}}
+          echo "Linux detected; running tests with ora-desktop excluded..."
+          cargo test --workspace --exclude ora-desktop
+        {{else}}
+          cargo test --workspace
+        {{end}}
+
+  test-fast:
+    desc: Fast tests for core logic only, excluding desktop code
+    cmds:
+      - cargo test --workspace --exclude ora-desktop
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - cargo clean
