@@ -314,5 +314,6 @@ fn log_project_failure(
                 error.message = error.to_string()
             );
         }
+        _ => {}
     }
 }
