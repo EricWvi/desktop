@@ -41,6 +41,9 @@ tasks:
   run:web-backend:
     desc: Run the web server backend in development mode
     dir: ./.data
+    env:
+      ORA_PROJECT_NAME: desktop
+      ORA_PROJECT_PATH: "{{.USER_WORKING_DIR}}"
     cmds:
       - mkdir -p ../.data
       - cargo run --manifest-path ../Cargo.toml --bin ora_web_server
