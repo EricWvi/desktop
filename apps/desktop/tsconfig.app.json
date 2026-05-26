@@ -5,6 +5,8 @@
     "types": ["vite/client"],
     "paths": {
       "@/*": ["./web/*"],
+      "@ora/contracts": ["../../packages/contracts/src/index.ts"],
+      "@ora/features": ["../../packages/features/src/index.ts"],
       "@ora/ui": ["../../packages/ui/src/index.ts"]
     }
   },

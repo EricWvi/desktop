@@ -1,0 +1,21 @@
+{
+  "name": "@ora/features",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ora/contracts": "workspace:*",
+    "@ora/ui": "workspace:*",
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "lucide-react": "^1.14.0",
+    "react-resizable-panels": "^4.11.2"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
