@@ -109,6 +109,17 @@ impl PtyProcessFactory for PortablePtyProcessFactory {
             command.arg(argument);
         });
 
+        // VS Code shell integration activates when TERM_PROGRAM=vscode is present in the
+        // environment. Without it the integration script that defines __vsc_prompt_cmd_original
+        // never runs, so shells that carry a VS Code–modified PROMPT_COMMAND would print
+        // `__vsc_prompt_cmd_original: command not found` on every prompt. Removing the
+        // variable here prevents that activation in our PTY regardless of how the parent
+        // process was launched.
+        command.env_remove("TERM_PROGRAM");
+        // Advertise xterm-256color so the shell and programs inside the PTY enable colour
+        // output and use the correct terminal capability database.
+        command.env("TERM", "xterm-256color");
+
         let child = pair.slave.spawn_command(command).map_err(|error| {
             PtyProcessFactoryError::SpawnFailed {
                 message: error.to_string(),

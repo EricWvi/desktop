@@ -10,6 +10,8 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./web"),
       "@ora/ui": path.resolve(__dirname, "../../packages/ui/src"),
+      "@ora/features": path.resolve(__dirname, "../../packages/features/src"),
+      "@ora/contracts": path.resolve(__dirname, "../../packages/contracts/src"),
     },
   },
   server: {
