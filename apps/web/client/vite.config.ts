@@ -19,7 +19,7 @@ export default defineConfig({
     host: "0.0.0.0",
     proxy: {
       "/api": {
-        target: "http://localhost:32578",
+        target: `http://localhost:${process.env.ORA_PORT ?? "32578"}`,
         changeOrigin: true,
         // Enable WebSocket proxying for terminal sessions.
         ws: true,

@@ -30,6 +30,8 @@ pub struct TerminalAttachment {
     pub replay: Vec<String>,
     pub session_token: tokio_util::sync::CancellationToken,
     pub output_receiver: broadcast::Receiver<PtyOutputChunkEvent>,
+    /// Attachment generation from the PTY manager; must be passed to `detach_session`.
+    pub generation: u64,
 }
 
 /// Supplies PTY runtime lifecycle operations behind an application-owned abstraction.
@@ -50,7 +52,14 @@ pub trait TerminalRuntime {
     ) -> Result<TerminalAttachment, TerminalRuntimeError>;
 
     /// Marks the addressed runtime detached without terminating the PTY.
-    fn detach_session(&self, session_id: &PtySessionId) -> Result<(), TerminalRuntimeError>;
+    ///
+    /// `generation` must match the value returned by `attach_session`; stale detaches
+    /// from displaced clients are silently ignored.
+    fn detach_session(
+        &self,
+        session_id: &PtySessionId,
+        generation: u64,
+    ) -> Result<(), TerminalRuntimeError>;
 
     /// Sends raw terminal input into one running PTY runtime.
     fn send_input(
@@ -83,6 +92,7 @@ impl TerminalAttachment {
                 .collect(),
             session_token: attachment.session_token,
             output_receiver: attachment.output_receiver,
+            generation: attachment.generation,
         }
     }
 }
@@ -92,7 +102,6 @@ impl TerminalAttachment {
 pub enum TerminalRuntimeError {
     StartupFailed { message: String },
     RuntimeMissing { session_id: String },
-    AlreadyAttached { session_id: String },
     SessionStopped { session_id: String },
     ControlFailed { message: String },
 }

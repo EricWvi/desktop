@@ -14,6 +14,11 @@ const isWindows =
   typeof navigator !== "undefined" &&
   /Win/i.test(navigator.platform || navigator.userAgent);
 
+// How long to wait before the first reconnect attempt.
+const RECONNECT_INITIAL_DELAY_MS = 300;
+// Reconnect attempts before giving up. Resets whenever "ready" is received.
+const RECONNECT_MAX_ATTEMPTS = 6;
+
 // Convert a CSS custom-property value to a concrete color string the browser
 // can resolve, by momentarily mounting a throw-away element.
 function resolveCssVar(property: string): string {
@@ -57,7 +62,7 @@ function buildXtermTheme() {
 }
 
 // Build the WebSocket URL for a terminal session. Works with Vite's /api proxy
-// as well as direct connections once the proxy translates http→ws.
+// as well as direct connections.
 function buildTerminalWsUrl(sessionId: string): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/api/sessions/${sessionId}/terminal`;
@@ -65,94 +70,127 @@ function buildTerminalWsUrl(sessionId: string): string {
 
 export function TerminalPanel({ sessionId, isVisible }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  // Always points to the most-recently created WebSocket so that closures
+  // (onData, onResize) never hold stale references across reconnects.
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Main lifecycle: create terminal, attach addons, open WebSocket.
+  // Main lifecycle: create the xterm instance and keep the WebSocket alive.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    // --- Terminal ---
     const term = new Terminal({
       theme: buildXtermTheme(),
-      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      fontFamily:
+        'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: true,
       scrollback: 10000,
-      // Allow the terminal to use the full container width/height.
       allowProposedApi: true,
     });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-
     term.open(container);
     fitAddon.fit();
 
-    // WebGL renderer – must be loaded after open().
+    // WebGL renderer – must be loaded after open(). Falls back to Canvas 2D
+    // automatically when WebGL is unavailable (e.g. headless environments).
     const webglAddon = new WebglAddon();
-    // Fall back gracefully if WebGL is unavailable (e.g. headless test env).
-    webglAddon.onContextLoss(() => {
-      webglAddon.dispose();
-    });
+    webglAddon.onContextLoss(() => webglAddon.dispose());
     try {
       term.loadAddon(webglAddon);
     } catch {
-      // Canvas 2D fallback is already active when WebGL fails to initialise.
+      // Canvas 2D fallback is already active.
     }
 
-    termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // --- WebSocket connection ---
-    const wsUrl = buildTerminalWsUrl(sessionId);
-    const ws = new WebSocket(wsUrl);
-
-    ws.onmessage = (event: MessageEvent) => {
-      let msg: TerminalServerMessage;
-      try {
-        msg = JSON.parse(event.data as string) as TerminalServerMessage;
-      } catch {
-        return;
+    // Sends a message on the current WebSocket if it is open. Using wsRef
+    // inside the closures below means we always target the live socket, even
+    // after a reconnect has replaced it.
+    function sendToWs(msg: TerminalClientMessage): void {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
       }
-      switch (msg.type) {
-        case "ready":
-          // Server is ready – send the initial terminal dimensions.
-          sendWsMessage(ws, {
-            type: "resize",
-            cols: term.cols,
-            rows: term.rows,
-          });
-          break;
-        case "history":
-        case "output":
-          term.write(msg.data);
-          break;
-        case "exit":
-          term.writeln(
-            `\r\n\x1b[38;5;240m[Process exited${msg.exitCode !== null ? ` with code ${msg.exitCode}` : ""}]\x1b[0m`,
-          );
-          break;
-        case "error":
-          term.writeln(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m`);
-          break;
-      }
-    };
+    }
 
-    // Send user keystrokes to the PTY.
+    // --- WebSocket management with reconnection ---
+    let stopped = false; // set to true when the effect cleans up
+    let attempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function connect(): void {
+      if (stopped) return;
+
+      const ws = new WebSocket(buildTerminalWsUrl(sessionId));
+      wsRef.current = ws;
+
+      ws.onmessage = (event: MessageEvent) => {
+        let msg: TerminalServerMessage;
+        try {
+          msg = JSON.parse(event.data as string) as TerminalServerMessage;
+        } catch {
+          return;
+        }
+        switch (msg.type) {
+          case "ready":
+            // Server-side PTY is ready; sync the initial terminal dimensions.
+            sendToWs({ type: "resize", cols: term.cols, rows: term.rows });
+            attempt = 0;
+            break;
+          case "history":
+          case "output":
+            term.write(msg.data);
+            break;
+          case "exit":
+            term.writeln(
+              `\r\n\x1b[38;5;240m[Process exited${msg.exitCode !== null ? ` with code ${msg.exitCode}` : ""}]\x1b[0m`,
+            );
+            break;
+          case "error":
+            term.writeln(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m`);
+            break;
+        }
+      };
+
+      ws.onclose = () => {
+        if (stopped) return;
+        // Exponential backoff: the first retry is fast to recover from the
+        // transient "already attached" 409 caused by React StrictMode's
+        // double-invocation, while later retries slow down to avoid hammering
+        // a genuinely unavailable server.
+        if (attempt >= RECONNECT_MAX_ATTEMPTS) return;
+        const delay = RECONNECT_INITIAL_DELAY_MS * 2 ** attempt;
+        attempt += 1;
+        retryTimer = setTimeout(connect, delay);
+      };
+    }
+
+    // A short delay before the first connect lets React StrictMode's cleanup cancel
+    // the timer before any WebSocket is created, eliminating the transient "closed
+    // before connection established" warning without needing server-side logic.
+    retryTimer = setTimeout(connect, 80);
+
+    // --- Input ---
+    // Send user keystrokes to the PTY through the current WebSocket. Because
+    // sendToWs reads wsRef.current, Ctrl+C (and all other input) will reach
+    // a reconnected socket without needing to re-register this handler.
     const onDataDisposable = term.onData((data) => {
-      sendWsMessage(ws, { type: "input", data });
+      sendToWs({ type: "input", data });
     });
 
-    // Relay dimension changes so the server-side PTY stays in sync.
+    // Relay viewport dimension changes to the server-side PTY.
     const onResizeDisposable = term.onResize(({ cols, rows }) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        sendWsMessage(ws, { type: "resize", cols, rows });
-      }
+      sendToWs({ type: "resize", cols, rows });
     });
 
-    // Windows: Ctrl+C with an active selection copies instead of sending SIGINT.
+    // Windows: Ctrl+C with an active selection copies to clipboard instead of
+    // sending SIGINT, matching the behaviour users expect from native terminals.
     term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
       if (event.type !== "keydown") return true;
 
@@ -160,7 +198,6 @@ export function TerminalPanel({ sessionId, isVisible }: TerminalPanelProps) {
         const selection = term.getSelection();
         if (selection) {
           navigator.clipboard.writeText(selection).catch(() => {
-            // Fallback: use document.execCommand for older browsers.
             document.execCommand("copy");
           });
           term.clearSelection();
@@ -168,20 +205,19 @@ export function TerminalPanel({ sessionId, isVisible }: TerminalPanelProps) {
         }
       }
 
-      // Mac: Cmd+C is handled by the browser's native clipboard machinery.
+      // Mac: Cmd+C copy is handled by the browser natively.
       return true;
     });
 
-    // Auto-fit when the container size changes.
+    // Auto-fit when the container element is resized.
     const resizeObserver = new ResizeObserver(() => {
-      // Defer to let the browser finish painting the new dimensions.
       requestAnimationFrame(() => {
         fitAddon.fit();
       });
     });
     resizeObserver.observe(container);
 
-    // Theme: re-apply whenever the .dark class is toggled on <html>.
+    // Theme: re-apply whenever the .dark class toggles on <html>.
     const themeObserver = new MutationObserver(() => {
       term.options.theme = buildXtermTheme();
     });
@@ -191,21 +227,26 @@ export function TerminalPanel({ sessionId, isVisible }: TerminalPanelProps) {
     });
 
     return () => {
+      stopped = true;
+      if (retryTimer !== null) clearTimeout(retryTimer);
+      const ws = wsRef.current;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+      wsRef.current = null;
       onDataDisposable.dispose();
       onResizeDisposable.dispose();
       resizeObserver.disconnect();
       themeObserver.disconnect();
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
-      }
       term.dispose();
-      termRef.current = null;
       fitAddonRef.current = null;
     };
+  // sessionId drives the entire lifecycle; a change tears down the current
+  // terminal and WebSocket pair and builds a fresh one.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Re-fit whenever visibility is restored so the canvas matches the container.
+  // Re-fit whenever the panel becomes visible again after a panel switch.
   useEffect(() => {
     if (isVisible) {
       requestAnimationFrame(() => {
@@ -216,8 +257,8 @@ export function TerminalPanel({ sessionId, isVisible }: TerminalPanelProps) {
 
   return (
     <div
-      // Outer wrapper controls visibility without unmounting – preserving the
-      // terminal session and scroll history across panel switches.
+      // Keep the panel in the DOM when hidden so the PTY connection and scroll
+      // history survive switching between multiple terminals.
       style={{ display: isVisible ? "flex" : "none" }}
       className="flex-1 flex flex-col min-h-0 overflow-hidden"
     >
@@ -233,18 +274,8 @@ export function TerminalPanel({ sessionId, isVisible }: TerminalPanelProps) {
       <div
         ref={containerRef}
         className="flex-1 min-h-0 p-1"
-        style={{
-          // Match xterm's background so there is no colour mismatch during
-          // canvas resize or when the terminal has fewer rows than the panel.
-          background: "var(--background)",
-        }}
+        style={{ background: "var(--background)" }}
       />
     </div>
   );
-}
-
-function sendWsMessage(ws: WebSocket, msg: TerminalClientMessage): void {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(msg));
-  }
 }

@@ -111,10 +111,11 @@ pub async fn attach_terminal_session(
         .session_api()
         .attach_terminal_session(session_id.clone())
         .map_err(WebApiError::from)?;
+    let generation = attachment.generation;
     let upgraded_app_state = app_state.clone();
 
     Ok(ws.on_upgrade(move |socket| {
-        serve_terminal_socket(upgraded_app_state, session_id, attachment, socket)
+        serve_terminal_socket(upgraded_app_state, session_id, generation, attachment, socket)
     }))
 }
 
@@ -122,6 +123,7 @@ pub async fn attach_terminal_session(
 async fn serve_terminal_socket(
     app_state: AppState,
     session_id: String,
+    generation: u64,
     mut attachment: ora_application::TerminalAttachment,
     mut socket: WebSocket,
 ) {
@@ -133,7 +135,9 @@ async fn serve_terminal_socket(
     )
     .await
     {
-        let _ = app_state.session_api().detach_terminal_session(&session_id);
+        let _ = app_state
+            .session_api()
+            .detach_terminal_session(&session_id, generation);
         return;
     }
 
@@ -144,7 +148,9 @@ async fn serve_terminal_socket(
         )
         .await
         {
-            let _ = app_state.session_api().detach_terminal_session(&session_id);
+            let _ = app_state
+                .session_api()
+                .detach_terminal_session(&session_id, generation);
             return;
         }
     }
@@ -184,7 +190,9 @@ async fn serve_terminal_socket(
         }
     }
 
-    let _ = app_state.session_api().detach_terminal_session(&session_id);
+    let _ = app_state
+        .session_api()
+        .detach_terminal_session(&session_id, generation);
 }
 
 /// Handles one terminal client message and reports whether the socket loop should continue.
@@ -257,9 +265,6 @@ fn terminal_error_code(error: &ora_application::ApplicationError) -> &'static st
         ora_application::ApplicationError::TerminalStartup { .. } => "terminal_startup_error",
         ora_application::ApplicationError::TerminalRuntimeMissing { .. } => {
             "terminal_runtime_missing"
-        }
-        ora_application::ApplicationError::TerminalAlreadyAttached { .. } => {
-            "terminal_already_attached"
         }
         ora_application::ApplicationError::TerminalSessionNotTerminal { .. } => {
             "terminal_session_not_terminal"

@@ -34,6 +34,9 @@ pub struct PtySessionAttachment {
     pub replay: PtySessionReplay,
     pub session_token: CancellationToken,
     pub output_receiver: broadcast::Receiver<PtyOutputChunkEvent>,
+    /// Monotonically increasing counter for this attachment slot.
+    /// Passed back to `detach_session` so stale detaches from displaced clients are ignored.
+    pub generation: u64,
 }
 
 /// Emits live PTY output and exit notifications to one attached client.
@@ -119,6 +122,7 @@ where
             session_id: session_id.clone(),
             status: Mutex::new(PtySessionStatus::Running),
             attachment_state: Mutex::new(PtyClientAttachmentState::Detached),
+            attachment_generation: Mutex::new(0),
             history: Mutex::new(OutputHistory::new(self.history_limit_bytes)),
             output_sender,
             command_sender: Mutex::new(command_sender),
@@ -149,6 +153,10 @@ where
     }
 
     /// Attaches one client to a running PTY session and returns replay plus a live-event stream.
+    ///
+    /// If a client is already attached (e.g. a stale proxy connection), the existing client is
+    /// displaced and the new one takes over. The returned `generation` must be passed to
+    /// `detach_session` so that displaced clients cannot evict the new owner.
     pub fn attach_session(
         &self,
         session_id: &PtySessionId,
@@ -168,12 +176,13 @@ where
                 session_id: session_id.clone(),
             });
         }
-        if *attachment_state == PtyClientAttachmentState::Attached {
-            return Err(PtySessionControlError::AlreadyAttached {
-                session_id: session_id.clone(),
-            });
-        }
 
+        let mut attach_gen = session
+            .attachment_generation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *attach_gen += 1;
+        let generation = *attach_gen;
         *attachment_state = PtyClientAttachmentState::Attached;
 
         let (replay, output_receiver) = {
@@ -190,17 +199,33 @@ where
             replay,
             session_token: session.session_token.clone(),
             output_receiver,
+            generation,
         })
     }
 
     /// Detaches the current live client while leaving the PTY runtime alive for reattachment.
-    pub fn detach_session(&self, session_id: &PtySessionId) -> Result<(), PtySessionControlError> {
+    ///
+    /// Only detaches if `generation` matches the current attachment generation. This prevents
+    /// a displaced client (held alive by a proxy) from evicting the newer owner.
+    pub fn detach_session(
+        &self,
+        session_id: &PtySessionId,
+        generation: u64,
+    ) -> Result<(), PtySessionControlError> {
         let session = self.session(session_id)?;
+        let current_gen = *session
+            .attachment_generation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        if current_gen != generation {
+            return Ok(());
+        }
+
         let mut attachment_state = session
             .attachment_state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-
         *attachment_state = PtyClientAttachmentState::Detached;
 
         Ok(())
@@ -292,6 +317,8 @@ struct SessionState {
     session_id: PtySessionId,
     status: Mutex<PtySessionStatus>,
     attachment_state: Mutex<PtyClientAttachmentState>,
+    /// Bumped on every attach; detach calls are ignored when the generation has moved on.
+    attachment_generation: Mutex<u64>,
     history: Mutex<OutputHistory>,
     output_sender: broadcast::Sender<PtyOutputChunkEvent>,
     command_sender: Mutex<mpsc::UnboundedSender<PtyCommand>>,
@@ -447,7 +474,7 @@ mod tests {
             }]
         );
         manager
-            .detach_session(&PtySessionId::new("session-1"))
+            .detach_session(&PtySessionId::new("session-1"), first_attachment.generation)
             .unwrap_or_else(|error| panic!("expected detach to succeed: {error:?}"));
 
         let second_attachment = manager
@@ -463,9 +490,9 @@ mod tests {
         );
     }
 
-    /// Verifies the runtime rejects a second concurrent live attachment for the same session.
+    /// Verifies a second attach displaces the first client and returns a higher generation.
     #[tokio::test]
-    async fn rejects_duplicate_attachment() {
+    async fn force_takeover_on_duplicate_attach() {
         let factory = FakePtyProcessFactory::with_output("hello\n");
         let server_token = PtyServerToken::new();
         let manager = PtyRuntimeManager::new(factory, server_token.cancellation_token(), 1024);
@@ -480,17 +507,37 @@ mod tests {
                 rows: 24,
             })
             .unwrap_or_else(|error| panic!("expected session startup to succeed: {error}"));
-        manager
+
+        let first = manager
             .attach_session(&PtySessionId::new("session-1"))
             .unwrap_or_else(|error| panic!("expected first attachment to succeed: {error:?}"));
+        assert_eq!(first.generation, 1);
 
+        let second = manager
+            .attach_session(&PtySessionId::new("session-1"))
+            .unwrap_or_else(|error| panic!("expected takeover attachment to succeed: {error:?}"));
+        assert_eq!(second.generation, 2);
+
+        // Stale detach from the first client must not evict the second.
+        manager
+            .detach_session(&PtySessionId::new("session-1"), first.generation)
+            .unwrap_or_else(|error| panic!("expected stale detach to succeed silently: {error:?}"));
         assert_eq!(
             manager
-                .attach_session(&PtySessionId::new("session-1"))
-                .map(|_| ()),
-            Err(PtySessionControlError::AlreadyAttached {
-                session_id: PtySessionId::new("session-1"),
-            })
+                .attachment_state(&PtySessionId::new("session-1"))
+                .unwrap(),
+            PtyClientAttachmentState::Attached,
+        );
+
+        // The current owner can detach normally.
+        manager
+            .detach_session(&PtySessionId::new("session-1"), second.generation)
+            .unwrap_or_else(|error| panic!("expected owner detach to succeed: {error:?}"));
+        assert_eq!(
+            manager
+                .attachment_state(&PtySessionId::new("session-1"))
+                .unwrap(),
+            PtyClientAttachmentState::Detached,
         );
     }
 

@@ -104,7 +104,5 @@ impl Default for PtyServerToken {
 pub enum PtySessionControlError {
     SessionMissing { session_id: PtySessionId },
     SessionExited { session_id: PtySessionId },
-    AlreadyAttached { session_id: PtySessionId },
-    NotAttached { session_id: PtySessionId },
     ControlFailed { message: String },
 }

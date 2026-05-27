@@ -163,28 +163,6 @@ fn marks_terminal_sessions_stopped_when_runtime_startup_fails() {
     );
 }
 
-/// Verifies duplicate live attachment returns a stable terminal-specific application error.
-#[test]
-fn rejects_duplicate_terminal_attachment() {
-    let session_repository = FakeSessionRepository::with_sessions(vec![Session::new(
-        SessionId::new("session-1"),
-        TaskId::new("task-1"),
-        AgentId::terminal(),
-        None,
-        DomainSessionStatus::Running,
-        AuditFields::new(10, 10, false),
-    )]);
-    let runtime = FakeTerminalRuntime::already_attached("session-1");
-    let handler = AttachTerminalSessionHandler::new(session_repository, runtime);
-
-    assert_eq!(
-        handler.handle("session-1".to_string()).map(|_| ()),
-        Err(ApplicationError::TerminalAlreadyAttached {
-            session_id: "session-1".to_string(),
-        })
-    );
-}
-
 /// Verifies PTY exit synchronization persists the terminal session as stopped.
 #[test]
 fn persists_stopped_status_on_terminal_exit() {
@@ -394,7 +372,6 @@ impl WorktreeRepository for FakeWorktreeRepository {
 struct FakeTerminalRuntime {
     requests: std::rc::Rc<RefCell<Vec<TerminalRuntimeRequest>>>,
     startup_error: Option<TerminalRuntimeError>,
-    attach_error: Option<TerminalRuntimeError>,
 }
 
 impl Default for FakeTerminalRuntime {
@@ -403,7 +380,6 @@ impl Default for FakeTerminalRuntime {
         Self {
             requests: std::rc::Rc::new(RefCell::new(Vec::new())),
             startup_error: None,
-            attach_error: None,
         }
     }
 }
@@ -414,16 +390,6 @@ impl FakeTerminalRuntime {
         Self {
             startup_error: Some(TerminalRuntimeError::StartupFailed {
                 message: message.to_string(),
-            }),
-            ..Self::default()
-        }
-    }
-
-    /// Builds a fake runtime that reports the addressed session already attached.
-    fn already_attached(session_id: &str) -> Self {
-        Self {
-            attach_error: Some(TerminalRuntimeError::AlreadyAttached {
-                session_id: session_id.to_string(),
             }),
             ..Self::default()
         }
@@ -452,15 +418,11 @@ impl TerminalRuntime for FakeTerminalRuntime {
         })
     }
 
-    /// Returns a no-op attachment or the configured fake attach error.
+    /// Returns a no-op attachment for these focused unit tests.
     fn attach_session(
         &self,
         _session_id: &PtySessionId,
     ) -> Result<TerminalAttachment, TerminalRuntimeError> {
-        if let Some(error) = self.attach_error.clone() {
-            return Err(error);
-        }
-
         let (_sender, receiver) = broadcast::channel(4);
         Ok(TerminalAttachment::from_pty_attachment(
             PtySessionAttachment {
@@ -472,12 +434,17 @@ impl TerminalRuntime for FakeTerminalRuntime {
                 },
                 session_token: CancellationToken::new(),
                 output_receiver: receiver,
+                generation: 1,
             },
         ))
     }
 
     /// Ignores detach requests for these focused unit tests.
-    fn detach_session(&self, _session_id: &PtySessionId) -> Result<(), TerminalRuntimeError> {
+    fn detach_session(
+        &self,
+        _session_id: &PtySessionId,
+        _generation: u64,
+    ) -> Result<(), TerminalRuntimeError> {
         Ok(())
     }
 

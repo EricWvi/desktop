@@ -160,11 +160,6 @@ impl From<ApplicationError> for WebApiError {
                 code: "terminal_runtime_missing",
                 message: format!("terminal runtime missing for session: {session_id}"),
             },
-            ApplicationError::TerminalAlreadyAttached { session_id } => Self {
-                status: StatusCode::CONFLICT,
-                code: "terminal_already_attached",
-                message: format!("terminal already attached for session: {session_id}"),
-            },
             ApplicationError::TerminalSessionNotTerminal { session_id } => Self {
                 status: StatusCode::CONFLICT,
                 code: "terminal_session_not_terminal",

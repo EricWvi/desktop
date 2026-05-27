@@ -171,9 +171,13 @@ impl SessionApi {
     }
 
     /// Detaches the currently attached client while keeping the PTY runtime alive.
-    pub fn detach_terminal_session(&self, session_id: &str) -> Result<(), ApplicationError> {
+    pub fn detach_terminal_session(
+        &self,
+        session_id: &str,
+        generation: u64,
+    ) -> Result<(), ApplicationError> {
         self.terminal_runtime
-            .detach_session(&PtySessionId::new(session_id))
+            .detach_session(&PtySessionId::new(session_id), generation)
             .map_err(map_terminal_runtime_error)
     }
 
@@ -267,9 +271,13 @@ impl TerminalRuntime for WebTerminalRuntime {
     }
 
     /// Detaches one live client while keeping the PTY runtime available for reconnect.
-    fn detach_session(&self, session_id: &PtySessionId) -> Result<(), TerminalRuntimeError> {
+    fn detach_session(
+        &self,
+        session_id: &PtySessionId,
+        generation: u64,
+    ) -> Result<(), TerminalRuntimeError> {
         self.manager
-            .detach_session(session_id)
+            .detach_session(session_id, generation)
             .map_err(map_ptysession_control_error)
     }
 
@@ -317,16 +325,6 @@ fn map_ptysession_control_error(error: PtySessionControlError) -> TerminalRuntim
                 session_id: session_id.to_string(),
             }
         }
-        PtySessionControlError::AlreadyAttached { session_id } => {
-            TerminalRuntimeError::AlreadyAttached {
-                session_id: session_id.to_string(),
-            }
-        }
-        PtySessionControlError::NotAttached { session_id } => {
-            TerminalRuntimeError::RuntimeMissing {
-                session_id: session_id.to_string(),
-            }
-        }
         PtySessionControlError::ControlFailed { message } => {
             TerminalRuntimeError::ControlFailed { message }
         }
@@ -341,9 +339,6 @@ fn map_terminal_runtime_error(error: TerminalRuntimeError) -> ApplicationError {
         }
         TerminalRuntimeError::RuntimeMissing { session_id } => {
             ApplicationError::TerminalRuntimeMissing { session_id }
-        }
-        TerminalRuntimeError::AlreadyAttached { session_id } => {
-            ApplicationError::TerminalAlreadyAttached { session_id }
         }
         TerminalRuntimeError::SessionStopped { session_id } => {
             ApplicationError::TerminalSessionStopped { session_id }

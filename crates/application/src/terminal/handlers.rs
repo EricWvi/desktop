@@ -502,9 +502,6 @@ fn map_terminal_runtime_error(error: TerminalRuntimeError) -> ApplicationError {
         TerminalRuntimeError::RuntimeMissing { session_id } => {
             ApplicationError::TerminalRuntimeMissing { session_id }
         }
-        TerminalRuntimeError::AlreadyAttached { session_id } => {
-            ApplicationError::TerminalAlreadyAttached { session_id }
-        }
         TerminalRuntimeError::SessionStopped { session_id } => {
             ApplicationError::TerminalSessionStopped { session_id }
         }
@@ -555,7 +552,6 @@ fn terminal_error_kind(error: &ApplicationError) -> &'static str {
     match error {
         ApplicationError::TerminalStartup { .. } => "terminal_startup",
         ApplicationError::TerminalRuntimeMissing { .. } => "terminal_runtime_missing",
-        ApplicationError::TerminalAlreadyAttached { .. } => "terminal_already_attached",
         ApplicationError::TerminalSessionNotTerminal { .. } => "terminal_session_not_terminal",
         ApplicationError::TerminalSessionStopped { .. } => "terminal_session_stopped",
         ApplicationError::InvalidTerminalRequest { .. } => "invalid_terminal_request",
