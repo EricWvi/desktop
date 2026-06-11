@@ -127,6 +127,7 @@ where
             output_sender,
             command_sender: Mutex::new(command_sender),
             session_token: session_token.clone(),
+            process_handle: spawned_process.handle.clone(),
         });
 
         sessions.insert(session_id.clone(), state.clone());
@@ -231,6 +232,21 @@ where
         Ok(())
     }
 
+    /// Kills every running PTY process immediately without waiting for async cancellation.
+    ///
+    /// Called synchronously during server shutdown so the reader threads' blocking `read()`
+    /// calls receive EIO right away instead of waiting for the writer-loop Tokio task to be
+    /// scheduled and deliver the kill through the command channel.
+    pub fn kill_all_sessions(&self) {
+        let sessions = self
+            .sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for session in sessions.values() {
+            let _ = session.process_handle.kill();
+        }
+    }
+
     /// Sends raw terminal input into one running PTY session.
     pub fn send_input(
         &self,
@@ -323,6 +339,9 @@ struct SessionState {
     output_sender: broadcast::Sender<PtyOutputChunkEvent>,
     command_sender: Mutex<mpsc::UnboundedSender<PtyCommand>>,
     session_token: CancellationToken,
+    /// Cached so `kill_all_sessions` can terminate the PTY process synchronously on shutdown
+    /// without waiting for the writer loop's async cancellation path to be scheduled.
+    process_handle: Arc<dyn crate::process::PtyProcessHandle>,
 }
 /// Streams PTY output into the bounded history and the live output broadcast channel.
 fn spawn_reader_loop(session: Arc<SessionState>, mut reader: Box<dyn Read + Send>) {

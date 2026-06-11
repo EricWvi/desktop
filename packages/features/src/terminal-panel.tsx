@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { TerminalClientMessage, TerminalServerMessage } from "@ora/contracts";
@@ -19,8 +20,10 @@ const RECONNECT_INITIAL_DELAY_MS = 300;
 // Reconnect attempts before giving up. Resets whenever "ready" is received.
 const RECONNECT_MAX_ATTEMPTS = 6;
 
-// Convert a CSS custom-property value to a concrete color string the browser
-// can resolve, by momentarily mounting a throw-away element.
+// Convert a CSS custom-property value to a hex color string that xterm.js can
+// parse. Modern browsers resolve CSS colors to oklch() which xterm's internal
+// color parser does not understand, so we bounce the computed value through a
+// 1×1 Canvas 2D context to get a guaranteed sRGB hex string.
 function resolveCssVar(property: string): string {
   const el = document.createElement("div");
   el.style.color = `var(${property})`;
@@ -28,9 +31,18 @@ function resolveCssVar(property: string): string {
   el.style.pointerEvents = "none";
   el.style.opacity = "0";
   document.body.appendChild(el);
-  const resolved = getComputedStyle(el).color;
+  const computed = getComputedStyle(el).color;
   document.body.removeChild(el);
-  return resolved || "#000000";
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return computed || "#000000";
+  ctx.fillStyle = computed;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `#${r!.toString(16).padStart(2, "0")}${g!.toString(16).padStart(2, "0")}${b!.toString(16).padStart(2, "0")}`;
 }
 
 function buildXtermTheme() {

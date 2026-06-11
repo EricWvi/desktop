@@ -205,8 +205,13 @@ impl SessionApi {
         self.kill_terminal_session.handle(session_id)
     }
 
-    /// Cancels the root terminal server token so every active session begins shutdown.
+    /// Kills all PTY processes immediately and cancels every active session token.
+    ///
+    /// Killing first unblocks the reader threads' blocking `read()` calls (they get EIO as
+    /// soon as the PTY slave closes) without depending on the async writer-loop tasks being
+    /// scheduled before the Tokio runtime tears down.
     pub fn shutdown_terminals(&self) {
+        self.terminal_runtime.kill_all_sessions();
         self.terminal_server_token.cancel();
     }
 }
@@ -226,6 +231,11 @@ impl WebTerminalRuntime {
     /// Returns a lifecycle receiver so the session API can persist exit-driven state changes.
     fn subscribe_lifecycle(&self) -> tokio::sync::broadcast::Receiver<ora_pty::PtyLifecycleEvent> {
         self.manager.subscribe_lifecycle()
+    }
+
+    /// Forwards the synchronous kill-all request to the underlying PTY runtime manager.
+    fn kill_all_sessions(&self) {
+        self.manager.kill_all_sessions();
     }
 }
 

@@ -45,3 +45,8 @@ Ora is an IDE for AI Agent. In the crates folder where the rust code lives:
 - Prefer deep equals comparisons whenever possible. Perform `assert_eq!()` on entire objects, rather than individual fields.
 - Avoid mutating process environment in tests; prefer passing environment-derived flags or dependencies from above.
 - When testing structured events, logs, or spans using `tracing`, always install a test-scoped subscriber/dispatcher with an explicit `LevelFilter::TRACE` (or the required minimum level). Use `tracing::subscriber::with_default` or `tracing::dispatcher::with_default` to isolate the subscriber to the current test thread. Keep every operation that can emit the same `tracing` callsites under that scoped subscriber, including setup helpers, bootstrap code, repository fixtures, and API-surface smoke checks that create spans or events. This matters even for tests that do not assert logs directly: `tracing` caches callsite interest, so a normal test that touches a callsite first can make a later structured-log assertion fail intermittently. Prefer shared helpers such as `with_trace_logging` / `with_recorded_trace_logging` so ordinary tests and recording tests use the same scoped TRACE setup.
+
+
+# Frontend
+- run backend: `task run:web-backend`
+- run frontend: `task run:web-frontend`
