@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use ora_logging::{with_recorded_trace_logging, with_trace_logging};
 use pretty_assertions::assert_eq;
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, ErrorCode, params};
 use tempfile::TempDir;
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
@@ -42,11 +42,13 @@ fn bootstraps_empty_database_with_default_catalog() {
     assert_eq!(
         load_table_names(database.connection()),
         vec![
+            "agents".to_string(),
             "artifacts".to_string(),
             "migrations".to_string(),
             "project_work_contexts".to_string(),
             "projects".to_string(),
             "sessions".to_string(),
+            "skills".to_string(),
             "tasks".to_string(),
             "virtual_entries".to_string(),
             "virtual_folders".to_string(),
@@ -58,8 +60,97 @@ fn bootstraps_empty_database_with_default_catalog() {
         vec![
             AppliedMigration::new("0001", 1_700_000_000_000),
             AppliedMigration::new("0002", 1_700_000_000_000),
+            AppliedMigration::new("0003", 1_700_000_000_000),
         ]
     );
+}
+
+/// Verifies the catalog creates ID-keyed schema without name indexes and removes it during rollback.
+#[test]
+fn manages_skill_and_agent_definition_schema_lifecycle() {
+    let temp_dir = TempDir::new().unwrap();
+    let database_path = temp_dir.path().join("skill-agent.sqlite3");
+    let catalog = default_migration_catalog().unwrap();
+    let migrations = ["0001", "0002", "0003"].map(|version| {
+        catalog
+            .migration(version)
+            .cloned()
+            .unwrap_or_else(|| panic!("missing migration {version}"))
+    });
+
+    bootstrap_file_database(&database_path, catalog, 1_700_000_000_000);
+
+    let connection = Connection::open(&database_path).unwrap();
+    for table_name in ["skills", "agents"] {
+        assert_eq!(
+            load_table_column_names(&connection, table_name),
+            vec![
+                "id".to_string(),
+                "name".to_string(),
+                "description".to_string(),
+                "created_at".to_string(),
+                "updated_at".to_string(),
+                "is_deleted".to_string(),
+            ]
+        );
+
+        connection
+            .execute(
+                &format!(
+                    "INSERT INTO {table_name} (id, name, description, created_at, updated_at, is_deleted)\n                     VALUES (?1, ?2, ?3, ?4, ?5, 0)"
+                ),
+                params!["first", "opencode", "OpenCode", 1_i64, 1_i64],
+            )
+            .unwrap();
+        connection
+            .execute(
+                &format!(
+                    "INSERT INTO {table_name} (id, name, description, created_at, updated_at, is_deleted)\n                     VALUES (?1, ?2, ?3, ?4, ?5, 0)"
+                ),
+                params!["second", "opencode", "OpenCode duplicate", 2_i64, 2_i64],
+            )
+            .unwrap();
+        let duplicate_id = connection.execute(
+            &format!(
+                "INSERT INTO {table_name} (id, name, description, created_at, updated_at, is_deleted)\n                 VALUES (?1, ?2, ?3, ?4, ?5, 0)"
+            ),
+            params!["first", "different-name", "Duplicate ID", 3_i64, 3_i64],
+        );
+
+        assert_eq!(
+            matches!(
+                duplicate_id,
+                Err(rusqlite::Error::SqliteFailure(error, _))
+                    if error.code == ErrorCode::ConstraintViolation
+            ),
+            true
+        );
+
+        let deleted_rows = connection
+            .execute(
+                &format!("UPDATE {table_name} SET is_deleted = 1 WHERE id = ?1"),
+                params!["first"],
+            )
+            .unwrap();
+        assert_eq!(deleted_rows, 1);
+        connection
+            .execute(
+                &format!(
+                    "INSERT INTO {table_name} (id, name, description, created_at, updated_at, is_deleted)\n                 VALUES (?1, ?2, ?3, ?4, ?5, 0)"
+                ),
+                params!["third", "opencode", "OpenCode replacement", 4_i64, 4_i64],
+            )
+            .unwrap();
+    }
+
+    drop(connection);
+    let rollback_catalog =
+        MigrationCatalog::with_target_versions(migrations.to_vec(), vec!["0001", "0002"]).unwrap();
+    bootstrap_file_database(&database_path, rollback_catalog, 1_700_000_000_100);
+
+    let connection = Connection::open(&database_path).unwrap();
+    assert_eq!(table_exists(&connection, "skills"), false);
+    assert_eq!(table_exists(&connection, "agents"), false);
 }
 
 /// Verifies the runner applies only the missing tail of a linear migration history in ascending order.
@@ -352,6 +443,18 @@ fn table_exists(connection: &Connection, table_name: &str) -> bool {
         )
         .unwrap()
         == 1
+}
+
+/// Loads a table's column names in declaration order so migration tests can assert its shape.
+fn load_table_column_names(connection: &Connection, table_name: &str) -> Vec<String> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table_name})"))
+        .unwrap();
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap();
+
+    rows.collect::<Result<Vec<_>, _>>().unwrap()
 }
 
 /// Verifies a migration-step error identifies the version and direction while preserving the SQL parser context.
