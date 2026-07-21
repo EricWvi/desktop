@@ -1,5 +1,5 @@
 use crate::{
-    AgentDefinition, AgentDefinitionId, AgentId, Artifact, ArtifactId, AuditFields,
+    AgentCli, AgentDefinition, AgentDefinitionId, Artifact, ArtifactId, AuditFields,
     DomainModelError, Project, ProjectId, ProjectWorkContext, ProjectWorkContextId,
     ProjectWorkContextSurface, Session, SessionId, SessionStatus, Skill, SkillId, Task, TaskId,
     TaskStatus, VirtualEntry, VirtualEntryId, VirtualEntryKind, VirtualFolder, VirtualFolderId,
@@ -66,8 +66,8 @@ fn constructs_schema_backed_entities() {
     let session = Session::new(
         SessionId::new("session-1"),
         task.id.clone(),
-        AgentId::new("codex"),
-        Some("agent-session-1".to_string()),
+        AgentCli::OpenCode,
+        "agent-session-1",
         SessionStatus::Running,
         audit_fields.clone(),
     );
@@ -164,8 +164,8 @@ fn constructs_schema_backed_entities() {
         Session {
             id: SessionId::new("session-1"),
             task_id: TaskId::new("task-1"),
-            agent_id: AgentId::new("codex"),
-            agent_session_id: Some("agent-session-1".to_string()),
+            agent_cli: AgentCli::OpenCode,
+            agent_session_id: "agent-session-1".to_string(),
             status: SessionStatus::Running,
             audit_fields: audit_fields.clone(),
         }
@@ -210,18 +210,6 @@ fn rejects_blank_skill_and_agent_definition_names() {
     );
 }
 
-/// Confirms the typed session agent identifier still serializes as the existing string shape.
-#[test]
-fn serializes_agent_id_as_a_transparent_string() {
-    let serialized = serde_json::to_string(&AgentId::terminal()).unwrap();
-
-    assert_eq!(serialized, "\"terminal\"");
-    assert_eq!(
-        serde_json::from_str::<AgentId>(&serialized).unwrap(),
-        AgentId::terminal()
-    );
-}
-
 /// Confirms every categorical enum round-trips to the integer encoding expected by SQLite.
 #[test]
 fn round_trips_database_backed_enums() {
@@ -252,6 +240,10 @@ fn round_trips_database_backed_enums() {
         Ok(SessionStatus::Stopped)
     );
     assert_eq!(SessionStatus::Running.database_value(), 0);
+
+    assert_eq!(AgentCli::from_database_value(0), Ok(AgentCli::OpenCode));
+    assert_eq!(AgentCli::Nga.database_value(), 1);
+    assert_eq!(AgentCli::CodeAgentCli.database_value(), 2);
 }
 
 /// Ensures adapters cannot smuggle unsupported integer values into the domain layer.
@@ -278,5 +270,9 @@ fn rejects_invalid_database_values() {
     assert_eq!(
         SessionStatus::from_database_value(5),
         Err(DomainModelError::InvalidSessionStatus(5))
+    );
+    assert_eq!(
+        AgentCli::from_database_value(3),
+        Err(DomainModelError::InvalidAgentCli(3))
     );
 }

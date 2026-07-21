@@ -1277,6 +1277,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "ora-acp"
+version = "0.0.0"
+dependencies = [
+ "futures-util",
+ "ora-contracts",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "ora-application"
 version = "0.0.0"
 dependencies = [
@@ -1296,14 +1310,21 @@ dependencies = [
 name = "ora-backend"
 version = "0.0.0"
 dependencies = [
+ "gitlancer",
+ "ora-acp",
  "ora-application",
  "ora-contracts",
  "ora-db",
  "ora-domain",
+ "ora-process",
  "pretty_assertions",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -2558,6 +2579,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

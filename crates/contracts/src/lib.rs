@@ -20,9 +20,11 @@ pub use file_system::{
 };
 pub use frontend::{
     AGENT_PATH, AGENTS_PATH, FILE_SYSTEM_DIRECTORY_PATH, FrontendEndpoint, FrontendHttpMethod,
-    FrontendPathParam, FrontendQueryParam, PROJECT_PATH, PROJECT_WORK_CONTEXT_OPEN_PATH,
-    PROJECT_WORK_CONTEXT_RENEW_PATH, PROJECTS_PATH, SESSION_PATH, SESSIONS_PATH, SKILL_PATH,
-    SKILLS_PATH, TASK_PATH, TASKS_PATH, frontend_endpoints,
+    FrontendPathParam, FrontendQueryParam, FrontendResponseMode, PROJECT_PATH,
+    PROJECT_WORK_CONTEXT_OPEN_PATH, PROJECT_WORK_CONTEXT_RENEW_PATH, PROJECTS_PATH,
+    SESSION_LOAD_PATH, SESSION_PATH, SESSION_PERMISSION_RESPONSE_PATH, SESSION_PROMPT_PATH,
+    SESSION_STOP_PATH, SESSIONS_PATH, SKILL_PATH, SKILLS_PATH, TASK_PATH, TASKS_PATH,
+    frontend_endpoints,
 };
 pub use project::{
     CreateProjectRequest, CreateProjectResponse, DeleteProjectRequest, DeleteProjectResponse,
@@ -34,9 +36,11 @@ pub use project_work_context::{
     ProjectWorkContextSurface, RenewProjectWorkContextRequest, RenewProjectWorkContextResponse,
 };
 pub use session::{
-    CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest, DeleteSessionResponse,
-    GetSessionRequest, GetSessionResponse, ListSessionsRequest, ListSessionsResponse, Session,
-    SessionStatus, UpdateSessionRequest, UpdateSessionResponse,
+    AgentCli, CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest,
+    DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ListSessionsRequest,
+    ListSessionsResponse, LoadSessionEvent, LoadSessionRequest, PromptSessionEvent,
+    PromptSessionRequest, RespondToPermissionRequest, RespondToPermissionResponse, Session,
+    SessionPermissionRequest, SessionStatus, StopSessionRequest, StopSessionResponse,
 };
 pub use skill::{
     CreateSkillRequest, CreateSkillResponse, DeleteSkillRequest, DeleteSkillResponse,

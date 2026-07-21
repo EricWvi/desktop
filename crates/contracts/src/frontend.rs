@@ -10,6 +10,14 @@ pub enum FrontendHttpMethod {
     Delete,
 }
 
+/// Selects whether an endpoint returns one value or an ordered event stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FrontendResponseMode {
+    Unary,
+    Stream,
+}
+
 /// Describes one request field that the transport must interpolate into the URL path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +60,14 @@ impl FrontendEndpoint {
             _ => NO_QUERY_PARAMS,
         }
     }
+
+    /// Returns the transport mode explicitly owned by the Rust endpoint catalog.
+    pub fn response_mode(&self) -> FrontendResponseMode {
+        match self.operation_name {
+            "loadSession" | "promptSession" => FrontendResponseMode::Stream,
+            _ => FrontendResponseMode::Unary,
+        }
+    }
 }
 
 pub const PROJECTS_PATH: &str = "/api/projects";
@@ -62,6 +78,10 @@ pub const TASKS_PATH: &str = "/api/tasks";
 pub const TASK_PATH: &str = "/api/tasks/{taskId}";
 pub const SESSIONS_PATH: &str = "/api/sessions";
 pub const SESSION_PATH: &str = "/api/sessions/{sessionId}";
+pub const SESSION_LOAD_PATH: &str = "/api/sessions/{sessionId}/load";
+pub const SESSION_PROMPT_PATH: &str = "/api/sessions/{sessionId}/prompt";
+pub const SESSION_PERMISSION_RESPONSE_PATH: &str = "/api/sessions/{sessionId}/permissions/respond";
+pub const SESSION_STOP_PATH: &str = "/api/sessions/{sessionId}/stop";
 pub const SKILLS_PATH: &str = "/api/skills";
 pub const SKILL_PATH: &str = "/api/skills/{skillId}";
 pub const AGENTS_PATH: &str = "/api/agents";
@@ -278,15 +298,48 @@ const FRONTEND_ENDPOINTS: &[FrontendEndpoint] = &[
         has_json_body: false,
     },
     FrontendEndpoint {
-        operation_name: "updateSession",
+        operation_name: "loadSession",
         namespace: SESSION_NAMESPACE,
-        member_name: "update",
-        method: FrontendHttpMethod::Put,
-        path_template: SESSION_PATH,
-        request_type: "UpdateSessionRequest",
-        response_type: "UpdateSessionResponse",
+        member_name: "load",
+        method: FrontendHttpMethod::Post,
+        path_template: SESSION_LOAD_PATH,
+        request_type: "LoadSessionRequest",
+        response_type: "LoadSessionEvent",
+        path_params: SESSION_PATH_PARAMS,
+        has_json_body: false,
+    },
+    FrontendEndpoint {
+        operation_name: "promptSession",
+        namespace: SESSION_NAMESPACE,
+        member_name: "prompt",
+        method: FrontendHttpMethod::Post,
+        path_template: SESSION_PROMPT_PATH,
+        request_type: "PromptSessionRequest",
+        response_type: "PromptSessionEvent",
         path_params: SESSION_PATH_PARAMS,
         has_json_body: true,
+    },
+    FrontendEndpoint {
+        operation_name: "respondToSessionPermission",
+        namespace: SESSION_NAMESPACE,
+        member_name: "respondToPermission",
+        method: FrontendHttpMethod::Post,
+        path_template: SESSION_PERMISSION_RESPONSE_PATH,
+        request_type: "RespondToPermissionRequest",
+        response_type: "RespondToPermissionResponse",
+        path_params: SESSION_PATH_PARAMS,
+        has_json_body: true,
+    },
+    FrontendEndpoint {
+        operation_name: "stopSession",
+        namespace: SESSION_NAMESPACE,
+        member_name: "stop",
+        method: FrontendHttpMethod::Post,
+        path_template: SESSION_STOP_PATH,
+        request_type: "StopSessionRequest",
+        response_type: "StopSessionResponse",
+        path_params: SESSION_PATH_PARAMS,
+        has_json_body: false,
     },
     FrontendEndpoint {
         operation_name: "deleteSession",
