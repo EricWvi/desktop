@@ -1,18 +1,19 @@
 use crate::clock::SystemClock;
+use crate::{BackendError, BackendErrorKind};
 use ora_application::{
-    ApplicationError, CreateTaskHandler, DeleteTaskHandler, GetTaskHandler,
-    GitTaskWorktreeProvisioner, ListTasksHandler, ProjectRepository, ProjectRepositoryError,
-    TaskRepository, TaskRepositoryError, UpdateTaskHandler, UuidTaskIdGenerator,
-    UuidWorktreeIdGenerator,
+    ApplicationError, Clock, CreateTaskHandler, GetTaskHandler, GitTaskWorktreeProvisioner,
+    ListTasksHandler, ProjectRepository, ProjectRepositoryError, UpdateTaskHandler,
+    UuidTaskIdGenerator, UuidWorktreeIdGenerator,
 };
 use ora_contracts::{
     CreateTaskRequest, CreateTaskResponse, DeleteTaskRequest, DeleteTaskResponse, GetTaskRequest,
     GetTaskResponse, ListTasksRequest, ListTasksResponse, UpdateTaskRequest, UpdateTaskResponse,
 };
 use ora_db::{
-    RepositoryPool, SqliteProjectRepository, SqliteTaskRepository, SqliteWorktreeRepository,
+    CascadeDeleteOutcome, RepositoryPool, SqliteCascadeRepository, SqliteProjectRepository,
+    SqliteTaskRepository, SqliteWorktreeRepository,
 };
-use ora_domain::{Project, ProjectId, Task, TaskId};
+use ora_domain::{Project, ProjectId, TaskId};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -87,21 +88,37 @@ impl TaskApi {
         self.update.handle(request)
     }
 
-    /// Resolves the task's project and deletes its worktree through Git branch metadata.
+    /// Soft-deletes the task and Ora worktree record without touching Git state.
     pub(crate) fn delete(
         &self,
         request: DeleteTaskRequest,
-    ) -> Result<DeleteTaskResponse, ApplicationError> {
-        let task = self.find_task(&TaskId::new(&request.task_id))?;
-        let project = self.find_project(&task.project_id)?;
-        let handler = DeleteTaskHandler::new(
-            SqliteTaskRepository::new(self.pool.clone()),
-            SqliteWorktreeRepository::new(self.pool.clone()),
-            GitTaskWorktreeProvisioner::new(PathBuf::from(project.root_path)),
-            self.clock,
-        );
+    ) -> Result<DeleteTaskResponse, BackendError> {
+        let task_id = TaskId::new(request.task_id);
+        let outcome = SqliteCascadeRepository::new(self.pool.clone())
+            .delete_task(&task_id, self.clock.now_timestamp_millis())
+            .map_err(|_| {
+                BackendError::new(
+                    BackendErrorKind::Internal,
+                    "task_repository_error",
+                    "task repository operation failed",
+                )
+            })?;
 
-        handler.handle(request)
+        match outcome {
+            CascadeDeleteOutcome::Deleted => Ok(DeleteTaskResponse {
+                task_id: task_id.to_string(),
+            }),
+            CascadeDeleteOutcome::NotFound => Err(BackendError::new(
+                BackendErrorKind::NotFound,
+                "task_not_found",
+                format!("task not found: {task_id}"),
+            )),
+            CascadeDeleteOutcome::ActiveSession => Err(BackendError::new(
+                BackendErrorKind::Conflict,
+                "resource_in_use",
+                "task has a running session and cannot be deleted",
+            )),
+        }
     }
 
     /// Loads a visible project or returns the same stable not-found error as project handlers.
@@ -113,18 +130,6 @@ impl TaskApi {
 
         project.ok_or_else(|| ApplicationError::ProjectNotFound {
             project_id: project_id.to_string(),
-        })
-    }
-
-    /// Loads a visible task before selecting the Git repository required for deletion.
-    fn find_task(&self, task_id: &TaskId) -> Result<Task, ApplicationError> {
-        let repository = SqliteTaskRepository::new(self.pool.clone());
-        let task = repository
-            .find_task(task_id)
-            .map_err(task_repository_error)?;
-
-        task.ok_or_else(|| ApplicationError::TaskNotFound {
-            task_id: task_id.to_string(),
         })
     }
 
@@ -144,15 +149,6 @@ fn project_repository_error(error: ProjectRepositoryError) -> ApplicationError {
     match error {
         ProjectRepositoryError::OperationFailed(message) => {
             ApplicationError::ProjectRepository { message }
-        }
-    }
-}
-
-/// Converts task repository failures encountered before delete handler construction.
-fn task_repository_error(error: TaskRepositoryError) -> ApplicationError {
-    match error {
-        TaskRepositoryError::OperationFailed(message) => {
-            ApplicationError::TaskRepository { message }
         }
     }
 }
