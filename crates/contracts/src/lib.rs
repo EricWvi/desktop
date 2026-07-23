@@ -38,11 +38,11 @@ pub use project_work_context::{
     ProjectWorkContextSurface, RenewProjectWorkContextRequest, RenewProjectWorkContextResponse,
 };
 pub use session::{
-    AgentCli, CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest,
-    DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ListSessionsRequest,
-    ListSessionsResponse, LoadSessionEvent, LoadSessionRequest, PromptSessionEvent,
-    PromptSessionRequest, RespondToPermissionRequest, RespondToPermissionResponse, Session,
-    SessionPermissionRequest, SessionStatus, StopSessionRequest, StopSessionResponse,
+    CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest, DeleteSessionResponse,
+    GetSessionRequest, GetSessionResponse, ListSessionsRequest, ListSessionsResponse,
+    LoadSessionEvent, LoadSessionRequest, PromptSessionEvent, PromptSessionRequest,
+    RespondToPermissionRequest, RespondToPermissionResponse, Session, SessionPermissionRequest,
+    SessionStatus, StopSessionRequest, StopSessionResponse,
 };
 pub use skill::{
     CreateSkillRequest, CreateSkillResponse, DeleteSkillRequest, DeleteSkillResponse,

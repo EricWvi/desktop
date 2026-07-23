@@ -37,7 +37,7 @@ Startup reconciles this configured project into the `projects` table before the 
 - If both the configured name and path already match, startup leaves the row unchanged.
 - If `ORA_WORK_DIR` is unset, startup uses a `worktrees/` directory next to the configured SQLite database file.
 - Task creation resolves the project named by the request and provisions linked worktrees under `ORA_WORK_DIR/<full-task-id>`.
-- Agent Session startup resolves Task → Worktree → branch and then asks Git for the authoritative linked-worktree path to use as the child process cwd.
+- Agent Session startup resolves Task → Worktree → branch and then asks Git for the authoritative linked-worktree path supplied as the ACP session `cwd`.
 - After project reconciliation, startup also opens the synthetic web work context `surface = web`, `window_id = main` for that project and refreshes its lease immediately.
 
 ## Bind Configuration
@@ -97,7 +97,7 @@ The persisted runtime exposes CRUD routes for the supported public models:
 Request and response payloads use `ora-contracts` DTO shapes, so transport behavior stays aligned with the shared application contract.
 Task payloads do not expose backend-owned worktree identifiers, and the runtime does not expose standalone public worktree CRUD endpoints.
 
-Session create starts `<home>/.opencode/bin/opencode acp`, `<home>/.nga/bin/nga acp`, or `<home>/.codeagentcli/bin/codeagentcli acp` according to the immutable `agentCli`. The server performs `initialize` and `session/new` before persisting. Load performs a fresh `initialize` followed by `session/load` using the private provider session id. The public Session payload never exposes that id.
+Backend construction immediately supervises one `<home>/.opencode/bin/opencode acp` child rooted at the user's home directory. The server performs `initialize` once per process generation. Session create calls `session/new` on that shared connection; load calls `session/load` using the private provider session id and the Task worktree `cwd`. The public Session payload never exposes that id. Startup or recovery failures do not prevent non-agent APIs from serving; agent operations return `agent_runtime_unavailable` until a generation is ready.
 
 Load and prompt responses use `application/x-ndjson`. Each line is one complete frame. Data and control paths are separate, session-update queues are bounded at 256 items, frames are limited to 8 MiB, and overflow terminates the operation rather than dropping updates silently.
 

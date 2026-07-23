@@ -14,7 +14,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjects } from "../../state/hooks/use-projects";
 import { useTasks } from "../../state/hooks/use-tasks";
 import { useSessions } from "../../state/hooks/use-sessions";
-import { DEFAULT_AGENT_CLI } from "../../state/hooks/use-workspace-mutations";
 import { queryKeys } from "../../state/hooks/query-keys";
 import { useContractsClient } from "../../contracts-client-context";
 import { useUiStore } from "../../state/stores/ui-store";
@@ -37,7 +36,10 @@ export function directChatTitle(text: string): string {
 }
 
 /** Inserts a freshly-created entity into query data before the invalidation refetch completes. */
-function upsertById<T extends { id: string }>(current: T[] | undefined, entity: T): T[] {
+function upsertById<T extends { id: string }>(
+  current: T[] | undefined,
+  entity: T,
+): T[] {
   return [...(current ?? []).filter((item) => item.id !== entity.id), entity];
 }
 
@@ -60,12 +62,10 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
   const project = projects.find((item) => item.id === selection.projectId);
   const task = tasks.find((item) => item.id === selection.taskId);
   const session = sessions.find((item) => item.id === selection.sessionId);
-  const conversation = useStore(
-    chatStore,
-    (state) =>
-      (selection.sessionId === null
-        ? undefined
-        : state.conversations[selection.sessionId]),
+  const conversation = useStore(chatStore, (state) =>
+    selection.sessionId === null
+      ? undefined
+      : state.conversations[selection.sessionId],
   );
 
   useEffect(() => {
@@ -77,17 +77,29 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
     ) {
       // A browser refresh replaces the in-memory chat store without stopping the backend-owned
       // process, so a selected session can still be Running while its local history is empty.
-      void chatStore.getState().loadSession(session.id)
+      void chatStore
+        .getState()
+        .loadSession(session.id)
         .then(() => sessionsQuery.refetch())
         .catch(() => undefined);
     }
-  }, [chatStore, conversation?.error, conversation?.isLoaded, conversation?.isLoading, session?.id, session?.status, sessionsQuery]);
+  }, [
+    chatStore,
+    conversation?.error,
+    conversation?.isLoaded,
+    conversation?.isLoading,
+    session?.id,
+    session?.status,
+    sessionsQuery,
+  ]);
 
   /** Sends into the selected session, or lazily creates the selected execution context. */
   const sendOrStartSession = async (text: string) => {
     if (session) {
       try {
-        await chatStore.getState().sendMessage({ oraSessionId: session.id, text });
+        await chatStore
+          .getState()
+          .sendMessage({ oraSessionId: session.id, text });
       } finally {
         // Connection failures can stop the provider process, so refresh the persisted
         // lifecycle snapshot after every finite prompt without polling idle sessions.
@@ -114,7 +126,8 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
             const createdTask = response.task;
             taskId = createdTask.id;
             queryClient.setQueryData<Task[]>(queryKeys.tasks, (current) =>
-              upsertById(current, createdTask));
+              upsertById(current, createdTask),
+            );
             void queryClient.invalidateQueries({ queryKey: queryKeys.tasks });
             useUiStore.getState().expandProject(projectId);
 
@@ -122,7 +135,8 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
             // session handshake runs. If that handshake fails, this real task is
             // retained and the next send reuses it.
             if (draftSessionId !== null) {
-              useWorkspaceSelectionStore.getState()
+              useWorkspaceSelectionStore
+                .getState()
                 .selectSession(draftSessionId, createdTask.id, projectId);
             }
           }
@@ -132,7 +146,8 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
             agentCli: DEFAULT_AGENT_CLI,
           });
           queryClient.setQueryData<Session[]>(queryKeys.sessions, (current) =>
-            upsertById(current, response.session));
+            upsertById(current, response.session),
+          );
           return response.session.id;
         },
         onDraft: (draftId) => {
@@ -146,7 +161,9 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
         },
         onSessionCreated: (realSessionId) => {
           void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-          useWorkspaceSelectionStore.getState().selectSession(realSessionId, taskId!, projectId);
+          useWorkspaceSelectionStore
+            .getState()
+            .selectSession(realSessionId, taskId!, projectId);
           useUiStore.getState().expandProject(projectId);
           useUiStore.getState().expandTask(taskId!);
         },
@@ -157,7 +174,8 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
   };
 
   // Anything short of a persisted selected session is a new or optimistic chat.
-  const chatIsOpen = session === undefined || (task !== undefined && project !== undefined);
+  const chatIsOpen =
+    session === undefined || (task !== undefined && project !== undefined);
 
   if (chatIsOpen) {
     const canChat = session
@@ -169,28 +187,51 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
     const lastTurn = conversation?.turns.at(-1);
     // Output has begun once the live turn carries any item; until then the turn is
     // still starting up (session creation or the wait for the first token).
-    const isStreaming = (conversation?.isResponding ?? false) && (lastTurn?.items.length ?? 0) > 0;
+    const isStreaming =
+      (conversation?.isResponding ?? false) &&
+      (lastTurn?.items.length ?? 0) > 0;
     // A selected session always owns a thread, so treat it as loading until its
     // history has landed (or failed). This also covers the render between selecting
     // the session and loadSession flipping isLoading on — without it the composer
     // would bounce back to the landing layout for a frame when switching sessions.
     const isLoadingHistory =
-      session !== undefined && conversation?.isLoaded !== true && conversation?.error == null;
+      session !== undefined &&
+      conversation?.isLoaded !== true &&
+      conversation?.error == null;
     return (
-      <main id="main-content" className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+      <main
+        id="main-content"
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+      >
         <div className="flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4">
-          {sidebarCollapsed && <Button variant="ghost" size="icon" onClick={() => setSidebarCollapsed(false)} aria-label={t("sidebar.expand")}><IconLayoutSidebarLeftExpand /></Button>}
+          {sidebarCollapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarCollapsed(false)}
+              aria-label={t("sidebar.expand")}
+            >
+              <IconLayoutSidebarLeftExpand />
+            </Button>
+          )}
           <DragRegion>
             {session && (
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium tracking-[-0.01em]">{session.agentCli}</p>
+                <p className="truncate text-sm font-medium tracking-[-0.01em]">
+                  OpenCode
+                </p>
                 {project && task && (
-                  <p className="truncate text-[11px] text-muted-foreground">{project.name} / {task.title}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    {project.name} / {task.title}
+                  </p>
                 )}
               </div>
             )}
           </DragRegion>
-          <LocationActionsButton taskId={task?.id} projectPath={project?.rootPath} />
+          <LocationActionsButton
+            taskId={task?.id}
+            projectPath={project?.rootPath}
+          />
           <WindowControls />
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
@@ -206,16 +247,27 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
             disabledHint={canChat ? undefined : t("chat.pickProject")}
             // A persisted or optimistic session already fixes its project and
             // execution context, so the pickers only belong to a blank composer.
-            contextBar={selection.sessionId === null ? <ComposerContextBar /> : undefined}
+            contextBar={
+              selection.sessionId === null ? <ComposerContextBar /> : undefined
+            }
             // Failures land in chatError; the rejection itself is expected.
-            onSend={(text) => void sendOrStartSession(text).catch(() => undefined)}
+            onSend={(text) =>
+              void sendOrStartSession(text).catch(() => undefined)
+            }
             // The selected id, not session.id: during the optimistic startup the
             // real session does not exist yet but the draft key is already live.
-            onStop={() => chatStore.getState().stopGeneration(selection.sessionId ?? "")}
+            onStop={() =>
+              chatStore.getState().stopGeneration(selection.sessionId ?? "")
+            }
             onRespondToPermission={(permissionRequestId, optionId) => {
               if (session) {
-                void chatStore.getState()
-                  .respondToPermission(session.id, permissionRequestId, optionId)
+                void chatStore
+                  .getState()
+                  .respondToPermission(
+                    session.id,
+                    permissionRequestId,
+                    optionId,
+                  )
                   .catch(() => undefined);
               }
             }}
@@ -226,21 +278,44 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
   }
 
   return (
-    <main id="main-content" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <main
+      id="main-content"
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+    >
       <header className="flex h-14 items-center border-b border-border px-3">
-        {sidebarCollapsed && <Button variant="ghost" size="icon" onClick={() => setSidebarCollapsed(false)} aria-label={t("sidebar.expand")}><IconLayoutSidebarLeftExpand /></Button>}
+        {sidebarCollapsed && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarCollapsed(false)}
+            aria-label={t("sidebar.expand")}
+          >
+            <IconLayoutSidebarLeftExpand />
+          </Button>
+        )}
         <DragRegion>
-          <span className="text-[13px] font-medium text-muted-foreground">{t("workspace.overview")}</span>
+          <span className="text-[13px] font-medium text-muted-foreground">
+            {t("workspace.overview")}
+          </span>
         </DragRegion>
-        <LocationActionsButton taskId={task?.id} projectPath={project?.rootPath} />
+        <LocationActionsButton
+          taskId={task?.id}
+          projectPath={project?.rootPath}
+        />
         <WindowControls />
       </header>
       <div className="flex flex-1 items-center justify-center p-6">
         <section className="w-full max-w-xl">
           <div className="mb-6 flex size-11 items-center justify-center rounded-lg border border-border bg-muted">
-            {task ? <IconGitBranch className="size-5 text-sky-600" /> : <IconFolder className="size-5 text-amber-600" />}
+            {task ? (
+              <IconGitBranch className="size-5 text-sky-600" />
+            ) : (
+              <IconFolder className="size-5 text-amber-600" />
+            )}
           </div>
-          <h1 className="text-xl font-semibold">{task?.title ?? project?.name ?? t("workspace.defaultTitle")}</h1>
+          <h1 className="text-xl font-semibold">
+            {task?.title ?? project?.name ?? t("workspace.defaultTitle")}
+          </h1>
           <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
             {task
               ? t("workspace.taskHint")
@@ -251,14 +326,32 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
           {(project || task) && (
             <div className="mt-6 grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2">
               <div className="bg-background p-4">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground"><IconBrandGit className="size-4" />{t("workspace.repository")}</div>
-                <p className="mt-2 truncate text-sm font-medium">{project?.rootPath}</p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <IconBrandGit className="size-4" />
+                  {t("workspace.repository")}
+                </div>
+                <p className="mt-2 truncate text-sm font-medium">
+                  {project?.rootPath}
+                </p>
               </div>
               <div className="bg-background p-4">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground"><IconPlayerPlay className="size-4" />{t("workspace.agentSessions")}</div>
-                <p className="mt-2 text-sm font-medium">{task
-                  ? t("workspace.sessionCount", { count: sessions.filter((item) => item.taskId === task.id).length })
-                  : t("workspace.worktreeCount", { count: tasks.filter((item) => item.projectId === project?.id).length })}</p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <IconPlayerPlay className="size-4" />
+                  {t("workspace.agentSessions")}
+                </div>
+                <p className="mt-2 text-sm font-medium">
+                  {task
+                    ? t("workspace.sessionCount", {
+                        count: sessions.filter(
+                          (item) => item.taskId === task.id,
+                        ).length,
+                      })
+                    : t("workspace.worktreeCount", {
+                        count: tasks.filter(
+                          (item) => item.projectId === project?.id,
+                        ).length,
+                      })}
+                </p>
               </div>
             </div>
           )}

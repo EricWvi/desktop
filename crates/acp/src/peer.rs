@@ -17,7 +17,6 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
-const DATA_QUEUE_CAPACITY: usize = 256;
 
 type PendingResponse = Result<Value, RpcError>;
 
@@ -36,8 +35,6 @@ pub enum AcpError {
     RequestFailed(String),
     #[error("ACP response payload is invalid: {0}")]
     InvalidResponse(String),
-    #[error("ACP update queue overflowed")]
-    DataQueueOverflow,
 }
 
 /// Carries one permission request together with its JSON-RPC correlation id.
@@ -150,7 +147,7 @@ where
 /// Owns the independent data and control receivers for one ACP connection.
 pub struct AcpPeer<Writer> {
     pub client: AcpClient<Writer>,
-    updates: mpsc::Receiver<SessionNotification>,
+    updates: mpsc::UnboundedReceiver<SessionNotification>,
     control: mpsc::UnboundedReceiver<AcpControl>,
 }
 
@@ -158,14 +155,16 @@ impl<Writer> AcpPeer<Writer>
 where
     Writer: AsyncWrite + Unpin + Send + 'static,
 {
-    /// Starts the reader task and returns a peer whose update queue is bounded and lossless-or-fatal.
+    /// Starts the reader task and delegates update flow control to the connection owner.
     pub fn spawn<Reader>(reader: Reader, writer: Writer) -> Self
     where
         Reader: AsyncRead + Unpin + Send + 'static,
     {
         let pending = Arc::new(Mutex::new(HashMap::new()));
         let writer = Arc::new(Mutex::new(writer));
-        let (updates_sender, updates) = mpsc::channel(DATA_QUEUE_CAPACITY);
+        // The application router applies bounded queues per provider session. Bounding this
+        // connection-wide handoff would let one noisy session terminate every other session.
+        let (updates_sender, updates) = mpsc::unbounded_channel();
         let (control_sender, control) = mpsc::unbounded_channel();
         tokio::spawn(read_frames(
             reader,
@@ -200,7 +199,7 @@ where
         self,
     ) -> (
         AcpClient<Writer>,
-        mpsc::Receiver<SessionNotification>,
+        mpsc::UnboundedReceiver<SessionNotification>,
         mpsc::UnboundedReceiver<AcpControl>,
     ) {
         (self.client, self.updates, self.control)
@@ -212,7 +211,7 @@ async fn read_frames<Reader, Writer>(
     reader: Reader,
     writer: Arc<Mutex<Writer>>,
     pending: Arc<Mutex<HashMap<RequestId, oneshot::Sender<PendingResponse>>>>,
-    updates: mpsc::Sender<SessionNotification>,
+    updates: mpsc::UnboundedSender<SessionNotification>,
     control: mpsc::UnboundedSender<AcpControl>,
 ) where
     Reader: AsyncRead + Unpin,
@@ -268,7 +267,7 @@ async fn route_frame<Writer>(
     value: Value,
     writer: &Mutex<Writer>,
     pending: &Mutex<HashMap<RequestId, oneshot::Sender<PendingResponse>>>,
-    updates: &mpsc::Sender<SessionNotification>,
+    updates: &mpsc::UnboundedSender<SessionNotification>,
     control: &mpsc::UnboundedSender<AcpControl>,
 ) -> Result<(), AcpError>
 where
@@ -320,8 +319,8 @@ where
                 serde_json::from_value(object.get("params").cloned().unwrap_or(Value::Null))
                     .map_err(|error| AcpError::InvalidFrame(error.to_string()))?;
             updates
-                .try_send(notification)
-                .map_err(|_| AcpError::DataQueueOverflow)
+                .send(notification)
+                .map_err(|_| AcpError::StreamClosed)
         }
         (Some(_), None) => Ok(()),
         (None, Some(request_id)) => {
@@ -403,9 +402,47 @@ where
 #[cfg(test)]
 mod tests {
     use super::{AcpError, AcpPeer};
+    use ora_contracts::acp::notification::SessionNotification;
+    use ora_contracts::acp::session::{SessionInfoUpdate, SessionUpdate};
     use pretty_assertions::assert_eq;
     use serde_json::{Value, json};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, duplex, split};
+
+    /// Verifies connection-wide handoff cannot make one burst terminate unrelated sessions.
+    #[tokio::test]
+    async fn hands_off_more_than_one_session_queue_of_updates() {
+        let (ora_stream, mut agent_stream) = duplex(16 * 1024);
+        let (ora_reader, ora_writer) = split(ora_stream);
+        let mut peer = AcpPeer::spawn(ora_reader, ora_writer);
+        let expected = (0..300)
+            .map(|index| {
+                SessionNotification::new(
+                    format!("session-{}", index % 2),
+                    SessionUpdate::SessionInfoUpdate(
+                        SessionInfoUpdate::new().title(format!("Update {index}")),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        for notification in &expected {
+            let frame = json!({
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": notification,
+            });
+            agent_stream
+                .write_all(format!("{frame}\n").as_bytes())
+                .await
+                .expect("write session update");
+        }
+
+        let mut received = Vec::with_capacity(expected.len());
+        for _ in 0..expected.len() {
+            received.push(peer.next_update().await.expect("receive session update"));
+        }
+        assert_eq!(received, expected);
+    }
 
     /// Verifies extension requests receive method-not-found without closing request correlation.
     #[tokio::test]

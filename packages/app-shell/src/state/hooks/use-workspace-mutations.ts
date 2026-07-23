@@ -8,14 +8,6 @@ import { useChatStore } from "../../chat-store-context";
 
 type QueryClient = ReturnType<typeof useQueryClient>;
 
-/**
- * Agent a session starts with when nothing has been chosen explicitly.
- *
- * Shared by the session dialog and by the composer's implicit "first message
- * starts a session" path so the two cannot drift onto different agents.
- */
-export const DEFAULT_AGENT_CLI = "open_code" as const;
-
 /** Reads the cached projects, tasks, or sessions, returning [] while data is absent. */
 function readCache<T>(queryClient: QueryClient, key: readonly string[]): T[] {
   return (queryClient.getQueryData(key) as T[] | undefined) ?? [];
@@ -137,7 +129,7 @@ export function useCreateSession() {
   return useMutation({
     mutationFn: async ({ taskId }: { taskId: string }) => {
       return client.session
-        .create({ taskId, agentCli: DEFAULT_AGENT_CLI })
+        .create({ taskId })
         .then((response) => response.session);
     },
     onSuccess: (session) => {

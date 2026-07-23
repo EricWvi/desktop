@@ -5,17 +5,7 @@ use crate::acp::tool_call::ToolCallUpdate;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Identifies the ACP command-line agent selected for an Ora session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-#[ts(export_to = "session.ts")]
-pub enum AgentCli {
-    OpenCode,
-    Nga,
-    CodeAgentCli,
-}
-
-/// Describes whether the process that owns a persisted session is running.
+/// Describes whether a persisted session is registered on the shared OpenCode connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "session.ts")]
@@ -31,17 +21,15 @@ pub enum SessionStatus {
 pub struct Session {
     pub id: String,
     pub task_id: String,
-    pub agent_cli: AgentCli,
     pub status: SessionStatus,
 }
 
-/// Creates a provider-backed session for one immutable task and CLI selection.
+/// Creates an OpenCode-backed session for one immutable task.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "session.ts")]
 pub struct CreateSessionRequest {
     pub task_id: String,
-    pub agent_cli: AgentCli,
 }
 
 /// Returns the created session after the ACP `session/new` handshake succeeds.
@@ -184,7 +172,6 @@ pub struct DeleteSessionResponse {
 
 /// Exports every TypeScript binding declared in this module into the target directory.
 pub(crate) fn export(config: &ts_rs::Config) -> Result<(), ts_rs::ExportError> {
-    AgentCli::export(config)?;
     SessionStatus::export(config)?;
     Session::export(config)?;
     CreateSessionRequest::export(config)?;

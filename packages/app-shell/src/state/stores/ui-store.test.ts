@@ -69,7 +69,6 @@ describe("useUiStore", () => {
     const session: Session = {
       id: "s1",
       taskId: "t1",
-      agentCli: "open_code",
       status: "running",
     };
 

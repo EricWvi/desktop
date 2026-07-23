@@ -12,7 +12,7 @@ The public application surface is split across `ora-application`, `ora-contracts
 - Backend-owned task worktrees stay internal; `ora-contracts` does not export standalone public worktree CRUD DTOs, SDK operations, or task payload linkage fields for them.
 - `ora-application` owns CRUD handlers, application errors, repository ports, and domain-to-contract mapping.
 - `ora-application` also owns the project work context handlers, lease timing rules, occupancy conflicts, and the mapping from `ora-domain::ProjectWorkContext` into the shared contract payload.
-- `ora-backend` owns SQLite bootstrap, the system clock, concrete repository/handler composition, dynamic project selection for task Git operations, the per-session ACP process runtime, and transport-neutral public error normalization.
+- `ora-backend` owns SQLite bootstrap, the system clock, concrete repository/handler composition, dynamic project selection for task Git operations, the application-scoped supervised OpenCode runtime, per-session ACP routing, and transport-neutral public error normalization.
 - Transport adapters stay thin: Web handlers and Tauri commands accept contract requests, delegate to the same `Backend`, then map its stable errors into HTTP or IPC semantics.
 - `ProjectWorkContext` and filesystem browsing are deliberately outside `ora-backend` for now. The Web server keeps those existing services; Desktop reports `unsupported_operation` for those three contract operations.
 

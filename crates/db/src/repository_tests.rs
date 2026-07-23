@@ -6,10 +6,9 @@ use ora_application::{
     TaskRepository, TaskRepositoryError, WorktreeRepository, WorktreeRepositoryError,
 };
 use ora_domain::{
-    AgentCli, AgentDefinition, AgentDefinitionId, AuditFields, Project, ProjectId,
-    ProjectWorkContext, ProjectWorkContextId, ProjectWorkContextSurface, Session, SessionId,
-    SessionStatus, Skill, SkillId, Task, TaskId, TaskStatus, Worktree, WorktreeActivity,
-    WorktreeId,
+    AgentDefinition, AgentDefinitionId, AuditFields, Project, ProjectId, ProjectWorkContext,
+    ProjectWorkContextId, ProjectWorkContextSurface, Session, SessionId, SessionStatus, Skill,
+    SkillId, Task, TaskId, TaskStatus, Worktree, WorktreeActivity, WorktreeId,
 };
 use ora_logging::with_trace_logging;
 use pretty_assertions::assert_eq;
@@ -451,7 +450,6 @@ fn session_repository_supports_crud_and_soft_delete() {
     let created_session = Session::new(
         SessionId::new("session-1"),
         TaskId::new("task-1"),
-        AgentCli::OpenCode,
         "provider-1",
         SessionStatus::Running,
         AuditFields::new(12, 12, false),
@@ -473,7 +471,6 @@ fn session_repository_supports_crud_and_soft_delete() {
     let updated_session = Session::new(
         created_session.id.clone(),
         created_session.task_id.clone(),
-        created_session.agent_cli,
         created_session.agent_session_id.clone(),
         SessionStatus::Stopped,
         AuditFields::new(12, 22, false),
@@ -510,7 +507,6 @@ fn session_repository_rejects_soft_deleted_task() {
     let session = Session::new(
         SessionId::new("session-after-delete"),
         TaskId::new("task-1"),
-        AgentCli::OpenCode,
         "provider-after-delete",
         SessionStatus::Running,
         AuditFields::new(21, 21, false),
@@ -607,7 +603,6 @@ fn repository_pool_composes_all_repository_adapters() {
     let session = Session::new(
         SessionId::new("session-1"),
         task.id.clone(),
-        AgentCli::OpenCode,
         "provider-1",
         SessionStatus::Running,
         AuditFields::new(42, 42, false),
@@ -707,11 +702,8 @@ fn insert_cascade_fixture(pool: &RepositoryPool, session_status: SessionStatus) 
              INSERT INTO project_work_contexts VALUES ('context-1', 'web', 'main', 'project-1', 100, 1, 1);",
         )?;
         connection.execute(
-            "INSERT INTO sessions VALUES ('session-1', 'task-1', ?1, 'provider-1', ?2, 1, 1, 0)",
-            rusqlite::params![
-                AgentCli::OpenCode.database_value(),
-                session_status.database_value()
-            ],
+            "INSERT INTO sessions VALUES ('session-1', 'task-1', 'provider-1', ?1, 1, 1, 0)",
+            rusqlite::params![session_status.database_value()],
         )?;
         Ok(())
     })
@@ -869,12 +861,11 @@ fn insert_invalid_task_row(pool: &RepositoryPool) {
 fn insert_invalid_session_row(pool: &RepositoryPool) {
     pool.with_connection(|connection| {
         connection.execute(
-            "INSERT INTO sessions (id, task_id, agent_cli, agent_session_id, status, created_at, updated_at, is_deleted)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO sessions (id, task_id, agent_session_id, status, created_at, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 "session-invalid",
                 "task-1",
-                AgentCli::OpenCode.database_value(),
                 "provider-invalid",
                 99,
                 61,

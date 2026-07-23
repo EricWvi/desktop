@@ -90,7 +90,7 @@ export function WorkspaceSidebar({ user, onSignOut }: WorkspaceSidebarProps) {
     const projectTasks = tasks.filter((task) => task.projectId === project.id);
     return project.name.toLowerCase().includes(needle)
       || projectTasks.some((task) => task.title.toLowerCase().includes(needle)
-        || sessions.some((session) => session.taskId === task.id && session.agentCli.toLowerCase().includes(needle)));
+        || sessions.some((session) => session.taskId === task.id && "opencode".includes(needle)));
   }), [needle, projects, sessions, tasks]);
 
   // Expand the initial workspace tree once while preserving later manual collapse choices.
@@ -309,7 +309,7 @@ export function WorkspaceSidebar({ user, onSignOut }: WorkspaceSidebarProps) {
                               active={selection.sessionId === session.id}
                               // The dots mean "the agent is working right now", which is the
                               // live prompt activity in the chat store - not session.status,
-                              // which tracks whether the backing process is alive and so stays
+                              // which tracks whether the logical session is registered and stays
                               // "running" through every idle gap between turns. Once it stops,
                               // the same slot carries an unread mark until the session is opened.
                               icon={conversations[session.id]?.pendingPermissions.length
@@ -319,11 +319,11 @@ export function WorkspaceSidebar({ user, onSignOut }: WorkspaceSidebarProps) {
                                   : unread.has(session.id)
                                     ? <UnreadDot label={t("sidebar.unread")} />
                                     : null}
-                              label={session.agentCli}
+                              label="OpenCode"
                               onClick={() => selectSession(session.id, task.id, project.id)}
                               menu={(
                                 <EntityMenu
-                                  onDelete={() => setDeleteTarget({ kind: "session", id: session.id, name: session.agentCli })}
+                                  onDelete={() => setDeleteTarget({ kind: "session", id: session.id, name: "OpenCode" })}
                                 />
                               )}
                             />

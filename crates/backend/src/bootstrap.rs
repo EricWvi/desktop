@@ -227,7 +227,7 @@ impl Backend {
         self.agent_runtime.respond_to_permission(request).await
     }
 
-    /// Stops a running provider process while retaining its loadable Ora record.
+    /// Unloads one running session while retaining its provider history and Ora record.
     pub async fn stop_session(
         &self,
         request: StopSessionRequest,

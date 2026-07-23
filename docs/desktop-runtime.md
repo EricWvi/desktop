@@ -8,6 +8,8 @@ Desktop constructs one cloneable `ora-backend::Backend`. Unary operations use ty
 
 The frontend injects `createTauriTransport()` into `createContractsClient`. The transport maps contract operation names to Tauri commands and forwards the original request DTO unchanged. Shared backend errors retain the same public code and message as Web errors; Tauri transport errors have no HTTP status.
 
+Backend construction starts one supervised `opencode acp` child in the user's home directory. Every Desktop Session shares that connection while retaining its own ACP session id and Task worktree `cwd`. OpenCode startup failures leave the Desktop shell available; session operations report `agent_runtime_unavailable` until a retry generation completes `initialize`.
+
 The current Desktop slice explicitly returns `unsupported_operation` for:
 
 - opening a project work context;

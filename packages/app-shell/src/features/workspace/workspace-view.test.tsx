@@ -6,9 +6,15 @@ import { TooltipProvider } from "@ora/ui";
 import { PlatformProvider } from "@ora/platform";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../i18n/i18n";
-import { createHookWrapper, createTestQueryClient } from "../../test/hook-harness";
+import {
+  createHookWrapper,
+  createTestQueryClient,
+} from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
-import { createMockClient, createMockClientState } from "../../test/mock-client";
+import {
+  createMockClient,
+  createMockClientState,
+} from "../../test/mock-client";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import { directChatTitle, WorkspaceView } from "./workspace-view";
 
@@ -20,15 +26,27 @@ describe("WorkspaceView", () => {
   it("reloads a selected running session after the in-memory chat store is recreated", async () => {
     const state = createMockClientState();
     state.projects = [{ id: "p1", name: "Ora", rootPath: "/ora" }];
-    state.tasks = [{ id: "t1", projectId: "p1", title: "Refresh history", status: "todo", workspaceMode: "worktree" }];
-    state.sessions = [{ id: "s1", taskId: "t1", agentCli: "open_code", status: "running" }];
+    state.tasks = [
+      {
+        id: "t1",
+        projectId: "p1",
+        title: "Refresh history",
+        status: "todo",
+        workspaceMode: "worktree",
+      },
+    ];
+    state.sessions = [{ id: "s1", taskId: "t1", status: "running" }];
     const client = createMockClient(state);
     const load = vi.fn(async function* () {
       yield { type: "completed" as const };
     });
     client.session.load = load;
     const chatStore = createChatStore(client.session);
-    const Wrapper = createHookWrapper(client, createTestQueryClient(), chatStore);
+    const Wrapper = createHookWrapper(
+      client,
+      createTestQueryClient(),
+      chatStore,
+    );
     useWorkspaceSelectionStore.getState().selectSession("s1", "t1", "p1");
 
     render(
@@ -44,14 +62,26 @@ describe("WorkspaceView", () => {
     );
 
     await waitFor(() => expect(load).toHaveBeenCalledOnce());
-    await waitFor(() => expect(chatStore.getState().conversations.s1?.isLoaded).toBe(true));
+    await waitFor(() =>
+      expect(chatStore.getState().conversations.s1?.isLoaded).toBe(true),
+    );
   });
 
   it("does not load history for a newly initialized session", async () => {
     const state = createMockClientState();
     state.projects = [{ id: "p1", name: "Ora", rootPath: "/ora" }];
-    state.tasks = [{ id: "t1", projectId: "p1", title: "Direct chat", status: "todo", workspaceMode: "project_root" }];
-    state.sessions = [{ id: "s1", taskId: "t1", agentCli: "open_code", status: "running" }];
+    state.tasks = [
+      {
+        id: "t1",
+        projectId: "p1",
+        title: "Direct chat",
+        status: "todo",
+        workspaceMode: "project_root",
+      },
+    ];
+    state.sessions = [
+      { id: "s1", taskId: "t1", agentCli: "open_code", status: "running" },
+    ];
     const client = createMockClient(state);
     const load = vi.fn(async function* () {
       yield { type: "completed" as const };
@@ -59,7 +89,11 @@ describe("WorkspaceView", () => {
     client.session.load = load;
     const chatStore = createChatStore(client.session);
     chatStore.getState().initializeSession("s1");
-    const Wrapper = createHookWrapper(client, createTestQueryClient(), chatStore);
+    const Wrapper = createHookWrapper(
+      client,
+      createTestQueryClient(),
+      chatStore,
+    );
     useWorkspaceSelectionStore.getState().selectSession("s1", "t1", "p1");
 
     render(
@@ -74,7 +108,9 @@ describe("WorkspaceView", () => {
       </Wrapper>,
     );
 
-    await waitFor(() => expect(chatStore.getState().conversations.s1?.isLoaded).toBe(true));
+    await waitFor(() =>
+      expect(chatStore.getState().conversations.s1?.isLoaded).toBe(true),
+    );
     expect(load).not.toHaveBeenCalled();
   });
 
@@ -126,9 +162,15 @@ describe("WorkspaceView", () => {
     );
 
     await waitFor(() => expect(screen.getByRole("textbox")).toBeEnabled());
-    expect(screen.getByRole("button", { name: /选择项目|Select project/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /选择启动模式|Select launch mode/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /选择分支|Select branch/ })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /选择项目|Select project/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /选择启动模式|Select launch mode/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /选择分支|Select branch/ }),
+    ).toBeNull();
     expect(screen.queryByText(/直聊|Direct chat/)).toBeNull();
   });
 
@@ -137,9 +179,27 @@ describe("WorkspaceView", () => {
     const state = createMockClientState();
     state.projects = [{ id: "p1", name: "Ora", rootPath: "/ora" }];
     state.tasks = [
-      { id: "t1", projectId: "p1", title: "Current worktree", status: "todo", workspaceMode: "worktree" },
-      { id: "t2", projectId: "p1", title: "Other worktree", status: "todo", workspaceMode: "worktree" },
-      { id: "t3", projectId: "p1", title: "Hidden direct session", status: "todo", workspaceMode: "project_root" },
+      {
+        id: "t1",
+        projectId: "p1",
+        title: "Current worktree",
+        status: "todo",
+        workspaceMode: "worktree",
+      },
+      {
+        id: "t2",
+        projectId: "p1",
+        title: "Other worktree",
+        status: "todo",
+        workspaceMode: "worktree",
+      },
+      {
+        id: "t3",
+        projectId: "p1",
+        title: "Hidden direct session",
+        status: "todo",
+        workspaceMode: "project_root",
+      },
     ];
     const client = createMockClient(state);
     const Wrapper = createHookWrapper(
@@ -161,12 +221,16 @@ describe("WorkspaceView", () => {
       </Wrapper>,
     );
 
-    await user.click(await screen.findByRole("button", { name: /选择分支|Select branch/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /选择分支|Select branch/ }),
+    );
 
     expect(screen.getByText("Other worktree")).toBeInTheDocument();
     expect(screen.queryByText("Hidden direct session")).toBeNull();
     expect(screen.queryByText(/^直聊$|^Direct chat$/)).toBeNull();
-    expect(screen.getByText(/创建并检出新分支|Create and checkout a new branch/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/创建并检出新分支|Create and checkout a new branch/),
+    ).toBeInTheDocument();
   });
 
   it("creates a project-root task and session behind an optimistic first message", async () => {
@@ -202,7 +266,11 @@ describe("WorkspaceView", () => {
       },
     };
     const chatStore = createChatStore(client.session);
-    const Wrapper = createHookWrapper(client, createTestQueryClient(), chatStore);
+    const Wrapper = createHookWrapper(
+      client,
+      createTestQueryClient(),
+      chatStore,
+    );
     useWorkspaceSelectionStore.getState().selectProject("p1");
 
     render(
@@ -222,12 +290,18 @@ describe("WorkspaceView", () => {
     expect(screen.queryByText(/直聊|Direct chat/)).toBeNull();
     const message = "你好   workspace mode";
     await user.type(composer, message);
-    await user.click(screen.getByRole("button", { name: /发送消息|Send message/ }));
+    await user.click(
+      screen.getByRole("button", { name: /发送消息|Send message/ }),
+    );
 
     await waitFor(() => {
-      expect(useWorkspaceSelectionStore.getState().selection.projectId).toBe("p1");
+      expect(useWorkspaceSelectionStore.getState().selection.projectId).toBe(
+        "p1",
+      );
       expect(useWorkspaceSelectionStore.getState().selection.taskId).toBeNull();
-      expect(useWorkspaceSelectionStore.getState().selection.sessionId).toMatch(/^draft-/);
+      expect(useWorkspaceSelectionStore.getState().selection.sessionId).toMatch(
+        /^draft-/,
+      );
     });
     expect(screen.getByText(/你好\s+workspace mode/)).toBeInTheDocument();
     expect(state.tasks).toEqual([]);
@@ -235,19 +309,23 @@ describe("WorkspaceView", () => {
     finishTaskCreate();
 
     await waitFor(() => {
-      expect(state.tasks).toEqual([{
-        id: "t1",
-        projectId: "p1",
-        title: "你好 workspa",
-        status: "todo",
-        workspaceMode: "project_root",
-      }]);
-      expect(state.sessions).toEqual([{
-        id: "s1",
-        taskId: "t1",
-        agentCli: "open_code",
-        status: "running",
-      }]);
+      expect(state.tasks).toEqual([
+        {
+          id: "t1",
+          projectId: "p1",
+          title: "你好 workspa",
+          status: "todo",
+          workspaceMode: "project_root",
+        },
+      ]);
+      expect(state.sessions).toEqual([
+        {
+          id: "s1",
+          taskId: "t1",
+          agentCli: "open_code",
+          status: "running",
+        },
+      ]);
       expect(calls).toEqual(["task", "session", "prompt"]);
     });
     expect(useWorkspaceSelectionStore.getState().selection).toEqual({
@@ -284,7 +362,11 @@ describe("WorkspaceView", () => {
       },
     };
     const chatStore = createChatStore(client.session);
-    const Wrapper = createHookWrapper(client, createTestQueryClient(), chatStore);
+    const Wrapper = createHookWrapper(
+      client,
+      createTestQueryClient(),
+      chatStore,
+    );
     useWorkspaceSelectionStore.getState().selectProject("p1");
 
     render(
@@ -302,15 +384,21 @@ describe("WorkspaceView", () => {
     const composer = await screen.findByRole("textbox");
     await waitFor(() => expect(composer).toBeEnabled());
     await user.type(composer, "first attempt");
-    await user.click(screen.getByRole("button", { name: /发送消息|Send message/ }));
+    await user.click(
+      screen.getByRole("button", { name: /发送消息|Send message/ }),
+    );
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("session unavailable");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "session unavailable",
+    );
     expect(state.tasks).toHaveLength(1);
     expect(state.sessions).toHaveLength(0);
     expect(useWorkspaceSelectionStore.getState().selection.taskId).toBe("t1");
 
     await user.type(screen.getByRole("textbox"), "retry");
-    await user.click(screen.getByRole("button", { name: /发送消息|Send message/ }));
+    await user.click(
+      screen.getByRole("button", { name: /发送消息|Send message/ }),
+    );
 
     await waitFor(() => expect(state.sessions).toHaveLength(1));
     expect(taskCreateCalls).toBe(1);
@@ -333,7 +421,11 @@ describe("WorkspaceView", () => {
       },
     };
     const chatStore = createChatStore(client.session);
-    const Wrapper = createHookWrapper(client, createTestQueryClient(), chatStore);
+    const Wrapper = createHookWrapper(
+      client,
+      createTestQueryClient(),
+      chatStore,
+    );
     useWorkspaceSelectionStore.getState().selectProject("p1");
 
     render(
@@ -351,14 +443,20 @@ describe("WorkspaceView", () => {
     const composer = await screen.findByRole("textbox");
     await waitFor(() => expect(composer).toBeEnabled());
     await user.type(composer, "cannot start");
-    await user.click(screen.getByRole("button", { name: /发送消息|Send message/ }));
+    await user.click(
+      screen.getByRole("button", { name: /发送消息|Send message/ }),
+    );
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("task unavailable");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "task unavailable",
+    );
     expect(screen.getByText("cannot start")).toBeInTheDocument();
     expect(state.tasks).toEqual([]);
     expect(state.sessions).toEqual([]);
     expect(useWorkspaceSelectionStore.getState().selection.taskId).toBeNull();
-    expect(useWorkspaceSelectionStore.getState().selection.sessionId).toMatch(/^draft-/);
+    expect(useWorkspaceSelectionStore.getState().selection.sessionId).toMatch(
+      /^draft-/,
+    );
   });
 });
 

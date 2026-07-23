@@ -95,7 +95,6 @@ export function createMockClient(state: MockClientState): ContractsClient {
         const session: Session = {
           id: nextId("s", state.sessions.length),
           taskId: req.taskId,
-          agentCli: req.agentCli,
           status: "running",
         };
         state.sessions.push(session);

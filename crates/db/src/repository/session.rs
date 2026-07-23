@@ -1,5 +1,5 @@
 use ora_application::{SessionRepository, SessionRepositoryError};
-use ora_domain::{AgentCli, AuditFields, Session, SessionId, SessionStatus, TaskId};
+use ora_domain::{AuditFields, Session, SessionId, SessionStatus, TaskId};
 use rusqlite::{Row, params};
 
 use crate::repository::{RepositoryPool, connection::bool_to_sqlite};
@@ -23,15 +23,14 @@ impl SessionRepository for SqliteSessionRepository {
         self.pool
             .with_connection(|connection| {
                 let inserted_rows = connection.execute(
-                    "INSERT INTO sessions (id, task_id, agent_cli, agent_session_id, status, created_at, updated_at, is_deleted)
-                     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+                    "INSERT INTO sessions (id, task_id, agent_session_id, status, created_at, updated_at, is_deleted)
+                     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
                      WHERE EXISTS (
                          SELECT 1 FROM tasks WHERE id = ?2 AND is_deleted = 0
                      )",
                     params![
                         session.id.as_ref(),
                         session.task_id.as_ref(),
-                        session.agent_cli.database_value(),
                         session.agent_session_id,
                         session.status.database_value(),
                         session.audit_fields.created_at,
@@ -58,7 +57,7 @@ impl SessionRepository for SqliteSessionRepository {
         self.pool
             .with_connection(|connection| {
                 let mut statement = connection.prepare(
-                    "SELECT id, task_id, agent_cli, agent_session_id, status, created_at, updated_at, is_deleted
+                    "SELECT id, task_id, agent_session_id, status, created_at, updated_at, is_deleted
                      FROM sessions
                      WHERE id = ?1 AND is_deleted = 0",
                 )?;
@@ -77,7 +76,7 @@ impl SessionRepository for SqliteSessionRepository {
         self.pool
             .with_connection(|connection| {
                 let mut statement = connection.prepare(
-                    "SELECT id, task_id, agent_cli, agent_session_id, status, created_at, updated_at, is_deleted
+                    "SELECT id, task_id, agent_session_id, status, created_at, updated_at, is_deleted
                      FROM sessions
                      WHERE is_deleted = 0
                      ORDER BY created_at, id",
@@ -101,15 +100,14 @@ impl SessionRepository for SqliteSessionRepository {
                 let updated_rows = connection.execute(
                     "UPDATE sessions
                      SET status = ?2, updated_at = ?3, is_deleted = ?4
-                     WHERE id = ?1 AND task_id = ?5 AND agent_cli = ?6
-                       AND agent_session_id = ?7 AND is_deleted = 0",
+                     WHERE id = ?1 AND task_id = ?5
+                       AND agent_session_id = ?6 AND is_deleted = 0",
                     params![
                         session.id.as_ref(),
                         session.status.database_value(),
                         session.audit_fields.updated_at,
                         bool_to_sqlite(session.audit_fields.is_deleted),
                         session.task_id.as_ref(),
-                        session.agent_cli.database_value(),
                         session.agent_session_id,
                     ],
                 )?;
@@ -149,13 +147,11 @@ impl SessionRepository for SqliteSessionRepository {
 /// Reconstructs a domain session from the selected session columns.
 fn map_session_row(row: &Row<'_>) -> Result<Session, crate::DatabaseError> {
     let status = SessionStatus::from_database_value(row.get("status")?)?;
-    let agent_cli = AgentCli::from_database_value(row.get("agent_cli")?)?;
     let is_deleted = row.get::<_, i64>("is_deleted")? != 0;
 
     Ok(Session::new(
         SessionId::new(row.get::<_, String>("id")?),
         TaskId::new(row.get::<_, String>("task_id")?),
-        agent_cli,
         row.get::<_, String>("agent_session_id")?,
         status,
         AuditFields::new(row.get("created_at")?, row.get("updated_at")?, is_deleted),

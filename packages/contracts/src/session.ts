@@ -5,14 +5,9 @@ import type { SessionUpdate } from "./acp/session.js";
 import type { ToolCallUpdate } from "./acp/tool_call.js";
 
 /**
- * Identifies the ACP command-line agent selected for an Ora session.
+ * Creates an OpenCode-backed session for one immutable task.
  */
-export type AgentCli = "open_code" | "nga" | "code_agent_cli";
-
-/**
- * Creates a provider-backed session for one immutable task and CLI selection.
- */
-export type CreateSessionRequest = { taskId: string; agentCli: AgentCli };
+export type CreateSessionRequest = { taskId: string };
 
 /**
  * Returns the created session after the ACP `session/new` handshake succeeds.
@@ -92,12 +87,7 @@ export type RespondToPermissionResponse = Record<symbol, never>;
 /**
  * Describes the public session payload without exposing the provider session identifier.
  */
-export type Session = {
-  id: string;
-  taskId: string;
-  agentCli: AgentCli;
-  status: SessionStatus;
-};
+export type Session = { id: string; taskId: string; status: SessionStatus };
 
 /**
  * Exposes an opaque permission request while preserving the agent's typed option payload.
@@ -109,7 +99,7 @@ export type SessionPermissionRequest = {
 };
 
 /**
- * Describes whether the process that owns a persisted session is running.
+ * Describes whether a persisted session is registered on the shared OpenCode connection.
  */
 export type SessionStatus = "running" | "stopped";
 

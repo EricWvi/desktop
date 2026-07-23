@@ -22,7 +22,6 @@ const TASK: Task = { id: "t1", projectId: "p1", title: "Refactor", status: "todo
 const SESSION: Session = {
   id: "s1",
   taskId: "t1",
-  agentCli: "code_agent_cli",
   status: "running",
 };
 
@@ -203,11 +202,11 @@ describe("WorkspaceSidebar", () => {
     const user = userEvent.setup();
     renderSidebar(workspaceWithOneSession());
 
-    await waitFor(() => expect(treeRow(SESSION.agentCli)).not.toBeNull());
+    await waitFor(() => expect(treeRow("OpenCode")).not.toBeNull());
 
     await user.click(screen.getByText(TASK.title));
 
-    expect(treeRow(SESSION.agentCli)).toBeNull();
+    expect(treeRow("OpenCode")).toBeNull();
     expect(useUiStore.getState().expandedTasks.has(TASK.id)).toBe(false);
   });
 
@@ -243,7 +242,7 @@ describe("WorkspaceSidebar", () => {
     // SESSION.status is "running" - the process is up - yet no turn is in flight.
     renderSidebar(workspaceWithOneSession());
 
-    await waitFor(() => expect(treeRow(SESSION.agentCli)).not.toBeNull());
+    await waitFor(() => expect(treeRow("OpenCode")).not.toBeNull());
     expect(workingIndicator()).toBeNull();
   });
 
@@ -264,7 +263,7 @@ describe("WorkspaceSidebar", () => {
   it("shows the working indicator only while the session is responding", async () => {
     const store = createChatStore(createMockClient(createMockClientState()).session);
     const { chatStore } = renderSidebar(workspaceWithOneSession(), store);
-    await waitFor(() => expect(treeRow(SESSION.agentCli)).not.toBeNull());
+    await waitFor(() => expect(treeRow("OpenCode")).not.toBeNull());
 
     act(() => chatStore.setState({
       conversations: { [SESSION.id]: conversation({ isResponding: true }) },
@@ -284,7 +283,7 @@ describe("WorkspaceSidebar", () => {
     useUnreadSessionsStore.setState({ unread: new Set([SESSION.id]) });
     renderSidebar(workspaceWithOneSession());
 
-    await waitFor(() => expect(treeRow(SESSION.agentCli)).not.toBeNull());
+    await waitFor(() => expect(treeRow("OpenCode")).not.toBeNull());
     expect(unreadMark()).not.toBeNull();
     // The working animation is a distinct, higher-priority state.
     expect(workingIndicator()).toBeNull();
@@ -294,7 +293,7 @@ describe("WorkspaceSidebar", () => {
     useUnreadSessionsStore.setState({ unread: new Set([SESSION.id]) });
     const store = createChatStore(createMockClient(createMockClientState()).session);
     const { chatStore } = renderSidebar(workspaceWithOneSession(), store);
-    await waitFor(() => expect(treeRow(SESSION.agentCli)).not.toBeNull());
+    await waitFor(() => expect(treeRow("OpenCode")).not.toBeNull());
 
     act(() => chatStore.setState({
       conversations: { [SESSION.id]: conversation({ isResponding: true }) },

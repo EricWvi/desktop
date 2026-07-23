@@ -1,9 +1,46 @@
+use super::routing::SessionControl;
 use super::*;
+use ora_acp::AcpClient;
+use ora_contracts::SessionPermissionRequest;
+use ora_contracts::acp::common::SessionId as AcpSessionId;
+use ora_contracts::acp::literals::AGENT_METHOD_NAMES;
+use ora_contracts::acp::notification::CancelNotification;
+use ora_contracts::acp::permission::{RequestPermissionOutcome, RequestPermissionResponse};
+use ora_contracts::acp::prompt::{PromptRequest, PromptResponse};
+use ora_contracts::acp::session::{
+    CloseSessionRequest, CloseSessionResponse, LoadSessionRequest as AcpLoadSessionRequest,
+    LoadSessionResponse,
+};
+use tokio::process::ChildStdin;
+use tokio::time::{Instant, timeout};
 
 impl RuntimeActor {
-    /// Serializes lifecycle commands while delegating active operations to state-specific loops.
+    /// Serializes operations for one logical session while the shared connection remains concurrent.
     pub(super) async fn run(mut self) {
-        while let Some(command) = self.commands.recv().await {
+        loop {
+            let command = match self.channel.as_mut() {
+                Some(channel) => {
+                    tokio::select! {
+                        biased;
+                        command = self.commands.recv() => command,
+                        control = channel.controls.recv() => {
+                            self.handle_idle_control(control).await;
+                            continue;
+                        }
+                        update = channel.updates.recv() => {
+                            if update.is_none() {
+                                self.mark_stopped();
+                            }
+                            continue;
+                        }
+                    }
+                }
+                None => self.commands.recv().await,
+            };
+            let Some(command) = command else {
+                self.unload().await;
+                return;
+            };
             match command {
                 RuntimeCommand::Load {
                     operation_id,
@@ -19,95 +56,75 @@ impl RuntimeActor {
                     events,
                     accepted,
                 } => {
-                    if self.process.is_none() {
-                        let _ = accepted.send(Err(BackendError::new(
-                            BackendErrorKind::Conflict,
-                            "session_stopped",
-                            "session must be loaded before prompting",
-                        )));
+                    if self.channel.is_none() {
+                        let _ = accepted.send(Err(session_stopped()));
                     } else {
                         let _ = accepted.send(Ok(()));
                         self.run_prompt(operation_id, text, events).await;
                     }
                 }
                 RuntimeCommand::RespondToPermission { response, .. } => {
-                    let _ = response.send(Err(BackendError::new(
-                        BackendErrorKind::Conflict,
-                        "permission_request_not_pending",
-                        "permission request is not pending",
-                    )));
+                    let _ = response.send(Err(permission_not_pending()));
                 }
                 RuntimeCommand::Stop { response } => {
-                    let result = self.stop_process().await.map(|()| StopSessionResponse {
+                    self.unload().await;
+                    let _ = response.send(Ok(StopSessionResponse {
                         session: contract_session(self.session.clone()),
-                    });
-                    let _ = response.send(result);
+                    }));
                 }
                 RuntimeCommand::Cancel { .. } => {}
             }
         }
-        let _ = self.stop_process().await;
     }
 
-    /// Replaces any idle process and streams ACP load replay before making it the active runtime.
+    /// Re-registers a stopped session and streams provider history without replacing the process.
     async fn run_load(
         &mut self,
         operation_id: u64,
         events: mpsc::Sender<Result<LoadSessionEvent, BackendError>>,
     ) {
-        if self.stop_process().await.is_err() {
-            let _ = events.try_send(Err(runtime_internal(
-                "agent_stop_failed",
-                "failed to replace agent process",
-            )));
-            return;
-        }
-        let running_session = self
+        self.unload().await;
+        let running = self
             .session
             .clone()
             .with_status(SessionStatus::Running, self.clock.now_timestamp_millis());
-        if self
-            .repository
-            .update_session(running_session.clone())
-            .is_err()
-        {
-            let session_id = &self.session.id;
-            let _ = events.try_send(Err(BackendError::new(
-                BackendErrorKind::NotFound,
-                "session_not_found",
-                format!("session not found: {session_id}"),
-            )));
+        if self.repository.update_session(running.clone()).is_err() {
+            let _ = events.try_send(Err(session_not_found(self.session.id.as_ref())));
             return;
         }
-        // Persisting Running before process setup makes aggregate deletion and load mutually
-        // exclusive; if deletion committed first, the guarded repository update fails above.
-        self.session = running_session;
-        let mut process = match spawn_initialized_process(
-            self.session.agent_cli,
-            &self.cwd,
-            &self.home_directory,
-            &self.opencode_path,
-        )
-        .await
+        self.session = running;
+        let channel = match self
+            .connection
+            .open_session_channel(&self.session.agent_session_id)
         {
-            Ok(process) => process,
+            Ok(channel) => channel,
             Err(error) => {
                 let _ = events.try_send(Err(error));
                 self.mark_stopped();
                 return;
             }
         };
-        if !process.load_session_supported {
-            let _ = process.child.kill().await;
+        if !channel.connection.load_session_supported {
             let _ = events.try_send(Err(BackendError::new(
                 BackendErrorKind::Conflict,
                 "session_load_unsupported",
-                "agent does not support session/load",
+                "OpenCode does not support session/load",
             )));
             self.mark_stopped();
             return;
         }
-        let client = process.client.clone();
+        self.run_load_on_channel(operation_id, events, channel)
+            .await;
+    }
+
+    /// Selects over load replay, routed updates, cancellation, and connection failure.
+    async fn run_load_on_channel(
+        &mut self,
+        operation_id: u64,
+        events: mpsc::Sender<Result<LoadSessionEvent, BackendError>>,
+        mut channel: SessionChannel,
+    ) {
+        let client = channel.connection.client.clone();
         let request = AcpLoadSessionRequest::new(
             AcpSessionId::new(self.session.agent_session_id.clone()),
             &self.cwd,
@@ -125,81 +142,112 @@ impl RuntimeActor {
                         Ok(_) => {
                             ora_debug!(session_id = %self.session.id, "session/load completed");
                             if events.try_send(Ok(LoadSessionEvent::Completed)).is_ok() {
-                                self.process = Some(process);
+                                self.channel = Some(channel);
                             } else {
-                                let _ = process.child.kill().await;
-                                self.mark_stopped();
+                                self.isolate_channel(channel).await;
                             }
                         }
                         Err(error) => {
                             ora_debug!(session_id = %self.session.id, error = %error, "session/load failed");
-                            let _ = process.child.kill().await;
                             let _ = events.try_send(Err(map_acp_error(error)));
-                            self.mark_stopped();
+                            self.isolate_channel(channel).await;
                         }
                     }
                     return;
                 }
-                update = process.updates.recv() => {
-                    let Some(update) = update else { continue; };
-                    if update.session_id.0.as_ref() != self.session.agent_session_id {
-                        let _ = process.child.kill().await;
-                        let _ = events.try_send(Err(runtime_internal("agent_protocol_error", "agent emitted an update for another session")));
-                        self.mark_stopped();
+                update = channel.updates.recv() => {
+                    let Some(update) = update else {
+                        self.fail_load(&events, runtime_unavailable());
                         return;
-                    }
+                    };
                     deadline.as_mut().reset(Instant::now() + SESSION_SETUP_TIMEOUT);
                     if events.try_send(Ok(LoadSessionEvent::SessionUpdate { update: update.update })).is_err() {
-                        let _ = client.notify(
-                            AGENT_METHOD_NAMES.session_cancel,
-                            &CancelNotification::new(self.session.agent_session_id.clone()),
-                        ).await;
-                        let _ = process.child.kill().await;
-                        self.mark_stopped();
+                        self.cancel(&client, &HashMap::new()).await;
+                        self.isolate_channel(channel).await;
                         return;
                     }
                 }
-                control = process.control.recv() => {
-                    if let Some(control) = control {
-                        let error = match control {
-                            AcpControl::PermissionRequest(_) => runtime_internal("agent_protocol_error", "permission request during session/load is unsupported"),
-                            AcpControl::Fatal(error) => map_acp_error(error),
-                        };
-                        let _ = process.child.kill().await;
-                        let _ = events.try_send(Err(error));
-                        self.mark_stopped();
-                        return;
+                control = channel.controls.recv() => {
+                    match control {
+                        Some(SessionControl::Permission(permission)) => {
+                            let _ = client.respond(
+                                &permission.request_id,
+                                &RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled),
+                            ).await;
+                            let _ = events.try_send(Err(runtime_internal(
+                                "agent_protocol_error",
+                                "permission request during session/load is unsupported",
+                            )));
+                            self.isolate_channel(channel).await;
+                            return;
+                        }
+                        Some(SessionControl::ConnectionLost(error)) => {
+                            self.fail_load(&events, error);
+                        }
+                        Some(SessionControl::UpdateOverflow) => {
+                            let _ = events.try_send(Err(runtime_internal(
+                                "agent_update_overflow",
+                                "session update queue overflowed",
+                            )));
+                            self.isolate_channel(channel).await;
+                            return;
+                        }
+                        None => self.fail_load(&events, runtime_unavailable()),
                     }
+                    return;
                 }
                 _ = &mut deadline => {
                     ora_debug!(session_id = %self.session.id, "session/load timed out");
-                    let _ = process.child.kill().await;
-                    let _ = events.try_send(Err(runtime_internal("agent_load_timeout", "agent session load timed out")));
-                    self.mark_stopped();
+                    self.cancel(&client, &HashMap::new()).await;
+                    let _ = events.try_send(Err(runtime_internal(
+                        "agent_load_timeout",
+                        "OpenCode session load timed out",
+                    )));
+                    self.isolate_channel(channel).await;
                     return;
                 }
                 command = self.commands.recv() => {
-                    if self.handle_busy_command(command, operation_id, &client).await {
-                        let _ = process.child.kill().await;
-                        self.mark_stopped();
-                        return;
+                    match command {
+                        Some(RuntimeCommand::Cancel { operation_id: cancelled })
+                            if cancelled == operation_id =>
+                        {
+                            self.cancel(&client, &HashMap::new()).await;
+                            self.isolate_channel(channel).await;
+                            return;
+                        }
+                        Some(RuntimeCommand::Stop { response }) => {
+                            self.cancel(&client, &HashMap::new()).await;
+                            self.isolate_channel(channel).await;
+                            let _ = response.send(Ok(StopSessionResponse {
+                                session: contract_session(self.session.clone()),
+                            }));
+                            return;
+                        }
+                        Some(RuntimeCommand::Prompt { accepted, .. })
+                        | Some(RuntimeCommand::Load { accepted, .. }) => {
+                            let _ = accepted.send(Err(session_busy()));
+                        }
+                        Some(RuntimeCommand::RespondToPermission { response, .. }) => {
+                            let _ = response.send(Err(permission_not_pending()));
+                        }
+                        Some(RuntimeCommand::Cancel { .. }) | None => {}
                     }
                 }
             }
         }
     }
 
-    /// Streams one prompt while continuing to service permission, cancel, and stop control commands.
+    /// Streams one prompt while routing only events that belong to this provider session.
     async fn run_prompt(
         &mut self,
         operation_id: u64,
         text: String,
         events: mpsc::Sender<Result<PromptSessionEvent, BackendError>>,
     ) {
-        let Some(mut process) = self.process.take() else {
+        let Some(mut channel) = self.channel.take() else {
             return;
         };
-        let client = process.client.clone();
+        let client = channel.connection.client.clone();
         let text_len = text.len();
         let request = PromptRequest::new(self.session.agent_session_id.clone(), vec![text.into()]);
         ora_debug!(session_id = %self.session.id, text_len = text_len, "session/prompt sent");
@@ -213,52 +261,45 @@ impl RuntimeActor {
                     match response {
                         Ok(response) => {
                             ora_debug!(session_id = %self.session.id, stop_reason = ?response.stop_reason, "prompt completed");
-                            if events.try_send(Ok(PromptSessionEvent::Completed { stop_reason: response.stop_reason })).is_ok() {
-                                self.process = Some(process);
+                            if events.try_send(Ok(PromptSessionEvent::Completed {
+                                stop_reason: response.stop_reason,
+                            })).is_ok() {
+                                self.channel = Some(channel);
                             } else {
-                                let _ = process.child.kill().await;
-                                self.mark_stopped();
+                                self.isolate_channel(channel).await;
                             }
                         }
                         Err(error) => {
-                            let process_is_reusable = matches!(&error, ora_acp::AcpError::RequestFailed(_));
-                            ora_debug!(session_id = %self.session.id, error = %error, reusable = process_is_reusable, "prompt failed");
-                            let event_sent = events.try_send(Err(map_acp_error(error))).is_ok();
-                            if process_is_reusable && event_sent {
-                                self.process = Some(process);
+                            let reusable = matches!(&error, ora_acp::AcpError::RequestFailed(_));
+                            ora_debug!(session_id = %self.session.id, error = %error, reusable = reusable, "prompt failed");
+                            let delivered = events.try_send(Err(map_acp_error(error))).is_ok();
+                            if reusable && delivered {
+                                self.channel = Some(channel);
                             } else {
-                                let _ = process.child.kill().await;
-                                self.mark_stopped();
+                                self.isolate_channel(channel).await;
                             }
                         }
                     }
                     return;
                 }
-                update = process.updates.recv() => {
-                    let Some(update) = update else { continue; };
-                    if update.session_id.0.as_ref() != self.session.agent_session_id {
-                        let _ = process.child.kill().await;
-                        let _ = events.try_send(Err(runtime_internal("agent_protocol_error", "agent emitted an update for another session")));
-                        self.mark_stopped();
+                update = channel.updates.recv() => {
+                    let Some(update) = update else {
+                        self.fail_prompt(&events, runtime_unavailable());
                         return;
-                    }
+                    };
                     if events.try_send(Ok(PromptSessionEvent::SessionUpdate { update: update.update })).is_err() {
-                        self.request_prompt_cancellation(&client, &permissions).await;
-                        let _ = process.child.kill().await;
-                        self.mark_stopped();
+                        self.cancel(&client, &permissions).await;
+                        self.isolate_channel(channel).await;
                         return;
                     }
                 }
-                control = process.control.recv() => {
+                control = channel.controls.recv() => {
                     match control {
-                        Some(AcpControl::PermissionRequest(permission)) => {
-                            if permission.request.session_id.0.as_ref() != self.session.agent_session_id {
-                                let _ = process.child.kill().await;
-                                self.mark_stopped();
-                                return;
-                            }
+                        Some(SessionControl::Permission(permission)) => {
                             let public_id = permission.request_id.to_string();
-                            let option_ids = permission.request.options.iter().map(|option| option.option_id.0.to_string()).collect::<Vec<_>>();
+                            let option_ids = permission.request.options.iter()
+                                .map(|option| option.option_id.to_string())
+                                .collect::<Vec<_>>();
                             ora_debug!(session_id = %self.session.id, tool_call = ?permission.request.tool_call, option_count = option_ids.len(), request_id = %public_id, "permission requested");
                             permissions.insert(public_id.clone(), (permission.request_id, option_ids));
                             let event = PromptSessionEvent::PermissionRequest(SessionPermissionRequest {
@@ -267,20 +308,28 @@ impl RuntimeActor {
                                 options: permission.request.options,
                             });
                             if events.try_send(Ok(event)).is_err() {
-                                self.request_prompt_cancellation(&client, &permissions).await;
-                                let _ = process.child.kill().await;
-                                self.mark_stopped();
+                                self.cancel(&client, &permissions).await;
+                                self.isolate_channel(channel).await;
                                 return;
                             }
                         }
-                        Some(AcpControl::Fatal(error)) => {
-                            ora_debug!(session_id = %self.session.id, error = %error, "protocol fatal error");
-                            let _ = process.child.kill().await;
-                            let _ = events.try_send(Err(map_acp_error(error)));
-                            self.mark_stopped();
+                        Some(SessionControl::ConnectionLost(error)) => {
+                            self.fail_prompt(&events, error);
                             return;
                         }
-                        None => {}
+                        Some(SessionControl::UpdateOverflow) => {
+                            self.cancel(&client, &permissions).await;
+                            let _ = events.try_send(Err(runtime_internal(
+                                "agent_update_overflow",
+                                "session update queue overflowed",
+                            )));
+                            self.isolate_channel(channel).await;
+                            return;
+                        }
+                        None => {
+                            self.fail_prompt(&events, runtime_unavailable());
+                            return;
+                        }
                     }
                 }
                 command = self.commands.recv() => {
@@ -290,29 +339,26 @@ impl RuntimeActor {
                             let _ = response.send(result);
                         }
                         Some(RuntimeCommand::Cancel { operation_id: cancelled }) if cancelled == operation_id => {
-                            ora_debug!(session_id = %self.session.id, "prompt cancelled");
-                            self.request_prompt_cancellation(&client, &permissions).await;
+                            self.cancel(&client, &permissions).await;
                             match timeout(CANCELLATION_GRACE, &mut future).await {
                                 Ok(Ok(_)) | Ok(Err(ora_acp::AcpError::RequestFailed(_))) => {
-                                    self.process = Some(process);
+                                    self.channel = Some(channel);
                                 }
-                                Ok(Err(_)) | Err(_) => {
-                                    let _ = process.child.kill().await;
-                                    self.mark_stopped();
-                                }
+                                Ok(Err(_)) | Err(_) => self.isolate_channel(channel).await,
                             }
                             return;
                         }
                         Some(RuntimeCommand::Stop { response }) => {
-                            ora_debug!(session_id = %self.session.id, "prompt stopped by stop command");
-                            self.request_prompt_cancellation(&client, &permissions).await;
-                            let _ = process.child.kill().await;
-                            self.mark_stopped();
-                            let _ = response.send(Ok(StopSessionResponse { session: contract_session(self.session.clone()) }));
+                            self.cancel(&client, &permissions).await;
+                            self.isolate_channel(channel).await;
+                            let _ = response.send(Ok(StopSessionResponse {
+                                session: contract_session(self.session.clone()),
+                            }));
                             return;
                         }
-                        Some(RuntimeCommand::Prompt { accepted, .. }) | Some(RuntimeCommand::Load { accepted, .. }) => {
-                            let _ = accepted.send(Err(BackendError::new(BackendErrorKind::Conflict, "session_busy", "session already has an active operation")));
+                        Some(RuntimeCommand::Prompt { accepted, .. })
+                        | Some(RuntimeCommand::Load { accepted, .. }) => {
+                            let _ = accepted.send(Err(session_busy()));
                         }
                         Some(RuntimeCommand::Cancel { .. }) | None => {}
                     }
@@ -321,60 +367,28 @@ impl RuntimeActor {
         }
     }
 
-    /// Handles lifecycle commands accepted while a session/load request is active.
-    async fn handle_busy_command(
-        &mut self,
-        command: Option<RuntimeCommand>,
-        operation_id: u64,
-        client: &AcpClient<ChildStdin>,
-    ) -> bool {
-        match command {
-            Some(RuntimeCommand::Cancel {
-                operation_id: cancelled,
-            }) if cancelled == operation_id => {
-                let _ = client
-                    .notify(
-                        AGENT_METHOD_NAMES.session_cancel,
-                        &CancelNotification::new(self.session.agent_session_id.clone()),
-                    )
-                    .await;
-                true
+    /// Handles controls arriving while a registered session has no active operation.
+    async fn handle_idle_control(&mut self, control: Option<SessionControl>) {
+        match control {
+            Some(SessionControl::Permission(permission)) => {
+                if let Some(channel) = &self.channel {
+                    let _ = channel
+                        .connection
+                        .client
+                        .respond(
+                            &permission.request_id,
+                            &RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled),
+                        )
+                        .await;
+                }
             }
-            Some(RuntimeCommand::Stop { response }) => {
-                let _ = client
-                    .notify(
-                        AGENT_METHOD_NAMES.session_cancel,
-                        &CancelNotification::new(self.session.agent_session_id.clone()),
-                    )
-                    .await;
-                let _ = response.send(Ok(StopSessionResponse {
-                    session: contract_session(self.session.clone()),
-                }));
-                true
-            }
-            Some(RuntimeCommand::Prompt { accepted, .. })
-            | Some(RuntimeCommand::Load { accepted, .. }) => {
-                let _ = accepted.send(Err(BackendError::new(
-                    BackendErrorKind::Conflict,
-                    "session_busy",
-                    "session already has an active operation",
-                )));
-                false
-            }
-            Some(RuntimeCommand::RespondToPermission { response, .. }) => {
-                let _ = response.send(Err(BackendError::new(
-                    BackendErrorKind::Conflict,
-                    "permission_request_not_pending",
-                    "permission request is not pending",
-                )));
-                false
-            }
-            Some(RuntimeCommand::Cancel { .. }) | None => false,
+            Some(SessionControl::UpdateOverflow) => self.unload().await,
+            Some(SessionControl::ConnectionLost(_)) | None => self.mark_stopped(),
         }
     }
 
-    /// Settles pending permissions and asks the provider to cancel the active prompt.
-    async fn request_prompt_cancellation(
+    /// Cancels the provider turn and settles every outstanding permission request.
+    async fn cancel(
         &self,
         client: &AcpClient<ChildStdin>,
         permissions: &HashMap<String, (ora_contracts::acp::rpc::RequestId, Vec<String>)>,
@@ -396,21 +410,56 @@ impl RuntimeActor {
             .await;
     }
 
-    /// Terminates and reaps the child tree before persisting Stopped.
-    async fn stop_process(&mut self) -> Result<(), BackendError> {
-        if let Some(process) = self.process.take() {
-            process.child.kill().await.map_err(|_| {
-                runtime_internal("agent_stop_failed", "failed to stop agent process")
-            })?;
-            let _ = timeout(CANCELLATION_GRACE, process.child.wait()).await;
-            ora_debug!(session_id = %self.session.id, "process stopped");
+    /// Closes only this live ACP registration and preserves provider-owned history.
+    async fn unload(&mut self) {
+        if let Some(channel) = self.channel.take() {
+            self.isolate_channel(channel).await;
+        } else {
+            self.mark_stopped();
         }
-        self.mark_stopped();
-        Ok(())
     }
 
-    /// Persists the stopped lifecycle state without changing immutable routing fields.
+    /// Detaches one routed session while leaving the shared OpenCode process available.
+    async fn isolate_channel(&mut self, channel: SessionChannel) {
+        if channel.connection.close_session_supported {
+            let _ = timeout(
+                CANCELLATION_GRACE,
+                channel
+                    .connection
+                    .client
+                    .request::<_, CloseSessionResponse>(
+                        AGENT_METHOD_NAMES.session_close,
+                        &CloseSessionRequest::new(self.session.agent_session_id.clone()),
+                    ),
+            )
+            .await;
+        }
+        self.mark_stopped();
+    }
+
+    /// Completes an interrupted load request with the connection-level failure.
+    fn fail_load(
+        &mut self,
+        events: &mpsc::Sender<Result<LoadSessionEvent, BackendError>>,
+        error: BackendError,
+    ) {
+        let _ = events.try_send(Err(error));
+        self.mark_stopped();
+    }
+
+    /// Completes an interrupted prompt request with the connection-level failure.
+    fn fail_prompt(
+        &mut self,
+        events: &mpsc::Sender<Result<PromptSessionEvent, BackendError>>,
+        error: BackendError,
+    ) {
+        let _ = events.try_send(Err(error));
+        self.mark_stopped();
+    }
+
+    /// Persists a stopped state after the provider session is detached or becomes unusable.
     fn mark_stopped(&mut self) {
+        self.channel = None;
         self.session = self
             .session
             .clone()
@@ -418,4 +467,22 @@ impl RuntimeActor {
         let _ = self.repository.update_session(self.session.clone());
         ora_debug!(session_id = %self.session.id, "session marked stopped");
     }
+}
+
+/// Reports that the actor cannot accept a second operation while one is in flight.
+fn session_busy() -> BackendError {
+    BackendError::new(
+        BackendErrorKind::Conflict,
+        "session_busy",
+        "session already has an active operation",
+    )
+}
+
+/// Reports that the requested permission no longer belongs to an active prompt.
+fn permission_not_pending() -> BackendError {
+    BackendError::new(
+        BackendErrorKind::Conflict,
+        "permission_request_not_pending",
+        "permission request is not pending",
+    )
 }
