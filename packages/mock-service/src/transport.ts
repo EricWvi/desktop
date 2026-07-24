@@ -1,4 +1,4 @@
-import type { ContractTransport, ContractTransportRequest } from "@ora/contracts";
+import { ContractTransportError, type ContractCallOptions, type ContractTransport, type ContractTransportRequest } from "@ora/contracts";
 import { createFetchTransport } from "@ora/contracts/fetch";
 
 let workerStartPromise: Promise<void> | undefined;
@@ -32,6 +32,17 @@ export function createMockTransport(): ContractTransport {
     async send<TResponse>(request: ContractTransportRequest): Promise<TResponse> {
       await ensureWorkerStarted();
       return fetchTransport.send<TResponse>(request);
+    },
+    stream<TEvent>(
+      _request: ContractTransportRequest,
+      _options?: ContractCallOptions,
+    ): AsyncIterable<TEvent> {
+      throw new ContractTransportError({
+        code: "unsupported_operation",
+        message: "mock transport does not implement contract streams",
+        status: null,
+        responseBody: null,
+      });
     },
   };
 }

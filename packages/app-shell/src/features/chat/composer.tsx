@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { IconArrowUp, IconCheck, IconChevronDown, IconPaperclip, IconSparkles, IconX } from "@tabler/icons-react";
+import { IconArrowUp, IconCheck, IconChevronDown, IconPaperclip, IconPlayerStop, IconSparkles, IconX } from "@tabler/icons-react";
 import {
   Button,
   DropdownMenu,
@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 
 interface ComposerProps {
   onSend: (text: string) => void;
+  onStop?: () => void;
   isResponding: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -26,6 +27,7 @@ interface ComposerProps {
  */
 export function Composer({
   onSend,
+  onStop,
   isResponding,
   disabled = false,
   placeholder,
@@ -134,12 +136,12 @@ export function Composer({
           <p className="hidden text-[11px] text-muted-foreground lg:block">{t("chat.sendHint")}</p>
           <Button
             size="icon"
-            aria-label={t("chat.send")}
-            disabled={!canSend}
-            onClick={submit}
+            aria-label={isResponding ? t("common.stop") : t("chat.send")}
+            disabled={isResponding ? onStop === undefined : !canSend}
+            onClick={isResponding ? onStop : submit}
             className="size-8 rounded-full disabled:bg-muted disabled:text-muted-foreground"
           >
-            <IconArrowUp className="size-[18px]" />
+            {isResponding ? <IconPlayerStop className="size-[18px]" /> : <IconArrowUp className="size-[18px]" />}
           </Button>
         </div>
       </div>

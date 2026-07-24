@@ -1,177 +1,330 @@
-import type { acp } from "@ora/contracts";
+import type {
+  ContractsClient,
+  LoadSessionEvent,
+  PromptSessionEvent,
+  SessionPermissionRequest,
+} from "@ora/contracts";
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { AcpClient } from "./client.js";
 
-/** Identifies who produced a rendered chat message. */
 export type ChatMessageRole = "user" | "assistant";
 
-/** Represents one fully assembled message in an Ora session conversation. */
 export interface ChatMessage {
   id: string;
   role: ChatMessageRole;
   content: string;
   createdAt: number;
+  stopped?: boolean;
 }
 
-/** Holds the in-memory chat state isolated to one stable Ora session identifier. */
 export interface SessionConversation {
   messages: ChatMessage[];
+  isLoaded: boolean;
+  isLoading: boolean;
   isResponding: boolean;
+  pendingPermissions: SessionPermissionRequest[];
   error: string | null;
 }
 
-/** Supplies the identities needed to route one user prompt and its streamed reply. */
 export interface SendMessageRequest {
   oraSessionId: string;
-  agentSessionId: string;
   text: string;
 }
 
-/** Exposes chat state and protocol-backed actions from one isolated store instance. */
 export interface ChatState {
   conversations: Record<string, SessionConversation>;
-  newSession(request: acp.NewSessionRequest): Promise<acp.NewSessionResponse>;
+  loadSession(oraSessionId: string): Promise<void>;
   sendMessage(request: SendMessageRequest): Promise<void>;
+  stopGeneration(oraSessionId: string): void;
+  respondToPermission(oraSessionId: string, permissionRequestId: string, optionId: string): Promise<void>;
   clearAll(): void;
   dispose(): void;
 }
 
-/** Dependencies that make message identity and timestamps deterministic in tests. */
 export interface ChatStoreOptions {
   createId?: () => string;
   now?: () => number;
 }
 
 export type ChatStore = StoreApi<ChatState>;
+export type ChatSessionClient = Pick<
+  ContractsClient["session"],
+  "load" | "prompt" | "respondToPermission"
+>;
 
 const EMPTY_CONVERSATION: SessionConversation = {
   messages: [],
+  isLoaded: false,
+  isLoading: false,
   isResponding: false,
+  pendingPermissions: [],
   error: null,
 };
 
-/** Creates one in-memory chat store and binds it to the supplied ACP client. */
+/** Creates a per-session chat state owner backed directly by generated Ora contracts. */
 export function createChatStore(
-  client: AcpClient,
+  client: ChatSessionClient,
   options: ChatStoreOptions = {},
 ): ChatStore {
   const createId = options.createId ?? (() => crypto.randomUUID());
   const now = options.now ?? Date.now;
-  const oraSessionByAgentSession = new Map<string, string>();
-  let unsubscribe = (): void => undefined;
+  const operations = new Map<string, AbortController>();
+  const boundaries = new Set<string>();
 
   const store = createStore<ChatState>((set, get) => ({
     conversations: {},
 
-    newSession: (request) => client.newSession(request),
+    loadSession: async (oraSessionId) => {
+      if (operations.has(oraSessionId)) return;
+      const previous = get().conversations[oraSessionId] ?? EMPTY_CONVERSATION;
+      const controller = new AbortController();
+      let staged: SessionConversation = {
+        ...EMPTY_CONVERSATION,
+        messages: [],
+        isLoading: true,
+      };
+      let stagedBoundary = true;
+      let completed = false;
+      operations.set(oraSessionId, controller);
+      updateConversation(set, oraSessionId, () => ({
+        ...previous,
+        isLoading: true,
+        error: null,
+      }));
+      try {
+        for await (const event of client.load(
+          { sessionId: oraSessionId },
+          { signal: controller.signal },
+        )) {
+          if (event.type === "session_update") {
+            const result = reduceSessionUpdate(staged, event.update, createId, now, stagedBoundary);
+            staged = result.conversation;
+            stagedBoundary = result.boundary;
+          } else if (event.type === "permission_request") {
+            staged = {
+              ...staged,
+              pendingPermissions: [...staged.pendingPermissions, event],
+            };
+            stagedBoundary = true;
+          } else {
+            completed = true;
+            stagedBoundary = true;
+          }
+        }
+        if (!completed) {
+          throw new Error("agent session load ended before completion");
+        }
+        boundaries.add(oraSessionId);
+        updateConversation(set, oraSessionId, () => ({
+          ...staged,
+          isLoaded: true,
+          isLoading: false,
+        }));
+      } catch (error) {
+        updateConversation(set, oraSessionId, () => ({
+          ...previous,
+          error: isAbortError(error) ? previous.error : errorMessage(error),
+        }));
+        if (!isAbortError(error)) throw error;
+      } finally {
+        operations.delete(oraSessionId);
+        updateConversation(set, oraSessionId, (conversation) => ({
+          ...conversation,
+          isLoading: false,
+        }));
+      }
+    },
 
-    sendMessage: async ({ oraSessionId, agentSessionId, text }) => {
+    sendMessage: async ({ oraSessionId, text }) => {
       const content = text.trim();
       if (content === "") return;
-
-      const conversation = get().conversations[oraSessionId] ?? EMPTY_CONVERSATION;
-      if (conversation.isResponding) {
-        throw new Error("this Ora session is already processing a prompt");
+      if (operations.has(oraSessionId)) {
+        throw new Error("this Ora session is already processing an operation");
       }
-
-      oraSessionByAgentSession.set(agentSessionId, oraSessionId);
-      const userMessage: ChatMessage = {
-        id: createId(),
-        role: "user",
-        content,
-        createdAt: now(),
-      };
-      updateConversation(set, oraSessionId, (current) => ({
-        ...current,
-        messages: [...current.messages, userMessage],
+      const controller = new AbortController();
+      operations.set(oraSessionId, controller);
+      boundaries.add(oraSessionId);
+      updateConversation(set, oraSessionId, (conversation) => ({
+        ...conversation,
+        messages: [...conversation.messages, {
+          id: createId(),
+          role: "user",
+          content,
+          createdAt: now(),
+        }],
         isResponding: true,
         error: null,
       }));
-
       try {
-        await client.prompt({
-          sessionId: agentSessionId,
-          prompt: [{ type: "text", text: content }],
-        });
+        for await (const event of client.prompt(
+          { sessionId: oraSessionId, text: content },
+          { signal: controller.signal },
+        )) {
+          applyPromptEvent(store, oraSessionId, event, createId, now, boundaries);
+        }
       } catch (error) {
-        updateConversation(set, oraSessionId, (current) => ({
-          ...current,
-          error: errorMessage(error),
-        }));
-        throw error;
+        if (isAbortError(error)) {
+          markLastAssistantStopped(set, oraSessionId);
+          clearPendingPermissions(set, oraSessionId);
+        } else {
+          updateConversation(set, oraSessionId, (conversation) => ({
+            ...conversation,
+            error: errorMessage(error),
+          }));
+          throw error;
+        }
       } finally {
-        updateConversation(set, oraSessionId, (current) => ({
-          ...current,
+        operations.delete(oraSessionId);
+        boundaries.add(oraSessionId);
+        updateConversation(set, oraSessionId, (conversation) => ({
+          ...conversation,
           isResponding: false,
         }));
       }
     },
 
-    clearAll: () => set({ conversations: {} }),
+    stopGeneration: (oraSessionId) => operations.get(oraSessionId)?.abort(),
 
+    respondToPermission: async (oraSessionId, permissionRequestId, optionId) => {
+      try {
+        await client.respondToPermission({
+          sessionId: oraSessionId,
+          permissionRequestId,
+          optionId,
+        });
+        updateConversation(set, oraSessionId, (conversation) => ({
+          ...conversation,
+          pendingPermissions: conversation.pendingPermissions.filter(
+            (request) => request.permissionRequestId !== permissionRequestId,
+          ),
+          error: null,
+        }));
+      } catch (error) {
+        updateConversation(set, oraSessionId, (conversation) => ({
+          ...conversation,
+          error: errorMessage(error),
+        }));
+        throw error;
+      }
+    },
+
+    clearAll: () => set({ conversations: {} }),
     dispose: () => {
-      unsubscribe();
-      oraSessionByAgentSession.clear();
+      operations.forEach((controller) => controller.abort());
+      operations.clear();
+      boundaries.clear();
     },
   }));
-
-  unsubscribe = client.subscribe((notification) => {
-    const oraSessionId = oraSessionByAgentSession.get(notification.sessionId);
-    if (oraSessionId === undefined) return;
-
-    const update = notification.update;
-    if (update.sessionUpdate !== "agent_message_chunk") return;
-    if (update.messageId === undefined || update.messageId === null) {
-      updateConversation(store.setState, oraSessionId, (current) => ({
-        ...current,
-        error: "ACP agent message chunk is missing messageId",
-      }));
-      return;
-    }
-    if (update.content.type !== "text") return;
-
-    appendAgentChunk(
-      store.setState,
-      oraSessionId,
-      update.messageId,
-      update.content.text,
-      now(),
-    );
-  });
 
   return store;
 }
 
-/** Appends a text chunk to its ACP message, creating the message on the first chunk. */
-function appendAgentChunk(
+/** Applies one prompt event and preserves the provider stop reason as a message boundary. */
+function applyPromptEvent(
+  store: ChatStore,
+  oraSessionId: string,
+  event: PromptSessionEvent,
+  createId: () => string,
+  now: () => number,
+  boundaries: Set<string>,
+): void {
+  if (event.type === "session_update") {
+    applySessionUpdate(store, oraSessionId, event.update, createId, now, boundaries);
+  } else if (event.type === "permission_request") {
+    boundaries.add(oraSessionId);
+    appendPermission(store.setState, oraSessionId, event);
+  } else {
+    boundaries.add(oraSessionId);
+  }
+}
+
+/** Converts only user-visible text chunks into local messages while retaining all other boundaries. */
+function applySessionUpdate(
+  store: ChatStore,
+  oraSessionId: string,
+  update: Extract<LoadSessionEvent, { type: "session_update" }>["update"],
+  createId: () => string,
+  now: () => number,
+  boundaries: Set<string>,
+): void {
+  updateConversation(store.setState, oraSessionId, (conversation) => {
+    const result = reduceSessionUpdate(
+      conversation,
+      update,
+      createId,
+      now,
+      boundaries.has(oraSessionId),
+    );
+    if (result.boundary) boundaries.add(oraSessionId);
+    else boundaries.delete(oraSessionId);
+    return result.conversation;
+  });
+}
+
+/** Reduces one provider update without exposing staged history through the live store. */
+function reduceSessionUpdate(
+  conversation: SessionConversation,
+  update: Extract<LoadSessionEvent, { type: "session_update" }>["update"],
+  createId: () => string,
+  now: () => number,
+  boundary: boolean,
+): { conversation: SessionConversation; boundary: boolean } {
+  if (
+    update.sessionUpdate !== "user_message_chunk" &&
+    update.sessionUpdate !== "agent_message_chunk"
+  ) {
+    return { conversation, boundary: true };
+  }
+  if (update.content.type !== "text") {
+    return { conversation, boundary: true };
+  }
+  const role: ChatMessageRole = update.sessionUpdate === "user_message_chunk"
+    ? "user"
+    : "assistant";
+  const messages = [...conversation.messages];
+  const last = messages.at(-1);
+  const continuesSameMessage = update.messageId == null || last?.id === update.messageId;
+  if (!boundary && last?.role === role && continuesSameMessage) {
+    messages[messages.length - 1] = { ...last, content: last.content + update.content.text };
+  } else {
+    messages.push({
+      id: update.messageId ?? createId(),
+      role,
+      content: update.content.text,
+      createdAt: now(),
+    });
+  }
+  return { conversation: { ...conversation, messages }, boundary: false };
+}
+
+function appendPermission(
   set: ChatStore["setState"],
   oraSessionId: string,
-  messageId: string,
-  text: string,
-  createdAt: number,
+  request: SessionPermissionRequest,
 ): void {
-  updateConversation(set, oraSessionId, (conversation) => {
-    const messageIndex = conversation.messages.findIndex(
-      (message) => message.id === messageId,
-    );
-    if (messageIndex === -1) {
-      return {
-        ...conversation,
-        messages: [
-          ...conversation.messages,
-          { id: messageId, role: "assistant", content: text, createdAt },
-        ],
-      };
-    }
+  updateConversation(set, oraSessionId, (conversation) => ({
+    ...conversation,
+    pendingPermissions: [...conversation.pendingPermissions, request],
+  }));
+}
 
+function markLastAssistantStopped(set: ChatStore["setState"], oraSessionId: string): void {
+  updateConversation(set, oraSessionId, (conversation) => {
     const messages = [...conversation.messages];
-    const message = messages[messageIndex]!;
-    messages[messageIndex] = { ...message, content: message.content + text };
+    let index = messages.length - 1;
+    while (index >= 0 && messages[index]?.role !== "assistant") index -= 1;
+    if (index >= 0) messages[index] = { ...messages[index]!, stopped: true };
     return { ...conversation, messages };
   });
 }
 
-/** Applies an immutable update to one Ora session without affecting concurrent sessions. */
+/** Clears requests that the backend settles as cancelled with the aborted prompt. */
+function clearPendingPermissions(set: ChatStore["setState"], oraSessionId: string): void {
+  updateConversation(set, oraSessionId, (conversation) => ({
+    ...conversation,
+    pendingPermissions: [],
+  }));
+}
+
 function updateConversation(
   set: ChatStore["setState"],
   oraSessionId: string,
@@ -180,14 +333,15 @@ function updateConversation(
   set((state) => ({
     conversations: {
       ...state.conversations,
-      [oraSessionId]: update(
-        state.conversations[oraSessionId] ?? EMPTY_CONVERSATION,
-      ),
+      [oraSessionId]: update(state.conversations[oraSessionId] ?? EMPTY_CONVERSATION),
     },
   }));
 }
 
-/** Produces a stable user-facing message for unknown promise rejection values. */
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "ACP request failed";
+  return error instanceof Error ? error.message : "Agent request failed";
 }

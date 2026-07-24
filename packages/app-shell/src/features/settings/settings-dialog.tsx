@@ -22,6 +22,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectValue,
   Switch,
   cn,
 } from "@ora/ui";
@@ -50,6 +51,7 @@ import { useStore } from "zustand";
 import type {
   ApprovalPolicy,
   InterfaceDensity,
+  HistoryRetention,
   ModelProvider,
   ThemeMode,
 } from "../../state/stores/settings-store";

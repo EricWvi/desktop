@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Project, Session, SessionStatus, Task, TaskStatus } from "@ora/contracts";
+import type { Project, Task, TaskStatus } from "@ora/contracts";
 import { useContractsClient } from "../../contracts-client-context";
-import { useChatStore } from "../../chat-store-context";
 import { queryKeys } from "./query-keys";
 import { useWorkspaceSelectionStore } from "../stores/workspace-selection-store";
 
@@ -13,7 +12,7 @@ type QueryClient = ReturnType<typeof useQueryClient>;
  * Shared by the session dialog and by the composer's implicit "first message
  * starts a session" path so the two cannot drift onto different agents.
  */
-export const DEFAULT_AGENT_ID = "codex";
+export const DEFAULT_AGENT_CLI = "open_code" as const;
 
 /** Reads the cached projects, tasks, or sessions, returning [] while data is absent. */
 function readCache<T>(queryClient: QueryClient, key: readonly string[]): T[] {
@@ -34,14 +33,14 @@ export function useCreateProject() {
   });
 }
 
-/** Replaces a project's fields and refreshes the project list. */
+/** Renames a project and refreshes the project list. */
 export function useUpdateProject() {
   const client = useContractsClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ project, name, rootPath }: { project: Project; name: string; rootPath: string }) =>
+    mutationFn: ({ project, name }: { project: Project; name: string }) =>
       client.project
-        .update({ projectId: project.id, name, rootPath })
+        .update({ projectId: project.id, name })
         .then((response) => response.project),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects });
@@ -54,16 +53,7 @@ export function useDeleteProject() {
   const client = useContractsClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ projectId }: { projectId: string }) => {
-      const tasks = readCache<Task>(queryClient, queryKeys.tasks);
-      const sessions = readCache<Session>(queryClient, queryKeys.sessions);
-      const childTasks = tasks.filter((task) => task.projectId === projectId);
-      const childTaskIds = new Set(childTasks.map((task) => task.id));
-      const childSessions = sessions.filter((session) => childTaskIds.has(session.taskId));
-      await Promise.all(childSessions.map((session) => client.session.delete({ sessionId: session.id })));
-      await Promise.all(childTasks.map((task) => client.task.delete({ taskId: task.id })));
-      await client.project.delete({ projectId });
-    },
+    mutationFn: ({ projectId }: { projectId: string }) => client.project.delete({ projectId }),
     onSuccess: (_void, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects });
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks });
@@ -113,12 +103,7 @@ export function useDeleteTask() {
   const client = useContractsClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ taskId }: { taskId: string }) => {
-      const sessions = readCache<Session>(queryClient, queryKeys.sessions);
-      const childSessions = sessions.filter((session) => session.taskId === taskId);
-      await Promise.all(childSessions.map((session) => client.session.delete({ sessionId: session.id })));
-      await client.task.delete({ taskId });
-    },
+    mutationFn: ({ taskId }: { taskId: string }) => client.task.delete({ taskId }),
     onSuccess: (_void, { taskId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks });
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
@@ -133,27 +118,11 @@ export function useDeleteTask() {
 /** Creates a session under a task and selects it once the server confirms the id. */
 export function useCreateSession() {
   const client = useContractsClient();
-  const chatStore = useChatStore();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ taskId, agentId, status }: { taskId: string; agentId: string; status: SessionStatus }) => {
-      const task = readCache<Task>(queryClient, queryKeys.tasks).find(
-        (candidate) => candidate.id === taskId,
-      );
-      if (task === undefined) throw new Error(`task ${taskId} not found in workspace cache`);
-      const project = readCache<Project>(queryClient, queryKeys.projects).find(
-        (candidate) => candidate.id === task.projectId,
-      );
-      if (project === undefined) {
-        throw new Error(`project ${task.projectId} not found in workspace cache`);
-      }
-
-      const agentSession = await chatStore.getState().newSession({
-        cwd: project.rootPath,
-        mcpServers: [],
-      });
+    mutationFn: async ({ taskId }: { taskId: string }) => {
       return client.session
-        .create({ taskId, agentId, agentSessionId: agentSession.sessionId, status })
+        .create({ taskId, agentCli: DEFAULT_AGENT_CLI })
         .then((response) => response.session);
     },
     onSuccess: (session) => {
@@ -164,27 +133,6 @@ export function useCreateSession() {
       if (task) {
         useWorkspaceSelectionStore.getState().selectSession(session.id, task.id, task.projectId);
       }
-    },
-  });
-}
-
-/** Replaces a session's fields and refreshes the session list. */
-export function useUpdateSession() {
-  const client = useContractsClient();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ session, agentId, status }: { session: Session; agentId: string; status: SessionStatus }) =>
-      client.session
-        .update({
-          sessionId: session.id,
-          taskId: session.taskId,
-          agentId,
-          agentSessionId: session.agentSessionId,
-          status,
-        })
-        .then((response) => response.session),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
     },
   });
 }

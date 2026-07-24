@@ -58,15 +58,13 @@ export function createInitialMockState(now = Date.now()): MockState {
       {
         id: "session-agent-runtime",
         taskId: "task-agent-runtime",
-        agentId: "codex",
-        agentSessionId: "agent-session-runtime",
+        agentCli: "open_code",
         status: "running",
       },
       {
         id: "session-component-audit",
         taskId: "task-component-audit",
-        agentId: "codex",
-        agentSessionId: null,
+        agentCli: "open_code",
         status: "stopped",
       },
     ],

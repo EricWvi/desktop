@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { SessionStatus, TaskStatus } from "@ora/contracts";
+import type { TaskStatus } from "@ora/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,9 +21,7 @@ import {
   useUpdateTask,
   useDeleteTask,
   useCreateSession,
-  useUpdateSession,
   useDeleteSession,
-  DEFAULT_AGENT_ID,
 } from "../../state/hooks/use-workspace-mutations";
 import { useUiStore, type DialogState, type DeleteTarget } from "../../state/stores/ui-store";
 
@@ -45,7 +43,7 @@ export function WorkspaceDialogs() {
   return (
     <>
       {dialog && <WorkspaceEntityDialog dialog={dialog} onOpenChange={(open) => !open && setDialog(null)} />}
-      <DeleteEntityDialog target={deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)} />
+      <DeleteEntityDialog key={deleteTarget?.id ?? "none"} target={deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)} />
     </>
   );
 }
@@ -54,6 +52,7 @@ export function WorkspaceDialogs() {
 function DeleteEntityDialog({ target, onOpenChange }: { target: DeleteTarget | null; onOpenChange: (open: boolean) => void }) {
   const { t } = useTranslation();
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteProject = useDeleteProject();
   const deleteTask = useDeleteTask();
   const deleteSession = useDeleteSession();
@@ -61,13 +60,14 @@ function DeleteEntityDialog({ target, onOpenChange }: { target: DeleteTarget | n
   const confirmDelete = async () => {
     if (!target || deleting) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       if (target.kind === "project") await deleteProject.mutateAsync({ projectId: target.id });
       if (target.kind === "task") await deleteTask.mutateAsync({ taskId: target.id });
       if (target.kind === "session") await deleteSession.mutateAsync({ sessionId: target.id });
       onOpenChange(false);
-    } catch {
-      // The sidebar error banner surfaces transport errors; the dialog stays open for retry.
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : t("delete.failed"));
     } finally {
       setDeleting(false);
     }
@@ -79,6 +79,7 @@ function DeleteEntityDialog({ target, onOpenChange }: { target: DeleteTarget | n
         <AlertDialogHeader>
           <AlertDialogTitle>{t("delete.title", { name: target?.name ?? "" })}</AlertDialogTitle>
           <AlertDialogDescription>{target ? t(`delete.${target.kind}Description`) : ""}</AlertDialogDescription>
+          {deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={deleting}>{t("common.cancel")}</AlertDialogCancel>
@@ -99,7 +100,6 @@ function WorkspaceEntityDialog({ dialog, onOpenChange }: { dialog: DialogState; 
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
   const createSession = useCreateSession();
-  const updateSession = useUpdateSession();
   let title: string;
   let description: string;
   let fields: EntityField[];
@@ -112,11 +112,11 @@ function WorkspaceEntityDialog({ dialog, onOpenChange }: { dialog: DialogState; 
     submitLabel = dialog.entity ? t("dialog.saveProject") : t("dialog.addProject");
     fields = [
       { kind: "text", name: "name", label: t("dialog.projectName"), value: dialog.entity?.name ?? "", placeholder: t("dialog.projectNamePlaceholder") },
-      { kind: "path", name: "rootPath", label: t("dialog.repositoryPath"), value: dialog.entity?.rootPath ?? "", selectionKind: "directory", placeholder: "C:\\workspace\\project" },
+      ...(dialog.entity ? [] : [{ kind: "path" as const, name: "rootPath", label: t("dialog.repositoryPath"), value: "", selectionKind: "directory" as const, placeholder: "C:\\workspace\\project" }]),
     ];
     submit = async (values) => {
       if (dialog.entity) {
-        await updateProject.mutateAsync({ project: dialog.entity, name: values.name!, rootPath: values.rootPath! });
+        await updateProject.mutateAsync({ project: dialog.entity, name: values.name! });
       } else {
         await createProject.mutateAsync({ name: values.name!, rootPath: values.rootPath! });
       }
@@ -142,17 +142,10 @@ function WorkspaceEntityDialog({ dialog, onOpenChange }: { dialog: DialogState; 
     title = dialog.entity ? t("dialog.editSession") : t("dialog.startSession");
     description = t("dialog.sessionDescription");
     submitLabel = dialog.entity ? t("dialog.saveSession") : t("dialog.startSession");
-    fields = [
-      { kind: "text", name: "agentId", label: t("dialog.agent"), value: dialog.entity?.agentId ?? DEFAULT_AGENT_ID, placeholder: DEFAULT_AGENT_ID },
-      { kind: "select", name: "status", label: t("dialog.status"), value: dialog.entity?.status ?? "running", options: [
-        { label: t("common.running"), value: "running" }, { label: t("common.stopped"), value: "stopped" },
-      ] },
-    ];
-    submit = async (values) => {
-      if (dialog.entity) {
-        await updateSession.mutateAsync({ session: dialog.entity, agentId: values.agentId!, status: values.status as SessionStatus });
-      } else {
-        await createSession.mutateAsync({ taskId: dialog.taskId, agentId: values.agentId!, status: values.status as SessionStatus });
+    fields = [];
+    submit = async () => {
+      if (!dialog.entity) {
+        await createSession.mutateAsync({ taskId: dialog.taskId });
       }
     };
   }

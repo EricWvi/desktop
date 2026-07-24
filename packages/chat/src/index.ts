@@ -1,12 +1,8 @@
 export {
-  createUnavailableAcpClient,
-  type AcpClient,
-  type AcpSessionNotificationListener,
-} from "./client.js";
-export {
   createChatStore,
   type ChatMessage,
   type ChatMessageRole,
+  type ChatSessionClient,
   type ChatState,
   type ChatStore,
   type ChatStoreOptions,

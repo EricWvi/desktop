@@ -2,16 +2,21 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Composer } from "./composer";
 import { LandingHeading, LandingSuggestions } from "./empty-state";
 import { MessageList } from "./message-list";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@ora/ui";
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@ora/ui";
 import type { ChatMessage } from "@ora/chat";
+import type { SessionPermissionRequest } from "@ora/contracts";
+import { useTranslation } from "react-i18next";
 
 interface ChatViewProps {
   messages: ChatMessage[];
   userName: string;
   isResponding: boolean;
   error: string | null;
+  pendingPermissions?: SessionPermissionRequest[];
   disabled?: boolean;
   onSend: (text: string) => void;
+  onStop?: () => void;
+  onRespondToPermission?: (permissionRequestId: string, optionId: string) => void;
   /**
    * Optional strip rendered directly above the composer. Passed in rather than
    * built here so the chat pane stays unaware of workspace entities.
@@ -34,7 +39,8 @@ const SLIDE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
  * thread layouts so sending the first message slides it down to the bottom
  * instead of tearing it down and rebuilding it in the new position.
  */
-export function ChatView({ messages, userName, isResponding, error, disabled = false, onSend, contextBar, disabledHint }: ChatViewProps) {
+export function ChatView({ messages, userName, isResponding, error, pendingPermissions = [], disabled = false, onSend, onStop, onRespondToPermission, contextBar, disabledHint }: ChatViewProps) {
+  const { t } = useTranslation();
   const isEmpty = messages.length === 0;
   const composerSlotRef = useRef<HTMLDivElement>(null);
   // Where the composer sat at the last commit, used as the FLIP origin. Only the
@@ -99,6 +105,27 @@ export function ChatView({ messages, userName, isResponding, error, disabled = f
       >
         <div className="mx-auto w-full max-w-[760px]">
           {error && <p role="alert" className="mb-2 px-1 text-xs text-destructive">{error}</p>}
+          {pendingPermissions.map((request) => (
+            <section key={request.permissionRequestId} className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+              <p className="text-xs font-medium">{t("chat.permissionRequired")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {request.toolCall.title ?? request.toolCall.kind ?? t("chat.permissionFallback")}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {request.options.map((option) => (
+                  <Button
+                    key={option.optionId}
+                    type="button"
+                    size="sm"
+                    variant={option.kind.startsWith("reject") ? "outline" : "default"}
+                    onClick={() => onRespondToPermission?.(request.permissionRequestId, option.optionId)}
+                  >
+                    {option.name}
+                  </Button>
+                ))}
+              </div>
+            </section>
+          ))}
           {/* Inset just past the composer's 16px corner radius, so the strip's edge
               clears the curve instead of sitting on it, and pulled down so the
               composer card overlaps the strip's lower padding. */}
@@ -115,7 +142,7 @@ export function ChatView({ messages, userName, isResponding, error, disabled = f
               open the moment a hint reappears. */}
           <Tooltip trackCursorAxis="both" disabled={disabledHint === undefined}>
             <TooltipTrigger render={<div />}>
-              <Composer autoFocus onSend={onSend} isResponding={isResponding} disabled={disabled} />
+              <Composer autoFocus onSend={onSend} onStop={onStop} isResponding={isResponding} disabled={disabled} />
             </TooltipTrigger>
             <TooltipContent sideOffset={12}>{disabledHint}</TooltipContent>
           </Tooltip>

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button, Badge } from "@ora/ui";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -12,7 +13,7 @@ import {
 import { useProjects } from "../../state/hooks/use-projects";
 import { useTasks } from "../../state/hooks/use-tasks";
 import { useSessions } from "../../state/hooks/use-sessions";
-import { useCreateSession, DEFAULT_AGENT_ID } from "../../state/hooks/use-workspace-mutations";
+import { useCreateSession } from "../../state/hooks/use-workspace-mutations";
 import { useUiStore } from "../../state/stores/ui-store";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import { useChatStore } from "../../chat-store-context";
@@ -29,7 +30,8 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
 
   const { data: projects = [] } = useProjects();
   const { data: tasks = [] } = useTasks();
-  const { data: sessions = [] } = useSessions();
+  const sessionsQuery = useSessions();
+  const sessions = sessionsQuery.data ?? [];
   const selection = useWorkspaceSelectionStore((s) => s.selection);
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
@@ -39,7 +41,6 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
   const project = projects.find((item) => item.id === selection.projectId);
   const task = tasks.find((item) => item.id === selection.taskId);
   const session = sessions.find((item) => item.id === selection.sessionId);
-  const agentSessionUnavailable = session?.agentSessionId === null;
   const conversation = useStore(
     chatStore,
     (state) =>
@@ -51,6 +52,19 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
   const clearSelection = useWorkspaceSelectionStore((s) => s.clearSelection);
   const createSession = useCreateSession();
 
+  useEffect(() => {
+    if (
+      session?.status === "stopped" &&
+      conversation?.isLoading !== true &&
+      conversation?.isLoaded !== true &&
+      conversation?.error == null
+    ) {
+      void chatStore.getState().loadSession(session.id)
+        .then(() => sessionsQuery.refetch())
+        .catch(() => undefined);
+    }
+  }, [chatStore, conversation?.error, conversation?.isLoaded, conversation?.isLoading, session?.id, session?.status, sessionsQuery]);
+
   /**
    * Sends into the selected session, or starts one for the selected worktree
    * first. useCreateSession already opens the agent session against the
@@ -59,14 +73,19 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
    */
   const sendOrStartSession = async (text: string) => {
     const target = session ?? (task
-      ? await createSession.mutateAsync({ taskId: task.id, agentId: DEFAULT_AGENT_ID, status: "running" })
+      ? await createSession.mutateAsync({ taskId: task.id })
       : undefined);
-    if (target?.agentSessionId == null) return;
-    await chatStore.getState().sendMessage({
-      oraSessionId: target.id,
-      agentSessionId: target.agentSessionId,
-      text,
-    });
+    if (target === undefined) return;
+    try {
+      await chatStore.getState().sendMessage({
+        oraSessionId: target.id,
+        text,
+      });
+    } finally {
+      // Connection failures can stop the provider process, so refresh the persisted lifecycle
+      // snapshot after every finite prompt without polling all idle sessions.
+      await sessionsQuery.refetch();
+    }
   };
 
   // Anything short of a selected session is the new-task landing. The composer's
@@ -79,9 +98,10 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
     const title = task?.title ?? t("chat.newThread");
     // With a session selected the agent session decides; without one, a project and
     // worktree are enough, because the first message creates the session itself.
-    const canChat = session ? session.agentSessionId !== null : task !== undefined && project !== undefined;
+    const canChat = session
+      ? session.status === "running" || conversation?.isLoaded === true
+      : task !== undefined && project !== undefined;
     const chatError = conversation?.error
-      ?? (agentSessionUnavailable ? t("chat.agentSessionUnavailable") : null)
       ?? createSession.error?.message
       ?? null;
     return (
@@ -91,7 +111,7 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
           <div className="min-w-0">
             <p className="truncate text-[13px] font-medium tracking-[-0.01em]">{title}</p>
             {project && session && (
-              <p className="truncate text-[10px] text-muted-foreground">{project.name} / {session.agentId}</p>
+              <p className="truncate text-[10px] text-muted-foreground">{project.name} / {session.agentCli}</p>
             )}
           </div>
           <div className="flex-1" />
@@ -104,6 +124,7 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
             userName={userName}
             isResponding={conversation?.isResponding ?? false}
             error={chatError}
+            pendingPermissions={conversation?.pendingPermissions ?? []}
             disabled={!canChat}
             disabledHint={canChat ? undefined : t("chat.pickProjectAndBranch")}
             // A live session already fixes its project and branch, so the pickers
@@ -111,6 +132,14 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
             contextBar={session ? undefined : <ComposerContextBar />}
             // Failures land in chatError; the rejection itself is expected.
             onSend={(text) => void sendOrStartSession(text).catch(() => undefined)}
+            onStop={() => chatStore.getState().stopGeneration(session?.id ?? "")}
+            onRespondToPermission={(permissionRequestId, optionId) => {
+              if (session) {
+                void chatStore.getState()
+                  .respondToPermission(session.id, permissionRequestId, optionId)
+                  .catch(() => undefined);
+              }
+            }}
           />
         </div>
       </main>

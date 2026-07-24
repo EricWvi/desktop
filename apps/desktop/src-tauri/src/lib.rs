@@ -11,7 +11,9 @@ use ora_logging::{
     FileLoggingConfig, LogLevel, LogOutput, LoggingConfig, RotationPolicy, init_logging,
     register_gitlancer_logger,
 };
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
 /// Starts the Tauri application with the persisted shared Backend and command adapters.
@@ -39,8 +41,11 @@ pub fn run() {
             commands::create_session,
             commands::get_session,
             commands::list_sessions,
-            commands::update_session,
+            commands::respond_to_session_permission,
+            commands::stop_session,
             commands::delete_session,
+            commands::stream_contract,
+            commands::cancel_contract_stream,
             commands::create_skill,
             commands::get_skill,
             commands::list_skills,
@@ -73,10 +78,18 @@ fn bootstrap_desktop(
     let backend = Backend::open(BackendPaths {
         database_path: app_data_directory.join("ora.sqlite3"),
         worktree_root: config_snapshot.worktree_root().to_path_buf(),
+        home_directory: app
+            .path()
+            .home_dir()
+            .map_err(DesktopBootstrapError::AppDataDirectory)?,
     })?;
 
     Ok((
-        DesktopState { backend, config },
+        DesktopState {
+            backend,
+            config,
+            stream_cancellations: Arc::new(Mutex::new(HashMap::new())),
+        },
         DesktopRuntimeGuard { _logging: logging },
     ))
 }

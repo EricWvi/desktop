@@ -10,7 +10,6 @@ import type {
   RenewProjectWorkContextRequest,
   UpdateAgentRequest,
   UpdateProjectRequest,
-  UpdateSessionRequest,
   UpdateSkillRequest,
   UpdateTaskRequest,
 } from "@ora/contracts";
@@ -66,7 +65,7 @@ export function createMockHandlers(state: MockState = mockState): HttpHandler[] 
       }
 
       const body = (await request.json()) as Omit<UpdateProjectRequest, "projectId">;
-      const project = { id: projectId, name: body.name, rootPath: body.rootPath };
+      const project = { ...state.projects[projectIndex]!, name: body.name };
       state.projects[projectIndex] = project;
 
       return HttpResponse.json({ project });
@@ -79,7 +78,25 @@ export function createMockHandlers(state: MockState = mockState): HttpHandler[] 
         return errorResponse("project_not_found", `project not found: ${projectId}`, 404);
       }
 
+      const taskIds = new Set(
+        state.tasks
+          .filter((task) => task.projectId === projectId)
+          .map((task) => task.id),
+      );
+      if (state.sessions.some((session) => taskIds.has(session.taskId) && session.status === "running")) {
+        return errorResponse(
+          "resource_in_use",
+          "project has a running session and cannot be deleted",
+          409,
+        );
+      }
+
       state.projects.splice(projectIndex, 1);
+      state.tasks = state.tasks.filter((task) => !taskIds.has(task.id));
+      state.sessions = state.sessions.filter((session) => !taskIds.has(session.taskId));
+      state.projectWorkContexts = state.projectWorkContexts.filter(
+        (context) => context.projectId !== projectId,
+      );
 
       return HttpResponse.json({ projectId });
     }),
@@ -207,7 +224,16 @@ export function createMockHandlers(state: MockState = mockState): HttpHandler[] 
         return errorResponse("task_not_found", `task not found: ${taskId}`, 404);
       }
 
+      if (state.sessions.some((session) => session.taskId === taskId && session.status === "running")) {
+        return errorResponse(
+          "resource_in_use",
+          "task has a running session and cannot be deleted",
+          409,
+        );
+      }
+
       state.tasks.splice(taskIndex, 1);
+      state.sessions = state.sessions.filter((session) => session.taskId !== taskId);
 
       return HttpResponse.json({ taskId });
     }),
@@ -217,9 +243,8 @@ export function createMockHandlers(state: MockState = mockState): HttpHandler[] 
       const session = {
         id: createId("session"),
         taskId: body.taskId,
-        agentId: body.agentId,
-        agentSessionId: body.agentSessionId,
-        status: body.status,
+        agentCli: body.agentCli,
+        status: "running" as const,
       };
       state.sessions.push(session);
 
@@ -240,23 +265,26 @@ export function createMockHandlers(state: MockState = mockState): HttpHandler[] 
       return HttpResponse.json({ sessions: state.sessions });
     }),
 
-    updateSession: http.put("*/api/sessions/:sessionId", async ({ params, request }) => {
+    loadSession: http.post("*/api/sessions/:sessionId/load", () => {
+      return errorResponse("unsupported_operation", "mock transport does not implement session streams", 501);
+    }),
+
+    promptSession: http.post("*/api/sessions/:sessionId/prompt", () => {
+      return errorResponse("unsupported_operation", "mock transport does not implement session streams", 501);
+    }),
+
+    respondToSessionPermission: http.post("*/api/sessions/:sessionId/permissions/respond", () => {
+      return errorResponse("permission_request_not_pending", "permission request is not pending", 409);
+    }),
+
+    stopSession: http.post("*/api/sessions/:sessionId/stop", ({ params }) => {
       const sessionId = String(params.sessionId);
       const sessionIndex = state.sessions.findIndex((candidate) => candidate.id === sessionId);
       if (sessionIndex === -1) {
         return errorResponse("session_not_found", `session not found: ${sessionId}`, 404);
       }
-
-      const body = (await request.json()) as Omit<UpdateSessionRequest, "sessionId">;
-      const session = {
-        id: sessionId,
-        taskId: body.taskId,
-        agentId: body.agentId,
-        agentSessionId: body.agentSessionId,
-        status: body.status,
-      };
+      const session = { ...state.sessions[sessionIndex]!, status: "stopped" as const };
       state.sessions[sessionIndex] = session;
-
       return HttpResponse.json({ session });
     }),
 

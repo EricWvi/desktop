@@ -3,7 +3,7 @@ import type { CreateAgentRequest, CreateAgentResponse, DeleteAgentRequest, Delet
 import type { ListDirectoryRequest, ListDirectoryResponse } from "./file-system.js";
 import type { CreateProjectRequest, CreateProjectResponse, DeleteProjectRequest, DeleteProjectResponse, GetProjectRequest, GetProjectResponse, ListProjectsRequest, ListProjectsResponse, UpdateProjectRequest, UpdateProjectResponse } from "./project.js";
 import type { OpenProjectWorkContextRequest, OpenProjectWorkContextResponse, RenewProjectWorkContextRequest, RenewProjectWorkContextResponse } from "./project-work-context.js";
-import type { CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest, DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ListSessionsRequest, ListSessionsResponse, UpdateSessionRequest, UpdateSessionResponse } from "./session.js";
+import type { CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest, DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionEvent, LoadSessionRequest, PromptSessionEvent, PromptSessionRequest, RespondToPermissionRequest, RespondToPermissionResponse, StopSessionRequest, StopSessionResponse } from "./session.js";
 import type { CreateSkillRequest, CreateSkillResponse, DeleteSkillRequest, DeleteSkillResponse, GetSkillRequest, GetSkillResponse, ListSkillsRequest, ListSkillsResponse, UpdateSkillRequest, UpdateSkillResponse } from "./skill.js";
 import type { CreateTaskRequest, CreateTaskResponse, DeleteTaskRequest, DeleteTaskResponse, GetTaskRequest, GetTaskResponse, ListTasksRequest, ListTasksResponse, UpdateTaskRequest, UpdateTaskResponse } from "./task.js";
 import type { HttpMethod } from "./transport.js";
@@ -26,6 +26,7 @@ export type FrontendEndpointDefinition = {
   pathTemplate: string;
   requestType: string;
   responseType: string;
+  responseMode: "unary" | "stream";
   pathParams: readonly EndpointPathParam[];
   queryParams: readonly EndpointQueryParam[];
   hasJsonBody: boolean;
@@ -47,7 +48,10 @@ export type RequestByOperation = {
   createSession: CreateSessionRequest;
   getSession: GetSessionRequest;
   listSessions: ListSessionsRequest;
-  updateSession: UpdateSessionRequest;
+  loadSession: LoadSessionRequest;
+  promptSession: PromptSessionRequest;
+  respondToSessionPermission: RespondToPermissionRequest;
+  stopSession: StopSessionRequest;
   deleteSession: DeleteSessionRequest;
   createSkill: CreateSkillRequest;
   getSkill: GetSkillRequest;
@@ -78,7 +82,10 @@ export type ResponseByOperation = {
   createSession: CreateSessionResponse;
   getSession: GetSessionResponse;
   listSessions: ListSessionsResponse;
-  updateSession: UpdateSessionResponse;
+  loadSession: LoadSessionEvent;
+  promptSession: PromptSessionEvent;
+  respondToSessionPermission: RespondToPermissionResponse;
+  stopSession: StopSessionResponse;
   deleteSession: DeleteSessionResponse;
   createSkill: CreateSkillResponse;
   getSkill: GetSkillResponse;
@@ -104,6 +111,7 @@ export const endpoints = {
     pathTemplate: "/api/projects",
     requestType: "CreateProjectRequest",
     responseType: "CreateProjectResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: true,
@@ -116,6 +124,7 @@ export const endpoints = {
     pathTemplate: "/api/projects/{projectId}",
     requestType: "GetProjectRequest",
     responseType: "GetProjectResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "project_id", wireName: "projectId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -128,6 +137,7 @@ export const endpoints = {
     pathTemplate: "/api/projects",
     requestType: "ListProjectsRequest",
     responseType: "ListProjectsResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: false,
@@ -140,6 +150,7 @@ export const endpoints = {
     pathTemplate: "/api/projects/{projectId}",
     requestType: "UpdateProjectRequest",
     responseType: "UpdateProjectResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "project_id", wireName: "projectId" }],
     queryParams: [],
     hasJsonBody: true,
@@ -152,6 +163,7 @@ export const endpoints = {
     pathTemplate: "/api/projects/{projectId}",
     requestType: "DeleteProjectRequest",
     responseType: "DeleteProjectResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "project_id", wireName: "projectId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -164,6 +176,7 @@ export const endpoints = {
     pathTemplate: "/api/project-work-contexts/open",
     requestType: "OpenProjectWorkContextRequest",
     responseType: "OpenProjectWorkContextResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: true,
@@ -176,6 +189,7 @@ export const endpoints = {
     pathTemplate: "/api/project-work-contexts/renew",
     requestType: "RenewProjectWorkContextRequest",
     responseType: "RenewProjectWorkContextResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: true,
@@ -188,6 +202,7 @@ export const endpoints = {
     pathTemplate: "/api/tasks",
     requestType: "CreateTaskRequest",
     responseType: "CreateTaskResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: true,
@@ -200,6 +215,7 @@ export const endpoints = {
     pathTemplate: "/api/tasks/{taskId}",
     requestType: "GetTaskRequest",
     responseType: "GetTaskResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "task_id", wireName: "taskId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -212,6 +228,7 @@ export const endpoints = {
     pathTemplate: "/api/tasks",
     requestType: "ListTasksRequest",
     responseType: "ListTasksResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: false,
@@ -224,6 +241,7 @@ export const endpoints = {
     pathTemplate: "/api/tasks/{taskId}",
     requestType: "UpdateTaskRequest",
     responseType: "UpdateTaskResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "task_id", wireName: "taskId" }],
     queryParams: [],
     hasJsonBody: true,
@@ -236,6 +254,7 @@ export const endpoints = {
     pathTemplate: "/api/tasks/{taskId}",
     requestType: "DeleteTaskRequest",
     responseType: "DeleteTaskResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "task_id", wireName: "taskId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -248,6 +267,7 @@ export const endpoints = {
     pathTemplate: "/api/sessions",
     requestType: "CreateSessionRequest",
     responseType: "CreateSessionResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: true,
@@ -260,6 +280,7 @@ export const endpoints = {
     pathTemplate: "/api/sessions/{sessionId}",
     requestType: "GetSessionRequest",
     responseType: "GetSessionResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "session_id", wireName: "sessionId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -272,21 +293,62 @@ export const endpoints = {
     pathTemplate: "/api/sessions",
     requestType: "ListSessionsRequest",
     responseType: "ListSessionsResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: false,
   },
-  updateSession: {
-    operationName: "updateSession",
+  loadSession: {
+    operationName: "loadSession",
     namespace: "session",
-    memberName: "update",
-    method: "PUT",
-    pathTemplate: "/api/sessions/{sessionId}",
-    requestType: "UpdateSessionRequest",
-    responseType: "UpdateSessionResponse",
+    memberName: "load",
+    method: "POST",
+    pathTemplate: "/api/sessions/{sessionId}/load",
+    requestType: "LoadSessionRequest",
+    responseType: "LoadSessionEvent",
+    responseMode: "stream",
+    pathParams: [{ rustFieldName: "session_id", wireName: "sessionId" }],
+    queryParams: [],
+    hasJsonBody: false,
+  },
+  promptSession: {
+    operationName: "promptSession",
+    namespace: "session",
+    memberName: "prompt",
+    method: "POST",
+    pathTemplate: "/api/sessions/{sessionId}/prompt",
+    requestType: "PromptSessionRequest",
+    responseType: "PromptSessionEvent",
+    responseMode: "stream",
     pathParams: [{ rustFieldName: "session_id", wireName: "sessionId" }],
     queryParams: [],
     hasJsonBody: true,
+  },
+  respondToSessionPermission: {
+    operationName: "respondToSessionPermission",
+    namespace: "session",
+    memberName: "respondToPermission",
+    method: "POST",
+    pathTemplate: "/api/sessions/{sessionId}/permissions/respond",
+    requestType: "RespondToPermissionRequest",
+    responseType: "RespondToPermissionResponse",
+    responseMode: "unary",
+    pathParams: [{ rustFieldName: "session_id", wireName: "sessionId" }],
+    queryParams: [],
+    hasJsonBody: true,
+  },
+  stopSession: {
+    operationName: "stopSession",
+    namespace: "session",
+    memberName: "stop",
+    method: "POST",
+    pathTemplate: "/api/sessions/{sessionId}/stop",
+    requestType: "StopSessionRequest",
+    responseType: "StopSessionResponse",
+    responseMode: "unary",
+    pathParams: [{ rustFieldName: "session_id", wireName: "sessionId" }],
+    queryParams: [],
+    hasJsonBody: false,
   },
   deleteSession: {
     operationName: "deleteSession",
@@ -296,6 +358,7 @@ export const endpoints = {
     pathTemplate: "/api/sessions/{sessionId}",
     requestType: "DeleteSessionRequest",
     responseType: "DeleteSessionResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "session_id", wireName: "sessionId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -308,6 +371,7 @@ export const endpoints = {
     pathTemplate: "/api/skills",
     requestType: "CreateSkillRequest",
     responseType: "CreateSkillResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: true,
@@ -320,6 +384,7 @@ export const endpoints = {
     pathTemplate: "/api/skills/{skillId}",
     requestType: "GetSkillRequest",
     responseType: "GetSkillResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "skill_id", wireName: "skillId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -332,6 +397,7 @@ export const endpoints = {
     pathTemplate: "/api/skills",
     requestType: "ListSkillsRequest",
     responseType: "ListSkillsResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: false,
@@ -344,6 +410,7 @@ export const endpoints = {
     pathTemplate: "/api/skills/{skillId}",
     requestType: "UpdateSkillRequest",
     responseType: "UpdateSkillResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "skill_id", wireName: "skillId" }],
     queryParams: [],
     hasJsonBody: true,
@@ -356,6 +423,7 @@ export const endpoints = {
     pathTemplate: "/api/skills/{skillId}",
     requestType: "DeleteSkillRequest",
     responseType: "DeleteSkillResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "skill_id", wireName: "skillId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -368,6 +436,7 @@ export const endpoints = {
     pathTemplate: "/api/agents",
     requestType: "CreateAgentRequest",
     responseType: "CreateAgentResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: true,
@@ -380,6 +449,7 @@ export const endpoints = {
     pathTemplate: "/api/agents/{agentId}",
     requestType: "GetAgentRequest",
     responseType: "GetAgentResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "agent_id", wireName: "agentId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -392,6 +462,7 @@ export const endpoints = {
     pathTemplate: "/api/agents",
     requestType: "ListAgentsRequest",
     responseType: "ListAgentsResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [],
     hasJsonBody: false,
@@ -404,6 +475,7 @@ export const endpoints = {
     pathTemplate: "/api/agents/{agentId}",
     requestType: "UpdateAgentRequest",
     responseType: "UpdateAgentResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "agent_id", wireName: "agentId" }],
     queryParams: [],
     hasJsonBody: true,
@@ -416,6 +488,7 @@ export const endpoints = {
     pathTemplate: "/api/agents/{agentId}",
     requestType: "DeleteAgentRequest",
     responseType: "DeleteAgentResponse",
+    responseMode: "unary",
     pathParams: [{ rustFieldName: "agent_id", wireName: "agentId" }],
     queryParams: [],
     hasJsonBody: false,
@@ -428,6 +501,7 @@ export const endpoints = {
     pathTemplate: "/api/file-system/directory",
     requestType: "ListDirectoryRequest",
     responseType: "ListDirectoryResponse",
+    responseMode: "unary",
     pathParams: [],
     queryParams: [{ rustFieldName: "path", wireName: "path" }],
     hasJsonBody: false,

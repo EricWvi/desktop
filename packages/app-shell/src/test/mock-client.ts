@@ -3,7 +3,6 @@ import type {
   ContractsClient,
   Project,
   Session,
-  SessionStatus,
   Skill,
   Task,
   TaskStatus,
@@ -95,26 +94,19 @@ export function createMockClient(state: MockClientState): ContractsClient {
         const session: Session = {
           id: nextId("s", state.sessions.length),
           taskId: req.taskId,
-          agentId: req.agentId,
-          agentSessionId: req.agentSessionId,
-          status: req.status as SessionStatus,
+          agentCli: req.agentCli,
+          status: "running",
         };
         state.sessions.push(session);
         return { session };
       },
-      update: async (req) => {
-        const idx = state.sessions.findIndex((s) => s.id === req.sessionId);
-        if (idx < 0) throw new Error(`session ${req.sessionId} not found`);
-        const existing = state.sessions[idx]!;
-        const updated: Session = {
-          id: req.sessionId,
-          taskId: req.taskId,
-          agentId: req.agentId,
-          agentSessionId: req.agentSessionId,
-          status: req.status as SessionStatus,
-        };
-        state.sessions[idx] = { ...existing, ...updated };
-        return { session: state.sessions[idx]! };
+      load: async function* () { yield { type: "completed" as const }; },
+      prompt: async function* () { yield { type: "completed" as const, stopReason: "end_turn" as const }; },
+      respondToPermission: async () => ({}),
+      stop: async (req) => {
+        const session = state.sessions.find((candidate) => candidate.id === req.sessionId)!;
+        session.status = "stopped";
+        return { session };
       },
       delete: async (req) => {
         const idx = state.sessions.findIndex((s) => s.id === req.sessionId);

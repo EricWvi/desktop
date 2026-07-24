@@ -48,11 +48,14 @@ test("defines one Service Worker handler for every contracts endpoint", () => {
     "listSessions",
     "listSkills",
     "listTasks",
+    "loadSession",
     "openProjectWorkContext",
+    "promptSession",
     "renewProjectWorkContext",
+    "respondToSessionPermission",
+    "stopSession",
     "updateAgent",
     "updateProject",
-    "updateSession",
     "updateSkill",
     "updateTask",
   ]);
@@ -92,6 +95,19 @@ test("starts every entity collection with representative in-memory data", async 
       leaseExpiresAt: initialNow + 120_000,
     },
   ]);
+});
+
+test("rejects aggregate deletion while a descendant session is running", async () => {
+  await assertTransportError(
+    client.task.delete({ taskId: "task-agent-runtime" }),
+    "resource_in_use",
+    409,
+  );
+  await assertTransportError(
+    client.project.delete({ projectId: "project-ora-desktop" }),
+    "resource_in_use",
+    409,
+  );
 });
 
 test("supports skill CRUD within one runtime", async () => {
@@ -135,13 +151,12 @@ test("supports project create, get, update, and delete within one runtime", asyn
   const updated = await client.project.update({
     projectId: created.project.id,
     name: "Mock Service Package",
-    rootPath: "C:\\workspace\\ora\\packages\\mock-service",
   });
   assert.deepEqual(updated, {
     project: {
       id: created.project.id,
       name: "Mock Service Package",
-      rootPath: "C:\\workspace\\ora\\packages\\mock-service",
+      rootPath: "C:\\workspace\\mock-service",
     },
   });
   assert.deepEqual(await client.project.delete({ projectId: created.project.id }), {
@@ -180,27 +195,18 @@ test("supports task create, get, update, and delete within one runtime", async (
   await assertNotFound(client.task.get({ taskId: created.task.id }), "task_not_found");
 });
 
-test("supports session create, get, update, and delete within one runtime", async () => {
+test("supports session create, get, stop, and delete within one runtime", async () => {
   const created = await client.session.create({
     taskId: "task-agent-runtime",
-    agentId: "codex",
-    agentSessionId: null,
-    status: "running",
+    agentCli: "open_code",
   });
   assert.match(created.session.id, /^session-/);
   assert.deepEqual(await client.session.get({ sessionId: created.session.id }), created);
 
-  const updated = await client.session.update({
-    sessionId: created.session.id,
-    taskId: created.session.taskId,
-    agentId: created.session.agentId,
-    agentSessionId: "remote-session-1",
-    status: "stopped",
-  });
-  assert.deepEqual(updated, {
+  const stopped = await client.session.stop({ sessionId: created.session.id });
+  assert.deepEqual(stopped, {
     session: {
       ...created.session,
-      agentSessionId: "remote-session-1",
       status: "stopped",
     },
   });

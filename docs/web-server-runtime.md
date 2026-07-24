@@ -97,6 +97,8 @@ The persisted runtime exposes CRUD routes for the supported public models:
 Request and response payloads use `ora-contracts` DTO shapes, so transport behavior stays aligned with the shared application contract.
 Task payloads do not expose backend-owned worktree identifiers, and the runtime does not expose standalone public worktree CRUD endpoints.
 
+Session create starts `<home>/.opencode/bin/opencode acp`, `<home>/.nga/bin/nga acp`, or `<home>/.codeagentcli/bin/codeagentcli acp` according to the immutable `agentCli`. The server performs `initialize` and `session/new` before persisting. Load performs a fresh `initialize` followed by `session/load` using the private provider session id. The public Session payload never exposes that id.
+
 Load and prompt responses use `application/x-ndjson`. Each line is one complete frame. Data and control paths are separate, session-update queues are bounded at 256 items, frames are limited to 8 MiB, and overflow terminates the operation rather than dropping updates silently.
 
 The project work context routes provide the current backend-managed project selection surface.

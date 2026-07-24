@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useStore } from "zustand";
 import {
   Button,
   DropdownMenu,
@@ -15,6 +16,7 @@ import {
 import {
   IconChevronDown,
   IconChevronRight,
+  IconAlertTriangle,
   IconDots,
   IconFolder,
   IconGitBranch,
@@ -34,6 +36,7 @@ import { useSessions } from "../../state/hooks/use-sessions";
 import { useUiStore } from "../../state/stores/ui-store";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import { OraMark } from "../../components/ora-mark";
+import { useChatStore } from "../../chat-store-context";
 
 interface WorkspaceSidebarProps {
   user: CurrentUser;
@@ -49,6 +52,8 @@ export function WorkspaceSidebar({ user, onSignOut }: WorkspaceSidebarProps) {
   const projectsQuery = useProjects();
   const tasksQuery = useTasks();
   const sessionsQuery = useSessions();
+  const chatStore = useChatStore();
+  const conversations = useStore(chatStore, (state) => state.conversations);
   // Stabilise the array references so useMemo dependencies don't change every render.
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
   const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
@@ -78,7 +83,7 @@ export function WorkspaceSidebar({ user, onSignOut }: WorkspaceSidebarProps) {
     const projectTasks = tasks.filter((task) => task.projectId === project.id);
     return project.name.toLowerCase().includes(needle)
       || projectTasks.some((task) => task.title.toLowerCase().includes(needle)
-        || sessions.some((session) => session.taskId === task.id && session.agentId.toLowerCase().includes(needle)));
+        || sessions.some((session) => session.taskId === task.id && session.agentCli.toLowerCase().includes(needle)));
   }), [needle, projects, sessions, tasks]);
 
   // Expand the initial workspace tree once while preserving later manual collapse choices.
@@ -244,13 +249,16 @@ export function WorkspaceSidebar({ user, onSignOut }: WorkspaceSidebarProps) {
                           key={session.id}
                           depth={2}
                           active={selection.sessionId === session.id}
-                          icon={session.status === "running" ? <AgentActivityDots label={t("common.running")} /> : null}
-                          label={session.agentId}
+                          icon={conversations[session.id]?.pendingPermissions.length
+                            ? <IconAlertTriangle className="size-4 text-amber-500" aria-label={t("sidebar.permissionRequired")} />
+                            : session.status === "running"
+                              ? <AgentActivityDots label={t("common.running")} />
+                              : null}
+                          label={session.agentCli}
                           onClick={() => selectSession(session.id, task.id, project.id)}
                           menu={(
                             <EntityMenu
-                              onEdit={() => setDialog({ kind: "session", taskId: task.id, entity: session })}
-                              onDelete={() => setDeleteTarget({ kind: "session", id: session.id, name: session.agentId })}
+                              onDelete={() => setDeleteTarget({ kind: "session", id: session.id, name: session.agentCli })}
                             />
                           )}
                         />
@@ -356,7 +364,7 @@ function TreeRow({ depth, active, icon, label, meta, expanded, onClick, menu }: 
 }
 
 /** Provides contextual CRUD commands without making every tree row visually noisy. */
-function EntityMenu({ onAdd, addLabel, onEdit, onDelete }: { onAdd?: () => void; addLabel?: string; onEdit: () => void; onDelete: () => void }) {
+function EntityMenu({ onAdd, addLabel, onEdit, onDelete }: { onAdd?: () => void; addLabel?: string; onEdit?: () => void; onDelete: () => void }) {
   const { t } = useTranslation();
   return (
     <DropdownMenu>
@@ -366,10 +374,9 @@ function EntityMenu({ onAdd, addLabel, onEdit, onDelete }: { onAdd?: () => void;
       <DropdownMenuContent align="end" className="w-40">
         {onAdd && <DropdownMenuItem onClick={onAdd}><IconPlus />{addLabel}</DropdownMenuItem>}
         {onAdd && <DropdownMenuSeparator />}
-        <DropdownMenuItem onClick={onEdit}><IconPencil />{t("common.edit")}</DropdownMenuItem>
+        {onEdit && <DropdownMenuItem onClick={onEdit}><IconPencil />{t("common.edit")}</DropdownMenuItem>}
         <DropdownMenuItem variant="destructive" onClick={onDelete}><IconTrash />{t("common.delete")}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
-

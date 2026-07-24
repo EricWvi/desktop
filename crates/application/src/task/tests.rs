@@ -1,14 +1,14 @@
 use crate::{
-    ApplicationError, Clock, CreateTaskHandler, CreateTaskWorktreeRequest, DeleteTaskHandler,
+    ApplicationError, Clock, CreateTaskHandler, CreateTaskWorktreeRequest,
     DeleteTaskWorktreeRequest, GetTaskHandler, ListTasksHandler, TaskIdGenerator, TaskRepository,
     TaskRepositoryError, TaskWorktreeDeletionMode, TaskWorktreeProvisioner,
     TaskWorktreeProvisionerError, UpdateTaskHandler, WorktreeIdGenerator, WorktreeRepository,
     WorktreeRepositoryError,
 };
 use ora_contracts::{
-    CreateTaskRequest, CreateTaskResponse, DeleteTaskRequest, DeleteTaskResponse, GetTaskRequest,
-    GetTaskResponse, ListTasksRequest, ListTasksResponse, Task as ContractTask,
-    TaskStatus as ContractTaskStatus, UpdateTaskRequest, UpdateTaskResponse,
+    CreateTaskRequest, CreateTaskResponse, GetTaskRequest, GetTaskResponse, ListTasksRequest,
+    ListTasksResponse, Task as ContractTask, TaskStatus as ContractTaskStatus, UpdateTaskRequest,
+    UpdateTaskResponse,
 };
 use ora_domain::{
     AuditFields, ProjectId, Task, TaskId, TaskStatus as DomainTaskStatus, Worktree,
@@ -442,61 +442,6 @@ fn updates_tasks_with_refreshed_timestamps() {
     });
 }
 
-/// Verifies delete handlers remove linked worktrees with force mode before soft-deleting storage state.
-#[test]
-fn deletes_tasks_and_owned_worktrees() {
-    with_trace_logging(|| {
-        let task_repository = Rc::new(FakeTaskRepository::with_tasks(vec![Task::new(
-            TaskId::new(TASK_ID),
-            ProjectId::new("project-1"),
-            "Ship handlers",
-            DomainTaskStatus::Todo,
-            Some(WorktreeId::new("worktree-1")),
-            AuditFields::new(10, 20, false),
-        )]));
-        let worktree_repository =
-            Rc::new(FakeWorktreeRepository::with_worktrees(vec![Worktree::new(
-                WorktreeId::new("worktree-1"),
-                TaskId::new(TASK_ID),
-                Some("ora/12345678".to_string()),
-                DomainWorktreeActivity::Active,
-                AuditFields::new(10, 20, false),
-            )]));
-        let provisioner = Rc::new(FakeTaskWorktreeProvisioner::default());
-        let handler = DeleteTaskHandler::new(
-            task_repository.clone(),
-            worktree_repository.clone(),
-            provisioner.clone(),
-            FixedClock::new(40),
-        );
-
-        let response = handler
-            .handle(DeleteTaskRequest {
-                task_id: TASK_ID.to_string(),
-            })
-            .unwrap_or_else(|error| panic!("delete handler failed: {error}"));
-
-        assert_eq!(
-            response,
-            DeleteTaskResponse {
-                task_id: TASK_ID.to_string(),
-            }
-        );
-        assert_eq!(
-            provisioner.deleted_requests(),
-            vec![DeleteTaskWorktreeRequest {
-                branch_name: "ora/12345678".to_string(),
-                mode: TaskWorktreeDeletionMode::Force,
-            }]
-        );
-        assert_eq!(task_repository.visible_tasks(), Vec::<Task>::new());
-        assert_eq!(
-            worktree_repository.visible_worktrees(),
-            Vec::<Worktree>::new()
-        );
-    });
-}
-
 /// Verifies create handlers compensate by deleting the created worktree when task persistence fails.
 #[test]
 fn cleans_up_created_worktree_when_task_persistence_fails() {
@@ -791,14 +736,6 @@ struct FakeWorktreeRepository {
 }
 
 impl FakeWorktreeRepository {
-    /// Builds a fake repository seeded with the provided worktree rows.
-    fn with_worktrees(worktrees: Vec<Worktree>) -> Self {
-        Self {
-            worktrees: RefCell::new(worktrees),
-            next_error: RefCell::new(None),
-        }
-    }
-
     /// Returns every non-deleted worktree so tests can assert visible repository state.
     fn visible_worktrees(&self) -> Vec<Worktree> {
         self.worktrees

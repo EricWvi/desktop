@@ -6,9 +6,8 @@ use crate::task::ports::{
 use crate::worktree::{WorktreeIdGenerator, WorktreeRepository};
 use crate::{ApplicationError, Clock};
 use ora_contracts::{
-    CreateTaskRequest, CreateTaskResponse, DeleteTaskRequest, DeleteTaskResponse, GetTaskRequest,
-    GetTaskResponse, ListTasksRequest, ListTasksResponse, TaskStatus, UpdateTaskRequest,
-    UpdateTaskResponse,
+    CreateTaskRequest, CreateTaskResponse, GetTaskRequest, GetTaskResponse, ListTasksRequest,
+    ListTasksResponse, TaskStatus, UpdateTaskRequest, UpdateTaskResponse,
 };
 use ora_domain::{
     AuditFields, ProjectId, Task as DomainTask, TaskId, TaskStatus as DomainTaskStatus,
@@ -399,136 +398,6 @@ where
         Ok(UpdateTaskResponse {
             task: map_task(task),
         })
-    }
-}
-
-/// Handles task deletion without exposing transport-specific cleanup details.
-pub struct DeleteTaskHandler<
-    TaskRepositoryPort,
-    WorktreeRepositoryPort,
-    WorktreeProvisioner,
-    ClockSource,
-> {
-    task_repository: TaskRepositoryPort,
-    worktree_repository: WorktreeRepositoryPort,
-    worktree_provisioner: WorktreeProvisioner,
-    clock: ClockSource,
-}
-
-impl<TaskRepositoryPort, WorktreeRepositoryPort, WorktreeProvisioner, ClockSource>
-    DeleteTaskHandler<TaskRepositoryPort, WorktreeRepositoryPort, WorktreeProvisioner, ClockSource>
-{
-    pub fn new(
-        task_repository: TaskRepositoryPort,
-        worktree_repository: WorktreeRepositoryPort,
-        worktree_provisioner: WorktreeProvisioner,
-        clock: ClockSource,
-    ) -> Self {
-        Self {
-            task_repository,
-            worktree_repository,
-            worktree_provisioner,
-            clock,
-        }
-    }
-}
-
-impl<TaskRepositoryPort, WorktreeRepositoryPort, WorktreeProvisioner, ClockSource>
-    DeleteTaskHandler<TaskRepositoryPort, WorktreeRepositoryPort, WorktreeProvisioner, ClockSource>
-where
-    TaskRepositoryPort: TaskRepository,
-    WorktreeRepositoryPort: WorktreeRepository,
-    WorktreeProvisioner: TaskWorktreeProvisioner,
-    ClockSource: Clock,
-{
-    /// Deletes one task and removes its owned linked worktree before returning the CRUD-shaped response.
-    pub fn handle(
-        &self,
-        request: DeleteTaskRequest,
-    ) -> Result<DeleteTaskResponse, ApplicationError> {
-        let task_id = TaskId::new(request.task_id);
-        let existing_task = self.task_repository.find_task(&task_id).map_err(|error| {
-            let error = ApplicationError::from_task_repository_error(error);
-            log_task_failure("delete_task", Some(&task_id), &error);
-            error
-        })?;
-        let existing_task = match existing_task {
-            Some(task) => task,
-            None => {
-                let error = ApplicationError::TaskNotFound {
-                    task_id: task_id.to_string(),
-                };
-                log_task_failure("delete_task", Some(&task_id), &error);
-                return Err(error);
-            }
-        };
-        if let Some(worktree_id) = existing_task.worktree_id {
-            let existing_worktree = self
-                .worktree_repository
-                .find_worktree(&worktree_id)
-                .map_err(|error| {
-                    let error = ApplicationError::from_worktree_repository_error(error);
-                    log_task_failure("delete_task", Some(&task_id), &error);
-                    error
-                })?;
-            let existing_worktree = match existing_worktree {
-                Some(worktree) => worktree,
-                None => {
-                    let error = ApplicationError::WorktreeNotFound {
-                        worktree_id: worktree_id.to_string(),
-                    };
-                    log_task_failure("delete_task", Some(&task_id), &error);
-                    return Err(error);
-                }
-            };
-            let Some(branch_name) = existing_worktree.branch_name else {
-                let error = ApplicationError::TaskWorktree {
-                    message: "task worktree branch is unavailable".to_string(),
-                };
-                log_task_failure("delete_task", Some(&task_id), &error);
-                return Err(error);
-            };
-            self.worktree_provisioner
-                .delete_task_worktree(DeleteTaskWorktreeRequest {
-                    branch_name,
-                    mode: TaskWorktreeDeletionMode::Force,
-                })
-                .map_err(|error| {
-                    let error = ApplicationError::from_task_worktree_provisioner_error(error);
-                    log_task_failure("delete_task", Some(&task_id), &error);
-                    error
-                })?;
-            self.worktree_repository
-                .soft_delete_worktree(&existing_worktree.id, self.clock.now_timestamp_millis())
-                .map_err(|error| {
-                    let error = ApplicationError::from_worktree_repository_error(error);
-                    log_task_failure("delete_task", Some(&task_id), &error);
-                    error
-                })?;
-        }
-
-        let deleted = self
-            .task_repository
-            .soft_delete_task(&task_id, self.clock.now_timestamp_millis())
-            .map_err(|error| {
-                let error = ApplicationError::from_task_repository_error(error);
-                log_task_failure("delete_task", Some(&task_id), &error);
-                error
-            })?;
-
-        if deleted {
-            log_task_success("delete_task", Some(&task_id));
-
-            Ok(DeleteTaskResponse {
-                task_id: task_id.to_string(),
-            })
-        } else {
-            let error = ApplicationError::TaskNotFound {
-                task_id: task_id.to_string(),
-            };
-            log_task_failure("delete_task", Some(&task_id), &error);
-            Err(error)
-        }
     }
 }
 
