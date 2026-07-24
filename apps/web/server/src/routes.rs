@@ -5,7 +5,8 @@ use crate::handlers::{
 use axum::Router;
 use axum::routing::{get, post};
 use ora_contracts::{
-    AGENT_PATH, AGENTS_PATH, FILE_SYSTEM_DIRECTORY_PATH, GIT_IDENTITY_PATH, PROJECT_PATH,
+    AGENT_MODELS_PATH, AGENT_PATH, AGENTS_PATH, FILE_SYSTEM_DIRECTORY_PATH, GIT_IDENTITY_PATH,
+    PROJECT_PATH,
     PROJECT_WORK_CONTEXT_OPEN_PATH, PROJECT_WORK_CONTEXT_RENEW_PATH, PROJECTS_PATH,
     SESSION_LOAD_PATH, SESSION_PATH, SESSION_PERMISSION_RESPONSE_PATH, SESSION_PROMPT_PATH,
     SESSION_STOP_PATH, SESSIONS_PATH, SKILL_PATH, SKILLS_PATH, TASK_PATH, TASKS_PATH,
@@ -18,6 +19,7 @@ pub fn build_router(app_state: AppState) -> Router {
         .route("/health/ready", get(health::readiness))
         .route(FILE_SYSTEM_DIRECTORY_PATH, get(file_system::list_directory))
         .route(GIT_IDENTITY_PATH, get(git::get_identity))
+        .route(AGENT_MODELS_PATH, get(sessions::list_agent_models))
         .route(
             PROJECTS_PATH,
             post(projects::create_project).get(projects::list_projects),
@@ -122,6 +124,18 @@ mod tests {
         };
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// Verifies model discovery remains successful when every test CLI is unavailable.
+    #[tokio::test]
+    async fn serves_partial_agent_model_results() {
+        let (_temp_dir, _database_path, app) = test_router();
+        let response = request_empty(&app, Method::GET, "/api/agent-models").await;
+        let status = response.status();
+        let body = response_json(response).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, json!({ "groups": [] }));
     }
 
     /// Verifies readiness stays unavailable until bootstrap marks the state as ready.

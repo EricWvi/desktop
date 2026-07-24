@@ -95,6 +95,7 @@ export function createMockClient(state: MockClientState): ContractsClient {
         const session: Session = {
           id: nextId("s", state.sessions.length),
           taskId: req.taskId,
+          agentCli: req.agentCli,
           status: "running",
         };
         state.sessions.push(session);
@@ -113,6 +114,9 @@ export function createMockClient(state: MockClientState): ContractsClient {
         if (idx >= 0) state.sessions.splice(idx, 1);
         return { sessionId: req.sessionId };
       },
+    },
+    agentRuntime: {
+      listModels: async () => ({ groups: [] }),
     },
     agent: {
       list: async () => ({ agents: [...state.agents] }),

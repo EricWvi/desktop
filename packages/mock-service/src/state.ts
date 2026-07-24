@@ -61,11 +61,13 @@ export function createInitialMockState(now = Date.now()): MockState {
       {
         id: "session-agent-runtime",
         taskId: "task-agent-runtime",
+        agentCli: "open_code",
         status: "running",
       },
       {
         id: "session-component-audit",
         taskId: "task-component-audit",
+        agentCli: "open_code",
         status: "stopped",
       },
     ],

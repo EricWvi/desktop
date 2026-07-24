@@ -244,11 +244,22 @@ export function createMockHandlers(state: MockState = mockState): HttpHandler[] 
       const session = {
         id: createId("session"),
         taskId: body.taskId,
+        agentCli: body.agentCli,
         status: "running" as const,
       };
       state.sessions.push(session);
 
       return HttpResponse.json({ session }, { status: 201 });
+    }),
+
+    listAgentModels: http.get("*/api/agent-models", () => {
+      return HttpResponse.json({
+        groups: [
+          { agentCli: "open_code" as const, models: ["opencode/big-pickle"] },
+          { agentCli: "nga" as const, models: ["nga/default"] },
+          { agentCli: "code_agent_cli" as const, models: ["codeagentcli/default"] },
+        ],
+      });
     }),
 
     getSession: http.get("*/api/sessions/:sessionId", ({ params }) => {

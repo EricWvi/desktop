@@ -1,5 +1,6 @@
 mod actor;
 mod connection;
+mod models;
 mod routing;
 mod stream;
 mod support;
@@ -9,7 +10,7 @@ use support::*;
 
 use crate::clock::SystemClock;
 use crate::{BackendError, BackendErrorKind};
-use connection::ConnectionSupervisor;
+use connection::{ConnectionSupervisor, ConnectionSupervisors};
 use ora_application::{Clock, SessionIdGenerator, SessionRepository, UuidSessionIdGenerator};
 use ora_contracts::{
     CreateSessionRequest, CreateSessionResponse, DeleteSessionResponse, LoadSessionEvent,
@@ -17,7 +18,7 @@ use ora_contracts::{
     RespondToPermissionResponse, StopSessionRequest, StopSessionResponse,
 };
 use ora_db::{RepositoryPool, SqliteSessionRepository};
-use ora_domain::{AuditFields, Session, SessionId, SessionStatus, TaskId};
+use ora_domain::{AgentCli, AuditFields, Session, SessionId, SessionStatus, TaskId};
 use routing::SessionChannel;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -32,7 +33,7 @@ const CANCELLATION_GRACE: Duration = Duration::from_secs(5);
 const CONTRACT_QUEUE_CAPACITY: usize = 256;
 const MAX_PROMPT_BYTES: usize = 1024 * 1024;
 
-/// Coordinates one serialized actor per Ora session on one supervised OpenCode connection.
+/// Coordinates one serialized actor per Ora session on its selected supervised CLI connection.
 #[derive(Clone)]
 pub(crate) struct AgentRuntimeManager {
     inner: Arc<ManagerInner>,
@@ -43,7 +44,8 @@ struct ManagerInner {
     actors: RwLock<HashMap<SessionId, RuntimeActorHandle>>,
     lifecycle: tokio::sync::Mutex<()>,
     next_operation_id: AtomicU64,
-    connection: ConnectionSupervisor,
+    connections: ConnectionSupervisors,
+    home_directory: PathBuf,
     clock: SystemClock,
 }
 
@@ -94,20 +96,26 @@ impl AgentRuntimeManager {
         clock: SystemClock,
     ) -> Result<Self, BackendError> {
         reconcile_running_sessions(&pool, clock)?;
-        let connection = ConnectionSupervisor::start(pool.clone(), home_directory, clock);
+        let connections = ConnectionSupervisors::start(pool.clone(), home_directory.clone(), clock);
         Ok(Self {
             inner: Arc::new(ManagerInner {
                 pool,
                 actors: RwLock::new(HashMap::new()),
                 lifecycle: tokio::sync::Mutex::new(()),
                 next_operation_id: AtomicU64::new(1),
-                connection,
+                connections,
+                home_directory,
                 clock,
             }),
         })
     }
 
-    /// Creates an OpenCode session over the existing application-scoped ACP connection.
+    /// Lists model identifiers from every CLI whose discovery command succeeds.
+    pub(crate) async fn list_agent_models(&self) -> ora_contracts::ListAgentModelsResponse {
+        models::list_agent_models(&self.inner.home_directory).await
+    }
+
+    /// Creates a session over the selected application-scoped CLI connection.
     pub(crate) async fn create_session(
         &self,
         request: CreateSessionRequest,
@@ -117,8 +125,14 @@ impl AgentRuntimeManager {
         use tokio::time::timeout;
 
         let _lifecycle = self.inner.lifecycle.lock().await;
+        let agent_cli = match request.agent_cli {
+            ora_contracts::AgentCli::OpenCode => AgentCli::OpenCode,
+            ora_contracts::AgentCli::Nga => AgentCli::Nga,
+            ora_contracts::AgentCli::CodeAgentCli => AgentCli::CodeAgentCli,
+        };
         let cwd = resolve_task_cwd(&self.inner.pool, &TaskId::new(request.task_id.clone()))?;
-        let connection = self.inner.connection.current()?;
+        let supervisor = self.inner.connections.for_agent(agent_cli);
+        let connection = supervisor.current()?;
         let response = timeout(
             SESSION_SETUP_TIMEOUT,
             connection.client.request::<_, NewSessionResponse>(
@@ -128,17 +142,18 @@ impl AgentRuntimeManager {
         )
         .await
         .map_err(|_| {
-            runtime_internal("agent_start_timeout", "OpenCode session creation timed out")
+            runtime_internal(
+                "agent_start_timeout",
+                "agent CLI session creation timed out",
+            )
         })?
         .map_err(map_acp_error)?;
-        let channel = self
-            .inner
-            .connection
-            .open_session_channel(response.session_id.0.as_ref())?;
+        let channel = supervisor.open_session_channel(response.session_id.0.as_ref())?;
         let now = self.inner.clock.now_timestamp_millis();
         let session = Session::new(
             UuidSessionIdGenerator::new().generate_session_id(),
             TaskId::new(request.task_id),
+            agent_cli,
             response.session_id.to_string(),
             SessionStatus::Running,
             AuditFields::new(now, now, false),
@@ -148,7 +163,7 @@ impl AgentRuntimeManager {
             .map_err(|_| {
                 runtime_internal(
                     "session_repository_error",
-                    "failed to persist OpenCode session",
+                    "failed to persist agent CLI session",
                 )
             })?;
         ora_debug!(
@@ -156,7 +171,7 @@ impl AgentRuntimeManager {
             agent_session_id = %session.agent_session_id,
             "session created",
         );
-        self.insert_actor(session.clone(), cwd, Some(channel))?;
+        self.insert_actor(session.clone(), cwd, supervisor, Some(channel))?;
         Ok(CreateSessionResponse {
             session: contract_session(session),
         })
@@ -254,7 +269,7 @@ impl AgentRuntimeManager {
         response.await.map_err(|_| runtime_unavailable())?
     }
 
-    /// Stops one logical session without terminating the shared OpenCode process.
+    /// Stops one logical session without terminating its shared CLI process.
     pub(crate) async fn stop_session(
         &self,
         request: StopSessionRequest,
@@ -322,7 +337,8 @@ impl AgentRuntimeManager {
             return Ok(handle);
         }
         let cwd = resolve_task_cwd(&self.inner.pool, &session.task_id)?;
-        self.insert_actor(session, cwd, None)
+        let connection = self.inner.connections.for_agent(session.agent_cli);
+        self.insert_actor(session, cwd, connection, None)
     }
 
     /// Reads the in-memory actor registry without creating a provider-side session.
@@ -342,6 +358,7 @@ impl AgentRuntimeManager {
         &self,
         session: Session,
         cwd: PathBuf,
+        connection: ConnectionSupervisor,
         channel: Option<SessionChannel>,
     ) -> Result<RuntimeActorHandle, BackendError> {
         let mut actors = self.actors_write()?;
@@ -357,7 +374,7 @@ impl AgentRuntimeManager {
                 cwd,
                 repository: SqliteSessionRepository::new(self.inner.pool.clone()),
                 clock: self.inner.clock,
-                connection: self.inner.connection.clone(),
+                connection,
                 channel,
                 commands: receiver,
             }

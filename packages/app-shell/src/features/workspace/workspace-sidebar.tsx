@@ -43,6 +43,7 @@ import { OraMark } from "../../components/ora-mark";
 import { AgentActivityDots } from "../../components/agent-activity-dots";
 import { DragRegion } from "../../components/drag-region";
 import { useChatStore } from "../../chat-store-context";
+import { agentCliLabel } from "./agent-cli";
 
 interface WorkspaceSidebarProps {
   user: CurrentUser;
@@ -90,7 +91,8 @@ export function WorkspaceSidebar({ user, onSignOut }: WorkspaceSidebarProps) {
     const projectTasks = tasks.filter((task) => task.projectId === project.id);
     return project.name.toLowerCase().includes(needle)
       || projectTasks.some((task) => task.title.toLowerCase().includes(needle)
-        || sessions.some((session) => session.taskId === task.id && "opencode".includes(needle)));
+        || sessions.some((session) => session.taskId === task.id
+          && agentCliLabel(session.agentCli).toLowerCase().includes(needle)));
   }), [needle, projects, sessions, tasks]);
 
   // Expand the initial workspace tree once while preserving later manual collapse choices.
@@ -319,11 +321,11 @@ export function WorkspaceSidebar({ user, onSignOut }: WorkspaceSidebarProps) {
                                   : unread.has(session.id)
                                     ? <UnreadDot label={t("sidebar.unread")} />
                                     : null}
-                              label="OpenCode"
+                              label={agentCliLabel(session.agentCli)}
                               onClick={() => selectSession(session.id, task.id, project.id)}
                               menu={(
                                 <EntityMenu
-                                  onDelete={() => setDeleteTarget({ kind: "session", id: session.id, name: "OpenCode" })}
+                                  onDelete={() => setDeleteTarget({ kind: "session", id: session.id, name: agentCliLabel(session.agentCli) })}
                                 />
                               )}
                             />

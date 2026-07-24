@@ -1,7 +1,7 @@
 use super::routing::{RouteRegistry, SessionChannel};
 use super::{
     CANCELLATION_GRACE, CONTRACT_QUEUE_CAPACITY, INITIALIZE_TIMEOUT, map_acp_error,
-    resolve_opencode_path, runtime_internal,
+    resolve_agent_cli_path, runtime_internal,
 };
 use crate::BackendError;
 use crate::clock::SystemClock;
@@ -14,7 +14,7 @@ use ora_contracts::acp::literals::AGENT_METHOD_NAMES;
 use ora_contracts::acp::notification::SessionNotification;
 use ora_contracts::acp::permission::{RequestPermissionOutcome, RequestPermissionResponse};
 use ora_db::{RepositoryPool, SqliteSessionRepository};
-use ora_domain::SessionStatus;
+use ora_domain::{AgentCli, SessionStatus};
 use ora_process::{
     ManagedProcess, ProcessSpawner, ProcessSpec, TokioManagedProcess, TokioProcessSpawner,
 };
@@ -46,38 +46,105 @@ enum ConnectionState {
     Unavailable,
 }
 
+/// Keeps one supervisor generation's fixed dependencies together as the retry loop evolves.
+struct SupervisorContext {
+    agent_cli: AgentCli,
+    pool: RepositoryPool,
+    home_directory: PathBuf,
+    clock: SystemClock,
+    state: watch::Sender<ConnectionState>,
+    active_generation: Arc<AtomicU64>,
+    routes: Arc<RouteRegistry>,
+    shutdown: mpsc::UnboundedReceiver<()>,
+}
+
 /// Gives session actors access to the current connection and central event router.
 #[derive(Clone)]
 pub(super) struct ConnectionSupervisor {
+    agent_cli: AgentCli,
     state: watch::Receiver<ConnectionState>,
     active_generation: Arc<AtomicU64>,
     routes: Arc<RouteRegistry>,
     shutdown: mpsc::UnboundedSender<()>,
 }
 
-impl ConnectionSupervisor {
-    /// Starts the application-scoped OpenCode supervisor independently of the caller's runtime.
+/// Owns one independently supervised connection for every supported CLI.
+#[derive(Clone)]
+pub(super) struct ConnectionSupervisors {
+    opencode: ConnectionSupervisor,
+    nga: ConnectionSupervisor,
+    code_agent_cli: ConnectionSupervisor,
+}
+
+impl ConnectionSupervisors {
+    /// Starts every CLI eagerly so availability is independent across providers.
     pub fn start(pool: RepositoryPool, home_directory: PathBuf, clock: SystemClock) -> Self {
+        Self {
+            opencode: ConnectionSupervisor::start(
+                AgentCli::OpenCode,
+                pool.clone(),
+                home_directory.clone(),
+                clock,
+            ),
+            nga: ConnectionSupervisor::start(
+                AgentCli::Nga,
+                pool.clone(),
+                home_directory.clone(),
+                clock,
+            ),
+            code_agent_cli: ConnectionSupervisor::start(
+                AgentCli::CodeAgentCli,
+                pool,
+                home_directory,
+                clock,
+            ),
+        }
+    }
+
+    /// Selects the sole application-scoped connection for one persisted CLI identity.
+    pub fn for_agent(&self, agent_cli: AgentCli) -> ConnectionSupervisor {
+        match agent_cli {
+            AgentCli::OpenCode => self.opencode.clone(),
+            AgentCli::Nga => self.nga.clone(),
+            AgentCli::CodeAgentCli => self.code_agent_cli.clone(),
+        }
+    }
+}
+
+impl ConnectionSupervisor {
+    /// Starts one application-scoped CLI supervisor independently of the caller's runtime.
+    fn start(
+        agent_cli: AgentCli,
+        pool: RepositoryPool,
+        home_directory: PathBuf,
+        clock: SystemClock,
+    ) -> Self {
         let (state_sender, state) = watch::channel(ConnectionState::Unavailable);
         let (shutdown, shutdown_receiver) = mpsc::unbounded_channel();
         let active_generation = Arc::new(AtomicU64::new(0));
         let routes = Arc::new(RouteRegistry::default());
-        if let Err(error) = spawn_runtime_thread(run_supervisor(
-            pool,
-            home_directory,
-            clock,
-            state_sender,
-            active_generation.clone(),
-            routes.clone(),
-            shutdown_receiver,
-        )) {
+        if let Err(error) = spawn_runtime_thread(
+            agent_cli,
+            run_supervisor(SupervisorContext {
+                agent_cli,
+                pool,
+                home_directory,
+                clock,
+                state: state_sender,
+                active_generation: active_generation.clone(),
+                routes: routes.clone(),
+                shutdown: shutdown_receiver,
+            }),
+        ) {
             tracing::warn!(
                 target: "ora_backend::agent_runtime",
+                agent_cli = agent_cli.database_value(),
                 error = %error,
-                "OpenCode supervisor thread could not start"
+                "agent CLI supervisor thread could not start"
             );
         }
         Self {
+            agent_cli,
             state,
             active_generation,
             routes,
@@ -91,7 +158,10 @@ impl ConnectionSupervisor {
             ConnectionState::Ready(connection) => Ok(connection),
             ConnectionState::Starting | ConnectionState::Unavailable => Err(runtime_internal(
                 "agent_runtime_unavailable",
-                "OpenCode runtime is unavailable",
+                format!(
+                    "{} runtime is unavailable",
+                    self.agent_cli.executable_name()
+                ),
             )),
         }
     }
@@ -105,7 +175,7 @@ impl ConnectionSupervisor {
         if self.active_generation.load(Ordering::Acquire) != connection.generation {
             return Err(runtime_internal(
                 "agent_runtime_unavailable",
-                "OpenCode runtime is recovering",
+                format!("{} runtime is recovering", self.agent_cli.executable_name()),
             ));
         }
         let (updates_sender, updates) = mpsc::channel(CONTRACT_QUEUE_CAPACITY);
@@ -120,7 +190,7 @@ impl ConnectionSupervisor {
             drop(registration);
             return Err(runtime_internal(
                 "agent_runtime_unavailable",
-                "OpenCode runtime is recovering",
+                format!("{} runtime is recovering", self.agent_cli.executable_name()),
             ));
         }
         Ok(SessionChannel {
@@ -133,12 +203,15 @@ impl ConnectionSupervisor {
 }
 
 /// Runs the supervisor on a dedicated runtime because Desktop bootstrap is synchronous.
-fn spawn_runtime_thread<Supervisor>(supervisor: Supervisor) -> std::io::Result<()>
+fn spawn_runtime_thread<Supervisor>(
+    agent_cli: AgentCli,
+    supervisor: Supervisor,
+) -> std::io::Result<()>
 where
     Supervisor: Future<Output = ()> + Send + 'static,
 {
     std::thread::Builder::new()
-        .name("ora-opencode-supervisor".to_string())
+        .name(format!("ora-{}-supervisor", agent_cli.executable_name()))
         .spawn(move || {
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -148,8 +221,9 @@ where
                 Err(error) => {
                     tracing::error!(
                         target: "ora_backend::agent_runtime",
+                        agent_cli = agent_cli.database_value(),
                         error = %error,
-                        "OpenCode supervisor runtime could not start"
+                        "agent CLI supervisor runtime could not start"
                     );
                     return;
                 }
@@ -177,20 +251,22 @@ struct SharedProcess {
 }
 
 /// Supervises one process generation at a time and retries only after it is fully reaped.
-async fn run_supervisor(
-    pool: RepositoryPool,
-    home_directory: PathBuf,
-    clock: SystemClock,
-    state: watch::Sender<ConnectionState>,
-    active_generation: Arc<AtomicU64>,
-    routes: Arc<RouteRegistry>,
-    mut shutdown: mpsc::UnboundedReceiver<()>,
-) {
+async fn run_supervisor(context: SupervisorContext) {
+    let SupervisorContext {
+        agent_cli,
+        pool,
+        home_directory,
+        clock,
+        state,
+        active_generation,
+        routes,
+        mut shutdown,
+    } = context;
     let mut retry_delay = INITIAL_RETRY_DELAY;
     let mut generation = 0_u64;
     loop {
         let _ = state.send(ConnectionState::Starting);
-        match spawn_initialized_process(&home_directory).await {
+        match spawn_initialized_process(agent_cli, &home_directory).await {
             Ok(mut process) => {
                 generation += 1;
                 retry_delay = INITIAL_RETRY_DELAY;
@@ -204,18 +280,19 @@ async fn run_supervisor(
                 let _ = state.send(ConnectionState::Ready(connection));
                 tracing::info!(
                     target: "ora_backend::agent_runtime",
+                    agent_cli = agent_cli.database_value(),
                     generation,
                     process_id = process.child.id(),
-                    "OpenCode runtime is ready"
+                    "agent CLI runtime is ready"
                 );
                 let shutting_down =
                     run_process_generation(&mut process, &routes, &mut shutdown).await;
                 active_generation.store(0, Ordering::Release);
                 let _ = state.send(ConnectionState::Unavailable);
                 let error =
-                    runtime_internal("agent_runtime_unavailable", "OpenCode connection was lost");
+                    runtime_internal("agent_runtime_unavailable", "agent CLI connection was lost");
                 routes.fail_generation(generation, error);
-                mark_running_sessions_stopped(&pool, clock);
+                mark_running_sessions_stopped(&pool, clock, agent_cli);
                 if shutting_down {
                     stop_process_with_grace(&process.child).await;
                     return;
@@ -223,16 +300,18 @@ async fn run_supervisor(
                 terminate_and_reap(&process.child).await;
                 tracing::warn!(
                     target: "ora_backend::agent_runtime",
+                    agent_cli = agent_cli.database_value(),
                     generation,
-                    "OpenCode connection failed; scheduling restart"
+                    "agent CLI connection failed; scheduling restart"
                 );
             }
             Err(error) => {
                 let _ = state.send(ConnectionState::Unavailable);
                 tracing::warn!(
                     target: "ora_backend::agent_runtime",
+                    agent_cli = agent_cli.database_value(),
                     error = %error,
-                    "OpenCode startup failed; scheduling retry"
+                    "agent CLI startup failed; scheduling retry"
                 );
             }
         }
@@ -272,7 +351,7 @@ async fn run_process_generation(
                         tracing::warn!(
                             target: "ora_backend::agent_runtime",
                             error = %error,
-                            "OpenCode ACP connection failed"
+                            "agent CLI ACP connection failed"
                         );
                         return false;
                     }
@@ -284,30 +363,33 @@ async fn run_process_generation(
     }
 }
 
-/// Starts OpenCode in the neutral home directory and completes the ACP handshake.
-async fn spawn_initialized_process(home_directory: &Path) -> Result<SharedProcess, BackendError> {
-    let executable = resolve_opencode_path(home_directory)?;
+/// Starts one CLI in the neutral home directory and completes the ACP handshake.
+async fn spawn_initialized_process(
+    agent_cli: AgentCli,
+    home_directory: &Path,
+) -> Result<SharedProcess, BackendError> {
+    let executable = resolve_agent_cli_path(agent_cli, home_directory)?;
     if !executable.is_file() {
         return Err(runtime_internal(
-            "opencode_not_found",
-            format!("OpenCode executable not found: {}", executable.display()),
+            "agent_cli_not_found",
+            format!("agent CLI executable not found: {}", executable.display()),
         ));
     }
     let mut child = TokioProcessSpawner::new()
         .spawn(ProcessSpec::new(executable).arg("acp").cwd(home_directory))
-        .map_err(|_| runtime_internal("agent_start_failed", "failed to start OpenCode"))?;
+        .map_err(|_| runtime_internal("agent_start_failed", "failed to start agent CLI"))?;
     let Some(stdin) = child.take_stdin() else {
         terminate_and_reap(&child).await;
         return Err(runtime_internal(
             "agent_start_failed",
-            "OpenCode stdin is unavailable",
+            "agent CLI stdin is unavailable",
         ));
     };
     let Some(stdout) = child.take_stdout() else {
         terminate_and_reap(&child).await;
         return Err(runtime_internal(
             "agent_start_failed",
-            "OpenCode stdout is unavailable",
+            "agent CLI stdout is unavailable",
         ));
     };
     if let Some(stderr) = child.take_stderr() {
@@ -332,7 +414,7 @@ async fn spawn_initialized_process(home_directory: &Path) -> Result<SharedProces
             terminate_and_reap(&child).await;
             return Err(runtime_internal(
                 "agent_initialize_timeout",
-                "OpenCode initialization timed out",
+                "agent CLI initialization timed out",
             ));
         }
     };
@@ -351,14 +433,14 @@ async fn spawn_initialized_process(home_directory: &Path) -> Result<SharedProces
     })
 }
 
-/// Persists connection loss without coupling supervisor recovery to individual actors.
-fn mark_running_sessions_stopped(pool: &RepositoryPool, clock: SystemClock) {
+/// Persists one CLI's connection loss without stopping sessions owned by healthy CLIs.
+fn mark_running_sessions_stopped(pool: &RepositoryPool, clock: SystemClock, agent_cli: AgentCli) {
     let repository = SqliteSessionRepository::new(pool.clone());
     let Ok(sessions) = repository.list_sessions() else {
         return;
     };
     for session in sessions {
-        if session.status == SessionStatus::Running {
+        if session.agent_cli == agent_cli && session.status == SessionStatus::Running {
             let _ = repository.update_session(
                 session.with_status(SessionStatus::Stopped, clock.now_timestamp_millis()),
             );
@@ -366,7 +448,7 @@ fn mark_running_sessions_stopped(pool: &RepositoryPool, clock: SystemClock) {
     }
 }
 
-/// Reaps a failed process before replacement so two OpenCode generations cannot overlap.
+/// Reaps a failed process before replacement so two generations of one CLI cannot overlap.
 async fn terminate_and_reap(child: &TokioManagedProcess) {
     let _ = child.kill().await;
     let _ = child.wait().await;
@@ -384,6 +466,7 @@ async fn stop_process_with_grace(child: &TokioManagedProcess) {
 #[cfg(test)]
 mod tests {
     use super::spawn_runtime_thread;
+    use ora_domain::AgentCli;
     use pretty_assertions::assert_eq;
     use std::time::Duration;
 
@@ -392,7 +475,7 @@ mod tests {
     fn starts_a_dedicated_runtime_thread() {
         let (sender, receiver) = std::sync::mpsc::channel();
 
-        spawn_runtime_thread(async move {
+        spawn_runtime_thread(AgentCli::OpenCode, async move {
             sender.send("ready").expect("send runtime signal");
         })
         .expect("start runtime thread");

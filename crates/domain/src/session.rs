@@ -1,7 +1,47 @@
 use crate::{AuditFields, DomainModelError, TaskId};
 use serde::{Deserialize, Serialize};
 
-/// Captures whether a conversation is registered on the shared OpenCode connection.
+/// Identifies the application-scoped CLI process that owns a provider session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AgentCli {
+    OpenCode,
+    Nga,
+    CodeAgentCli,
+}
+
+impl AgentCli {
+    pub const ALL: [Self; 3] = [Self::OpenCode, Self::Nga, Self::CodeAgentCli];
+
+    /// Returns the namespaced text persisted independently of enum declaration order.
+    pub fn database_value(self) -> &'static str {
+        match self {
+            Self::OpenCode => "ora-space.opencode",
+            Self::Nga => "ora-space.nga",
+            Self::CodeAgentCli => "ora-space.codeagentcli",
+        }
+    }
+
+    /// Restores a CLI identity while rejecting unknown persisted namespaces.
+    pub fn from_database_value(value: &str) -> Result<Self, DomainModelError> {
+        match value {
+            "ora-space.opencode" => Ok(Self::OpenCode),
+            "ora-space.nga" => Ok(Self::Nga),
+            "ora-space.codeagentcli" => Ok(Self::CodeAgentCli),
+            _ => Err(DomainModelError::InvalidAgentCli(value.to_string())),
+        }
+    }
+
+    /// Returns the executable basename used by PATH lookup on Windows.
+    pub fn executable_name(self) -> &'static str {
+        match self {
+            Self::OpenCode => "opencode",
+            Self::Nga => "nga",
+            Self::CodeAgentCli => "codeagentcli",
+        }
+    }
+}
+
+/// Captures whether a conversation is registered on its shared CLI connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionStatus {
     Running,
@@ -32,6 +72,7 @@ impl SessionStatus {
 pub struct Session {
     pub id: crate::SessionId,
     pub task_id: TaskId,
+    pub agent_cli: AgentCli,
     pub agent_session_id: String,
     pub status: SessionStatus,
     pub audit_fields: AuditFields,
@@ -42,6 +83,7 @@ impl Session {
     pub fn new(
         id: crate::SessionId,
         task_id: TaskId,
+        agent_cli: AgentCli,
         agent_session_id: impl Into<String>,
         status: SessionStatus,
         audit_fields: AuditFields,
@@ -49,6 +91,7 @@ impl Session {
         Self {
             id,
             task_id,
+            agent_cli,
             agent_session_id: agent_session_id.into(),
             status,
             audit_fields,

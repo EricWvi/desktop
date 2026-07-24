@@ -22,6 +22,7 @@ const TASK: Task = { id: "t1", projectId: "p1", title: "Refactor", status: "todo
 const SESSION: Session = {
   id: "s1",
   taskId: "t1",
+  agentCli: "open_code",
   status: "running",
 };
 

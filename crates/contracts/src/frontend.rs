@@ -82,6 +82,7 @@ pub const SESSION_LOAD_PATH: &str = "/api/sessions/{sessionId}/load";
 pub const SESSION_PROMPT_PATH: &str = "/api/sessions/{sessionId}/prompt";
 pub const SESSION_PERMISSION_RESPONSE_PATH: &str = "/api/sessions/{sessionId}/permissions/respond";
 pub const SESSION_STOP_PATH: &str = "/api/sessions/{sessionId}/stop";
+pub const AGENT_MODELS_PATH: &str = "/api/agent-models";
 pub const SKILLS_PATH: &str = "/api/skills";
 pub const SKILL_PATH: &str = "/api/skills/{skillId}";
 pub const AGENTS_PATH: &str = "/api/agents";
@@ -118,6 +119,7 @@ const PROJECT_NAMESPACE: &str = "project";
 const PROJECT_WORK_CONTEXT_NAMESPACE: &str = "projectWorkContext";
 const TASK_NAMESPACE: &str = "task";
 const SESSION_NAMESPACE: &str = "session";
+const AGENT_RUNTIME_NAMESPACE: &str = "agentRuntime";
 const SKILL_NAMESPACE: &str = "skill";
 const AGENT_NAMESPACE: &str = "agent";
 const FILE_SYSTEM_NAMESPACE: &str = "fileSystem";
@@ -276,6 +278,17 @@ const FRONTEND_ENDPOINTS: &[FrontendEndpoint] = &[
         response_type: "CreateSessionResponse",
         path_params: NO_PATH_PARAMS,
         has_json_body: true,
+    },
+    FrontendEndpoint {
+        operation_name: "listAgentModels",
+        namespace: AGENT_RUNTIME_NAMESPACE,
+        member_name: "listModels",
+        method: FrontendHttpMethod::Get,
+        path_template: AGENT_MODELS_PATH,
+        request_type: "ListAgentModelsRequest",
+        response_type: "ListAgentModelsResponse",
+        path_params: NO_PATH_PARAMS,
+        has_json_body: false,
     },
     FrontendEndpoint {
         operation_name: "getSession",

@@ -1,9 +1,9 @@
 use crate::{
-    AgentDefinition, AgentDefinitionId, Artifact, ArtifactId, AuditFields, DomainModelError,
-    Project, ProjectId, ProjectWorkContext, ProjectWorkContextId, ProjectWorkContextSurface,
-    Session, SessionId, SessionStatus, Skill, SkillId, Task, TaskId, TaskStatus, VirtualEntry,
-    VirtualEntryId, VirtualEntryKind, VirtualFolder, VirtualFolderId, Worktree, WorktreeActivity,
-    WorktreeId,
+    AgentCli, AgentDefinition, AgentDefinitionId, Artifact, ArtifactId, AuditFields,
+    DomainModelError, Project, ProjectId, ProjectWorkContext, ProjectWorkContextId,
+    ProjectWorkContextSurface, Session, SessionId, SessionStatus, Skill, SkillId, Task, TaskId,
+    TaskStatus, VirtualEntry, VirtualEntryId, VirtualEntryKind, VirtualFolder, VirtualFolderId,
+    Worktree, WorktreeActivity, WorktreeId,
 };
 use pretty_assertions::assert_eq;
 
@@ -66,6 +66,7 @@ fn constructs_schema_backed_entities() {
     let session = Session::new(
         SessionId::new("session-1"),
         task.id.clone(),
+        AgentCli::OpenCode,
         "agent-session-1",
         SessionStatus::Running,
         audit_fields.clone(),
@@ -163,6 +164,7 @@ fn constructs_schema_backed_entities() {
         Session {
             id: SessionId::new("session-1"),
             task_id: TaskId::new("task-1"),
+            agent_cli: AgentCli::OpenCode,
             agent_session_id: "agent-session-1".to_string(),
             status: SessionStatus::Running,
             audit_fields: audit_fields.clone(),
@@ -205,6 +207,36 @@ fn rejects_blank_skill_and_agent_definition_names() {
             audit_fields,
         ),
         Err(DomainModelError::EmptyAgentDefinitionName)
+    );
+}
+
+/// Verifies CLI identities use the reviewed namespaced database representation.
+#[test]
+fn maps_agent_cli_database_values() {
+    assert_eq!(
+        AgentCli::ALL.map(AgentCli::database_value),
+        [
+            "ora-space.opencode",
+            "ora-space.nga",
+            "ora-space.codeagentcli",
+        ]
+    );
+    assert_eq!(
+        [
+            "ora-space.opencode",
+            "ora-space.nga",
+            "ora-space.codeagentcli",
+        ]
+        .map(AgentCli::from_database_value),
+        [
+            Ok(AgentCli::OpenCode),
+            Ok(AgentCli::Nga),
+            Ok(AgentCli::CodeAgentCli),
+        ]
+    );
+    assert_eq!(
+        AgentCli::from_database_value("opencode"),
+        Err(DomainModelError::InvalidAgentCli("opencode".to_string()))
     );
 }
 

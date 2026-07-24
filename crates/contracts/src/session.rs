@@ -5,7 +5,17 @@ use crate::acp::tool_call::ToolCallUpdate;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Describes whether a persisted session is registered on the shared OpenCode connection.
+/// Identifies the shared CLI runtime selected for a provider-backed session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "session.ts")]
+pub enum AgentCli {
+    OpenCode,
+    Nga,
+    CodeAgentCli,
+}
+
+/// Describes whether a persisted session is registered on its shared CLI connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "session.ts")]
@@ -21,15 +31,40 @@ pub enum SessionStatus {
 pub struct Session {
     pub id: String,
     pub task_id: String,
+    pub agent_cli: AgentCli,
     pub status: SessionStatus,
 }
 
-/// Creates an OpenCode-backed session for one immutable task.
+/// Creates a provider-backed session on one selected application-scoped CLI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "session.ts")]
 pub struct CreateSessionRequest {
     pub task_id: String,
+    pub agent_cli: AgentCli,
+}
+
+/// Groups the model identifiers reported by one currently available CLI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "session.ts")]
+pub struct AgentCliModels {
+    pub agent_cli: AgentCli,
+    pub models: Vec<String>,
+}
+
+/// Requests model catalogs from every CLI without failing on unavailable runtimes.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "session.ts")]
+pub struct ListAgentModelsRequest {}
+
+/// Returns only CLI groups whose model command completed successfully.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "session.ts")]
+pub struct ListAgentModelsResponse {
+    pub groups: Vec<AgentCliModels>,
 }
 
 /// Returns the created session after the ACP `session/new` handshake succeeds.
@@ -172,9 +207,13 @@ pub struct DeleteSessionResponse {
 
 /// Exports every TypeScript binding declared in this module into the target directory.
 pub(crate) fn export(config: &ts_rs::Config) -> Result<(), ts_rs::ExportError> {
+    AgentCli::export(config)?;
     SessionStatus::export(config)?;
     Session::export(config)?;
     CreateSessionRequest::export(config)?;
+    AgentCliModels::export(config)?;
+    ListAgentModelsRequest::export(config)?;
+    ListAgentModelsResponse::export(config)?;
     CreateSessionResponse::export(config)?;
     GetSessionRequest::export(config)?;
     GetSessionResponse::export(config)?;

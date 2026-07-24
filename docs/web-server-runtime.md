@@ -75,6 +75,7 @@ The persisted runtime exposes CRUD routes for the supported public models:
 - `PUT /api/tasks/{task_id}`
 - `DELETE /api/tasks/{task_id}`
 - `POST /api/sessions`
+- `GET /api/agent-models`
 - `GET /api/sessions`
 - `GET /api/sessions/{session_id}`
 - `POST /api/sessions/{session_id}/load`
@@ -97,7 +98,7 @@ The persisted runtime exposes CRUD routes for the supported public models:
 Request and response payloads use `ora-contracts` DTO shapes, so transport behavior stays aligned with the shared application contract.
 Task payloads do not expose backend-owned worktree identifiers, and the runtime does not expose standalone public worktree CRUD endpoints.
 
-Backend construction immediately supervises one `<home>/.opencode/bin/opencode acp` child rooted at the user's home directory. The server performs `initialize` once per process generation. Session create calls `session/new` on that shared connection; load calls `session/load` using the private provider session id and the Task worktree `cwd`. The public Session payload never exposes that id. Startup or recovery failures do not prevent non-agent APIs from serving; agent operations return `agent_runtime_unavailable` until a generation is ready.
+Backend construction immediately attempts `<home>/.opencode/bin/opencode acp`, `<home>/.nga/bin/nga acp`, and `<home>/.codeagentcli/bin/codeagentcli acp` children rooted at the user's home directory. Each independent supervisor performs `initialize` once per process generation and retries failures without blocking healthy CLIs or non-agent APIs. Session create calls `session/new` on the connection selected by `agentCli`; load calls `session/load` using the private provider session id and the Task worktree `cwd`. The public Session payload never exposes that id. `GET /api/agent-models` concurrently runs each CLI's bounded `models` discovery command and returns only successful groups.
 
 Load and prompt responses use `application/x-ndjson`. Each line is one complete frame. Data and control paths are separate, session-update queues are bounded at 256 items, frames are limited to 8 MiB, and overflow terminates the operation rather than dropping updates silently.
 

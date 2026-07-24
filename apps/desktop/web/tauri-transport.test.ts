@@ -19,6 +19,21 @@ describe("createTauriTransport", () => {
     expect(invoke).toHaveBeenCalledWith("list_projects", { request: {} });
   });
 
+  it("maps model discovery to the dedicated desktop command", async () => {
+    const invoke = vi.fn().mockResolvedValue({ groups: [] });
+    const transport = createTauriTransport(invoke);
+
+    await expect(transport.send({
+      operationName: "listAgentModels",
+      request: {},
+      method: "GET",
+      path: "/api/agent-models",
+      body: undefined,
+      headers: {},
+    })).resolves.toEqual({ groups: [] });
+    expect(invoke).toHaveBeenCalledWith("list_agent_models", { request: {} });
+  });
+
   it("rejects explicitly unsupported operations before invoking Rust", async () => {
     const invoke = vi.fn();
     const transport = createTauriTransport(invoke, () => ({ onmessage: () => undefined }));

@@ -42,6 +42,7 @@ test("defines one Service Worker handler for every contracts endpoint", () => {
     "getSession",
     "getSkill",
     "getTask",
+    "listAgentModels",
     "listAgents",
     "listDirectory",
     "listProjects",
@@ -59,6 +60,16 @@ test("defines one Service Worker handler for every contracts endpoint", () => {
     "updateSkill",
     "updateTask",
   ]);
+});
+
+test("lists mock models grouped by agent CLI", async () => {
+  assert.deepEqual(await client.agentRuntime.listModels({}), {
+    groups: [
+      { agentCli: "open_code", models: ["opencode/big-pickle"] },
+      { agentCli: "nga", models: ["nga/default"] },
+      { agentCli: "code_agent_cli", models: ["codeagentcli/default"] },
+    ],
+  });
 });
 
 test("lists deterministic mock filesystem directories from home or an explicit query path", async () => {
@@ -198,6 +209,7 @@ test("supports task create, get, update, and delete within one runtime", async (
 test("supports session create, get, stop, and delete within one runtime", async () => {
   const created = await client.session.create({
     taskId: "task-agent-runtime",
+    agentCli: "open_code",
   });
   assert.match(created.session.id, /^session-/);
   assert.deepEqual(await client.session.get({ sessionId: created.session.id }), created);

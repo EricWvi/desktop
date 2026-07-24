@@ -189,6 +189,14 @@ impl Backend {
     ) -> Result<CreateSessionResponse, BackendError> {
         self.agent_runtime.create_session(request).await
     }
+
+    /// Lists model identifiers grouped by each CLI that answers discovery successfully.
+    pub async fn list_agent_models(
+        &self,
+        _request: ListAgentModelsRequest,
+    ) -> Result<ListAgentModelsResponse, BackendError> {
+        Ok(self.agent_runtime.list_agent_models().await)
+    }
     /// Gets one session through the shared application composition.
     pub fn get_session(
         &self,

@@ -35,7 +35,9 @@ describe("WorkspaceView", () => {
         workspaceMode: "worktree",
       },
     ];
-    state.sessions = [{ id: "s1", taskId: "t1", status: "running" }];
+    state.sessions = [
+      { id: "s1", taskId: "t1", agentCli: "open_code", status: "running" },
+    ];
     const client = createMockClient(state);
     const load = vi.fn(async function* () {
       yield { type: "completed" as const };

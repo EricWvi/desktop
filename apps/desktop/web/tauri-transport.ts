@@ -41,6 +41,7 @@ const tauriCommands = {
   updateTask: "update_task",
   deleteTask: "delete_task",
   createSession: "create_session",
+  listAgentModels: "list_agent_models",
   getSession: "get_session",
   listSessions: "list_sessions",
   respondToSessionPermission: "respond_to_session_permission",

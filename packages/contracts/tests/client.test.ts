@@ -146,6 +146,24 @@ test("omits absent optional query parameters", async () => {
   assert.deepEqual(requests[0]?.path, "/api/file-system/directory");
 });
 
+test("builds the agent model discovery request without a body", async () => {
+  const requests: ContractTransportRequest[] = [];
+  const client = createContractsClient(recordingTransport(requests, { groups: [] }));
+
+  await client.agentRuntime.listModels({});
+
+  assert.deepEqual(requests, [
+    {
+      operationName: "listAgentModels",
+      request: {},
+      method: "GET",
+      path: "/api/agent-models",
+      body: undefined,
+      headers: {},
+    },
+  ]);
+});
+
 test("uses a skill id in PUT paths while leaving editable fields in JSON", async () => {
   const requests: ContractTransportRequest[] = [];
   const client = createContractsClient(

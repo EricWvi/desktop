@@ -1,16 +1,17 @@
 # ACP Agent Runtime
 
-`ora-backend` starts one supervised `opencode acp` child for each Backend instance. Every persisted Ora Session owns a serialized actor, but actors share the application-scoped ACP connection and route events by the private provider session id. One Session accepts only one load or prompt operation at a time while different Sessions remain concurrent.
+`ora-backend` starts one independently supervised ACP child for each supported CLI (`opencode`, `nga`, and `codeagentcli`) when a Backend instance opens. Every persisted Ora Session owns a serialized actor, but actors targeting the same CLI share its application-scoped ACP connection and route events by the private provider session id. One Session accepts only one load or prompt operation at a time while different Sessions remain concurrent.
 
 ## Process and Session Lifecycle
 
-- OpenCode is the only agent runtime. Session contracts and persistence do not carry a per-session CLI selection.
+- Session contracts select an `agent_cli`; persistence stores the stable values `ora-space.opencode`, `ora-space.nga`, and `ora-space.codeagentcli` as text.
 - The shared child starts in the user's home directory with the single `acp` argument and piped stdin, stdout, and stderr. Session setup requests carry the owning Task worktree as `cwd`.
 - Task worktrees resolve through Task → stored Worktree id → stored branch name → Git's authoritative worktree metadata. A configured worktree creation root is never used to reconstruct an existing path.
-- Backend startup reconciles stale Running rows to Stopped, then a dedicated runtime thread starts OpenCode and performs `initialize`. Owning the runtime here is necessary because synchronous Desktop bootstrap does not guarantee an ambient Tokio runtime. Startup failures leave Ora available, and the supervisor retries with capped exponential backoff.
+- Backend startup reconciles stale Running rows to Stopped, then one dedicated runtime thread per CLI attempts startup and performs `initialize`. Owning the runtimes here is necessary because synchronous Desktop bootstrap does not guarantee an ambient Tokio runtime. Each CLI retries independently with capped exponential backoff; Ora remains available even if every initial attempt fails, and one unavailable CLI does not disable the others.
 - Create calls `session/new` on the ready shared connection and persists the Ora Session only after setup succeeds. The guarded insert fails if its Task was deleted while the handshake was in flight.
 - Load registers a route on the current connection generation, marks the row Running, and calls `session/load` with the private `agentSessionId`. Every setup or replay failure restores Stopped.
-- Connection loss fails all in-flight operations, marks every registered Session Stopped, terminates and reaps the old process tree, and only then starts a replacement. Sessions are loaded again only on demand; prompts are never replayed automatically.
+- Connection loss fails that CLI's in-flight operations, marks only its registered Sessions Stopped, terminates and reaps the old process tree, and only then starts a replacement. Sessions are loaded again only on demand; prompts are never replayed automatically.
+- Model discovery runs each CLI's bounded `models` command concurrently. The response is grouped by `agent_cli` and omits CLIs whose command is missing, fails, emits invalid UTF-8, or exceeds the timeout, allowing partial results.
 
 ## Flow Control
 
@@ -24,4 +25,4 @@ Dropping a Web body, closing a Tauri stream, or aborting the frontend `AsyncIter
 
 Ora deletion removes only Ora-owned database records. It does not call ACP session delete and does not touch Git branches or worktrees. Session deletion serializes against new actor operations, unloads its route, and then soft-deletes the row under the same lifecycle guard. Task and Project deletion reject Running descendants and transactionally cascade stopped Ora records.
 
-Dropping the last Backend owner asks the supervisor to stop accepting work, cancels routed operations, and initiates bounded termination and reaping of the OpenCode process tree. The process remains alive while the Backend exists even when no Sessions are registered.
+Dropping the last Backend owner asks every supervisor to stop accepting work, cancels routed operations, and initiates bounded termination and reaping of each CLI process tree. Successful processes remain alive while the Backend exists even when no Sessions are registered.

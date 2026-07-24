@@ -8,9 +8,10 @@ use futures_util::stream;
 use ora_backend::{BackendError, SessionEventStream};
 use ora_contracts::{
     CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest, DeleteSessionResponse,
-    GetSessionRequest, GetSessionResponse, ListSessionsRequest, ListSessionsResponse,
-    LoadSessionRequest, PromptSessionRequest, RespondToPermissionRequest,
-    RespondToPermissionResponse, StopSessionRequest, StopSessionResponse,
+    GetSessionRequest, GetSessionResponse, ListAgentModelsRequest, ListAgentModelsResponse,
+    ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, PromptSessionRequest,
+    RespondToPermissionRequest, RespondToPermissionResponse, StopSessionRequest,
+    StopSessionResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
@@ -53,6 +54,18 @@ pub async fn create_session(
     app_state
         .backend()
         .create_session(request)
+        .await
+        .map(Json)
+        .map_err(WebApiError::from)
+}
+
+/// Lists models grouped by every CLI whose discovery command succeeds.
+pub async fn list_agent_models(
+    State(app_state): State<AppState>,
+) -> Result<Json<ListAgentModelsResponse>, WebApiError> {
+    app_state
+        .backend()
+        .list_agent_models(ListAgentModelsRequest {})
         .await
         .map(Json)
         .map_err(WebApiError::from)

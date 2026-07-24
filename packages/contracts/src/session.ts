@@ -5,9 +5,19 @@ import type { SessionUpdate } from "./acp/session.js";
 import type { ToolCallUpdate } from "./acp/tool_call.js";
 
 /**
- * Creates an OpenCode-backed session for one immutable task.
+ * Identifies the shared CLI runtime selected for a provider-backed session.
  */
-export type CreateSessionRequest = { taskId: string };
+export type AgentCli = "open_code" | "nga" | "code_agent_cli";
+
+/**
+ * Groups the model identifiers reported by one currently available CLI.
+ */
+export type AgentCliModels = { agentCli: AgentCli; models: Array<string> };
+
+/**
+ * Creates a provider-backed session on one selected application-scoped CLI.
+ */
+export type CreateSessionRequest = { taskId: string; agentCli: AgentCli };
 
 /**
  * Returns the created session after the ACP `session/new` handshake succeeds.
@@ -33,6 +43,16 @@ export type GetSessionRequest = { sessionId: string };
  * Returns one session payload after a successful fetch.
  */
 export type GetSessionResponse = { session: Session };
+
+/**
+ * Requests model catalogs from every CLI without failing on unavailable runtimes.
+ */
+export type ListAgentModelsRequest = Record<symbol, never>;
+
+/**
+ * Returns only CLI groups whose model command completed successfully.
+ */
+export type ListAgentModelsResponse = { groups: Array<AgentCliModels> };
 
 /**
  * Requests the full visible session list.
@@ -87,7 +107,12 @@ export type RespondToPermissionResponse = Record<symbol, never>;
 /**
  * Describes the public session payload without exposing the provider session identifier.
  */
-export type Session = { id: string; taskId: string; status: SessionStatus };
+export type Session = {
+  id: string;
+  taskId: string;
+  agentCli: AgentCli;
+  status: SessionStatus;
+};
 
 /**
  * Exposes an opaque permission request while preserving the agent's typed option payload.
@@ -99,7 +124,7 @@ export type SessionPermissionRequest = {
 };
 
 /**
- * Describes whether a persisted session is registered on the shared OpenCode connection.
+ * Describes whether a persisted session is registered on its shared CLI connection.
  */
 export type SessionStatus = "running" | "stopped";
 

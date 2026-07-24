@@ -108,7 +108,7 @@ impl RuntimeActor {
             let _ = events.try_send(Err(BackendError::new(
                 BackendErrorKind::Conflict,
                 "session_load_unsupported",
-                "OpenCode does not support session/load",
+                "agent CLI does not support session/load",
             )));
             self.mark_stopped();
             return;
@@ -201,7 +201,7 @@ impl RuntimeActor {
                     self.cancel(&client, &HashMap::new()).await;
                     let _ = events.try_send(Err(runtime_internal(
                         "agent_load_timeout",
-                        "OpenCode session load timed out",
+                        "agent CLI session load timed out",
                     )));
                     self.isolate_channel(channel).await;
                     return;
@@ -419,7 +419,7 @@ impl RuntimeActor {
         }
     }
 
-    /// Detaches one routed session while leaving the shared OpenCode process available.
+    /// Detaches one routed session while leaving the shared CLI process available.
     async fn isolate_channel(&mut self, channel: SessionChannel) {
         if channel.connection.close_session_supported {
             let _ = timeout(

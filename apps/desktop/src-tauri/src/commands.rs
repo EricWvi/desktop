@@ -130,6 +130,19 @@ pub async fn create_session(
         .await
         .map_err(CommandError::from)
 }
+
+/// Lists models grouped by every CLI whose discovery command succeeds.
+#[tauri::command]
+pub async fn list_agent_models(
+    state: State<'_, DesktopState>,
+    request: ListAgentModelsRequest,
+) -> Result<ListAgentModelsResponse, CommandError> {
+    state
+        .backend
+        .list_agent_models(request)
+        .await
+        .map_err(CommandError::from)
+}
 backend_command!(
     get_session,
     GetSessionRequest,

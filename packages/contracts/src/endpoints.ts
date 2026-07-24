@@ -4,7 +4,7 @@ import type { ListDirectoryRequest, ListDirectoryResponse } from "./file-system.
 import type { GetGitIdentityRequest, GitIdentityResponse } from "./git.js";
 import type { CreateProjectRequest, CreateProjectResponse, DeleteProjectRequest, DeleteProjectResponse, GetProjectRequest, GetProjectResponse, ListProjectsRequest, ListProjectsResponse, UpdateProjectRequest, UpdateProjectResponse } from "./project.js";
 import type { OpenProjectWorkContextRequest, OpenProjectWorkContextResponse, RenewProjectWorkContextRequest, RenewProjectWorkContextResponse } from "./project-work-context.js";
-import type { CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest, DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionEvent, LoadSessionRequest, PromptSessionEvent, PromptSessionRequest, RespondToPermissionRequest, RespondToPermissionResponse, StopSessionRequest, StopSessionResponse } from "./session.js";
+import type { CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest, DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ListAgentModelsRequest, ListAgentModelsResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionEvent, LoadSessionRequest, PromptSessionEvent, PromptSessionRequest, RespondToPermissionRequest, RespondToPermissionResponse, StopSessionRequest, StopSessionResponse } from "./session.js";
 import type { CreateSkillRequest, CreateSkillResponse, DeleteSkillRequest, DeleteSkillResponse, GetSkillRequest, GetSkillResponse, ListSkillsRequest, ListSkillsResponse, UpdateSkillRequest, UpdateSkillResponse } from "./skill.js";
 import type { CreateTaskRequest, CreateTaskResponse, DeleteTaskRequest, DeleteTaskResponse, GetTaskRequest, GetTaskResponse, ListTasksRequest, ListTasksResponse, UpdateTaskRequest, UpdateTaskResponse } from "./task.js";
 import type { HttpMethod } from "./transport.js";
@@ -47,6 +47,7 @@ export type RequestByOperation = {
   updateTask: UpdateTaskRequest;
   deleteTask: DeleteTaskRequest;
   createSession: CreateSessionRequest;
+  listAgentModels: ListAgentModelsRequest;
   getSession: GetSessionRequest;
   listSessions: ListSessionsRequest;
   loadSession: LoadSessionRequest;
@@ -82,6 +83,7 @@ export type ResponseByOperation = {
   updateTask: UpdateTaskResponse;
   deleteTask: DeleteTaskResponse;
   createSession: CreateSessionResponse;
+  listAgentModels: ListAgentModelsResponse;
   getSession: GetSessionResponse;
   listSessions: ListSessionsResponse;
   loadSession: LoadSessionEvent;
@@ -274,6 +276,19 @@ export const endpoints = {
     pathParams: [],
     queryParams: [],
     hasJsonBody: true,
+  },
+  listAgentModels: {
+    operationName: "listAgentModels",
+    namespace: "agentRuntime",
+    memberName: "listModels",
+    method: "GET",
+    pathTemplate: "/api/agent-models",
+    requestType: "ListAgentModelsRequest",
+    responseType: "ListAgentModelsResponse",
+    responseMode: "unary",
+    pathParams: [],
+    queryParams: [],
+    hasJsonBody: false,
   },
   getSession: {
     operationName: "getSession",

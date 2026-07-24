@@ -39,6 +39,7 @@ pub fn run() {
             commands::update_task,
             commands::delete_task,
             commands::create_session,
+            commands::list_agent_models,
             commands::get_session,
             commands::list_sessions,
             commands::respond_to_session_permission,

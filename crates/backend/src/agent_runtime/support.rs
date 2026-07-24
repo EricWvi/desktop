@@ -8,13 +8,13 @@ use ora_contracts::acp::permission::{
     SelectedPermissionOutcome,
 };
 use ora_contracts::{
-    RespondToPermissionRequest, RespondToPermissionResponse, Session as ContractSession,
-    SessionStatus as ContractSessionStatus,
+    AgentCli as ContractAgentCli, RespondToPermissionRequest, RespondToPermissionResponse,
+    Session as ContractSession, SessionStatus as ContractSessionStatus,
 };
 use ora_db::{
     RepositoryPool, SqliteProjectRepository, SqliteTaskRepository, SqliteWorktreeRepository,
 };
-use ora_domain::{Session, SessionStatus, TaskId, WorktreeActivity};
+use ora_domain::{AgentCli, Session, SessionStatus, TaskId, WorktreeActivity};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::process::ChildStdin;
@@ -91,6 +91,7 @@ pub(super) fn contract_session(session: Session) -> ContractSession {
     ContractSession {
         id: session.id.to_string(),
         task_id: session.task_id.to_string(),
+        agent_cli: contract_agent_cli(session.agent_cli),
         status: match session.status {
             SessionStatus::Running => ContractSessionStatus::Running,
             SessionStatus::Stopped => ContractSessionStatus::Stopped,
@@ -98,17 +99,32 @@ pub(super) fn contract_session(session: Session) -> ContractSession {
     }
 }
 
-/// Resolves OpenCode through the Windows executable lookup mechanism for each retry generation.
+/// Maps the stable persisted CLI identity into its transport representation.
+pub(super) fn contract_agent_cli(agent_cli: AgentCli) -> ContractAgentCli {
+    match agent_cli {
+        AgentCli::OpenCode => ContractAgentCli::OpenCode,
+        AgentCli::Nga => ContractAgentCli::Nga,
+        AgentCli::CodeAgentCli => ContractAgentCli::CodeAgentCli,
+    }
+}
+
+/// Resolves one CLI through the Windows executable lookup mechanism for each retry generation.
 #[cfg(windows)]
-pub(super) fn resolve_opencode_path(_home_directory: &Path) -> Result<PathBuf, BackendError> {
+pub(super) fn resolve_agent_cli_path(
+    agent_cli: AgentCli,
+    _home_directory: &Path,
+) -> Result<PathBuf, BackendError> {
     let output = std::process::Command::new("where.exe")
-        .arg("opencode")
+        .arg(agent_cli.executable_name())
         .output()
-        .map_err(|_| runtime_internal("opencode_resolution_failed", "failed to run where.exe"))?;
+        .map_err(|_| runtime_internal("agent_cli_resolution_failed", "failed to run where.exe"))?;
     if !output.status.success() {
         return Err(runtime_internal(
-            "opencode_not_found",
-            "OpenCode executable not found on PATH",
+            "agent_cli_not_found",
+            format!(
+                "{} executable not found on PATH",
+                agent_cli.executable_name()
+            ),
         ));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -122,19 +138,30 @@ pub(super) fn resolve_opencode_path(_home_directory: &Path) -> Result<PathBuf, B
         .map(|path| PathBuf::from(path.trim()))
         .ok_or_else(|| {
             runtime_internal(
-                "opencode_not_found",
-                "OpenCode executable not found on PATH",
+                "agent_cli_not_found",
+                format!(
+                    "{} executable not found on PATH",
+                    agent_cli.executable_name()
+                ),
             )
         })
 }
 
-/// Resolves OpenCode from its fixed per-user Unix installation directory for each retry generation.
+/// Resolves one CLI from its fixed per-user Unix installation directory.
 #[cfg(unix)]
-pub(super) fn resolve_opencode_path(home_directory: &Path) -> Result<PathBuf, BackendError> {
+pub(super) fn resolve_agent_cli_path(
+    agent_cli: AgentCli,
+    home_directory: &Path,
+) -> Result<PathBuf, BackendError> {
+    let installation_directory = match agent_cli {
+        AgentCli::OpenCode => ".opencode",
+        AgentCli::Nga => ".nga",
+        AgentCli::CodeAgentCli => ".codeagentcli",
+    };
     Ok(home_directory
-        .join(".opencode")
+        .join(installation_directory)
         .join("bin")
-        .join("opencode"))
+        .join(agent_cli.executable_name()))
 }
 
 /// Drains child stderr so provider diagnostics can never block the shared process.
@@ -173,11 +200,11 @@ pub(super) fn session_stopped() -> BackendError {
     )
 }
 
-/// Builds the degraded-mode error while OpenCode is starting or recovering.
+/// Builds the degraded-mode error while the selected CLI is starting or recovering.
 pub(super) fn runtime_unavailable() -> BackendError {
     runtime_internal(
         "agent_runtime_unavailable",
-        "OpenCode runtime is unavailable",
+        "agent CLI runtime is unavailable",
     )
 }
 
@@ -202,20 +229,30 @@ fn task_worktree_unavailable() -> BackendError {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::resolve_opencode_path;
+    use super::resolve_agent_cli_path;
+    use ora_domain::AgentCli;
     use pretty_assertions::assert_eq;
     use std::path::PathBuf;
 
     /// Verifies Unix lookup remains relative to the injected user home.
     #[test]
-    fn resolves_unix_opencode_path_from_home_directory() {
+    fn resolves_unix_cli_paths_from_home_directory() {
         let home_directory = PathBuf::from("users").join("demo");
         assert_eq!(
-            resolve_opencode_path(&home_directory).expect("resolve OpenCode path"),
-            home_directory
-                .join(".opencode")
-                .join("bin")
-                .join("opencode")
+            AgentCli::ALL.map(|agent_cli| {
+                resolve_agent_cli_path(agent_cli, &home_directory).expect("resolve agent CLI path")
+            }),
+            [
+                home_directory
+                    .join(".opencode")
+                    .join("bin")
+                    .join("opencode"),
+                home_directory.join(".nga").join("bin").join("nga"),
+                home_directory
+                    .join(".codeagentcli")
+                    .join("bin")
+                    .join("codeagentcli"),
+            ]
         );
     }
 }
