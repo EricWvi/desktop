@@ -1,5 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Project, Task, TaskStatus, TaskWorkspaceMode } from "@ora/contracts";
+import type {
+  AgentCli,
+  Project,
+  Task,
+  TaskStatus,
+  TaskWorkspaceMode,
+} from "@ora/contracts";
 import { useContractsClient } from "../../contracts-client-context";
 import { queryKeys } from "./query-keys";
 import { useWorkspaceSelectionStore } from "../stores/workspace-selection-store";
@@ -19,7 +25,9 @@ export function useCreateProject() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ name, rootPath }: { name: string; rootPath: string }) =>
-      client.project.create({ name, rootPath }).then((response) => response.project),
+      client.project
+        .create({ name, rootPath })
+        .then((response) => response.project),
     onSuccess: (project) => {
       queryClient.setQueryData<Project[]>(queryKeys.projects, (current) => [
         ...(current ?? []).filter((candidate) => candidate.id !== project.id),
@@ -51,7 +59,8 @@ export function useDeleteProject() {
   const client = useContractsClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId }: { projectId: string }) => client.project.delete({ projectId }),
+    mutationFn: ({ projectId }: { projectId: string }) =>
+      client.project.delete({ projectId }),
     onSuccess: (_void, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects });
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks });
@@ -72,15 +81,29 @@ export function useCreateTask() {
   const client = useContractsClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, title, status, workspaceMode }: { projectId: string; title: string; status: TaskStatus; workspaceMode?: TaskWorkspaceMode }) =>
-      client.task.create({ projectId, title, status, workspaceMode }).then((response) => response.task),
+    mutationFn: ({
+      projectId,
+      title,
+      status,
+      workspaceMode,
+    }: {
+      projectId: string;
+      title: string;
+      status: TaskStatus;
+      workspaceMode?: TaskWorkspaceMode;
+    }) =>
+      client.task
+        .create({ projectId, title, status, workspaceMode })
+        .then((response) => response.task),
     onSuccess: (task) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks });
       // Worktrees preserve the original Task -> Session flow. A direct chat
       // waits until its provider session is ready before changing selection,
       // avoiding an intermediate task-only state in the composer.
       if (task.workspaceMode === "worktree") {
-        useWorkspaceSelectionStore.getState().selectTask(task.id, task.projectId);
+        useWorkspaceSelectionStore
+          .getState()
+          .selectTask(task.id, task.projectId);
       }
       // Reveal the new row. Expanding here rather than reacting to the selection
       // keeps a plain row click free to collapse what it just selected.
@@ -94,7 +117,15 @@ export function useUpdateTask() {
   const client = useContractsClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ task, title, status }: { task: Task; title: string; status: TaskStatus }) =>
+    mutationFn: ({
+      task,
+      title,
+      status,
+    }: {
+      task: Task;
+      title: string;
+      status: TaskStatus;
+    }) =>
       client.task
         .update({ taskId: task.id, title, status })
         .then((response) => response.task),
@@ -109,13 +140,16 @@ export function useDeleteTask() {
   const client = useContractsClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskId }: { taskId: string }) => client.task.delete({ taskId }),
+    mutationFn: ({ taskId }: { taskId: string }) =>
+      client.task.delete({ taskId }),
     onSuccess: (_void, { taskId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks });
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
       const selection = useWorkspaceSelectionStore.getState().selection;
       if (selection.taskId === taskId) {
-        useWorkspaceSelectionStore.getState().clearTaskSelection(selection.projectId ?? "");
+        useWorkspaceSelectionStore
+          .getState()
+          .clearTaskSelection(selection.projectId ?? "");
       }
     },
   });
@@ -127,9 +161,15 @@ export function useCreateSession() {
   const queryClient = useQueryClient();
   const chatStore = useChatStore();
   return useMutation({
-    mutationFn: async ({ taskId }: { taskId: string }) => {
+    mutationFn: async ({
+      taskId,
+      agentCli,
+    }: {
+      taskId: string;
+      agentCli: string;
+    }) => {
       return client.session
-        .create({ taskId })
+        .create({ taskId, agentCli: agentCli as AgentCli })
         .then((response) => response.session);
     },
     onSuccess: (session) => {
@@ -141,7 +181,9 @@ export function useCreateSession() {
       const tasks = readCache<Task>(queryClient, queryKeys.tasks);
       const task = tasks.find((candidate) => candidate.id === session.taskId);
       if (task) {
-        useWorkspaceSelectionStore.getState().selectSession(session.id, task.id, task.projectId);
+        useWorkspaceSelectionStore
+          .getState()
+          .selectSession(session.id, task.id, task.projectId);
         // Both ancestors, since the session sits two levels down.
         useUiStore.getState().expandProject(task.projectId);
         useUiStore.getState().expandTask(task.id);

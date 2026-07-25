@@ -17,6 +17,7 @@ import { useSessions } from "../../state/hooks/use-sessions";
 import { queryKeys } from "../../state/hooks/query-keys";
 import { useContractsClient } from "../../contracts-client-context";
 import { useUiStore } from "../../state/stores/ui-store";
+import { useSettingsStore } from "../../state/stores/settings-store";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import { useChatStore } from "../../chat-store-context";
 import { DragRegion } from "../../components/drag-region";
@@ -55,6 +56,7 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
   const selection = useWorkspaceSelectionStore((s) => s.selection);
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
+  const settingsAgentCli = useSettingsStore((s) => s.settings.agentCli);
 
   const chatStore = useChatStore();
   const client = useContractsClient();

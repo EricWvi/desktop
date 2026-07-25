@@ -1,16 +1,16 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import type { AgentCli } from "@ora/contracts";
 
 export type ThemeMode = "system" | "light" | "dark";
 export type InterfaceDensity = "comfortable" | "compact";
-export type ModelProvider = "openai" | "anthropic" | "local";
 export type ApprovalPolicy = "always" | "risky" | "trusted";
 export type HistoryRetention = "30-days" | "90-days" | "forever";
 
 export interface SettingsPreferences {
   theme: ThemeMode;
   density: InterfaceDensity;
-  provider: ModelProvider;
+  agentCli: AgentCli;
   model: string;
   approvalPolicy: ApprovalPolicy;
   terminalAccess: boolean;
@@ -26,8 +26,8 @@ const SETTINGS_STORAGE_KEY = "ora.settings.v1";
 export const DEFAULT_SETTINGS: SettingsPreferences = {
   theme: "system",
   density: "comfortable",
-  provider: "openai",
-  model: "gpt-5.1-codex",
+  agentCli: "open_code",
+  model: "",
   approvalPolicy: "trusted",
   terminalAccess: true,
   fileWriteAccess: true,

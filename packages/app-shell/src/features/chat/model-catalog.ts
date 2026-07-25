@@ -1,22 +1,44 @@
-import type { ModelProvider } from "../../state/stores/settings-store";
+import type { AgentCli } from "@ora/contracts";
+import { useAgentModels } from "../../state/hooks/use-agent-models";
 
 /**
- * The models offered per provider. This is a hard-coded prototype catalog: the
- * backend contract does not expose a model list yet, so both the composer's
- * model selector and the settings dialog read from here to stay in sync.
+ * Human-facing CLI names shown in the model selector and other surfaces.
+ * Labels are stable product names, not user-generated data, so they stay
+ * hardcoded. The model lists themselves come from the `listAgentModels` API.
  */
-export const PROVIDER_MODELS: Record<ModelProvider, string[]> = {
-  openai: ["gpt-5.1-codex", "gpt-5.1", "gpt-4.1"],
-  anthropic: ["claude-sonnet-4.5", "claude-opus-4.1"],
-  local: ["qwen3-coder", "deepseek-r1"],
+export const AGENT_CLI_LABELS: Record<AgentCli, string> = {
+  open_code: "OpenCode",
+  nga: "NGA",
+  code_agent_cli: "CodeAgentCLI",
 };
 
-/** Human-facing provider names shown next to the logo when the selector expands. */
-export const PROVIDER_LABELS: Record<ModelProvider, string> = {
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  local: "Local",
-};
+/**
+ * The order used when listing every CLI's models in the dropdown.
+ * Derived from a stable preference, with the active CLI moved to the front
+ * so it is always immediately reachable.
+ */
+export function orderedGroups(
+  groups: Array<{ agentCli: AgentCli; models: Array<string> }>,
+  activeCli: AgentCli,
+) {
+  const preferred: AgentCli[] = ["open_code", "nga", "code_agent_cli"];
+  const sorted = [...groups].sort(
+    (a, b) => preferred.indexOf(a.agentCli) - preferred.indexOf(b.agentCli),
+  );
+  if (sorted.findIndex((g) => g.agentCli === activeCli) > 0) {
+    const idx = sorted.findIndex((g) => g.agentCli === activeCli);
+    if (idx > 0) {
+      const [moved] = sorted.splice(idx, 1);
+      sorted.unshift(moved!);
+    }
+  }
+  return sorted;
+}
 
-/** The provider order used when listing every provider's models. */
-export const PROVIDERS = Object.keys(PROVIDER_MODELS) as ModelProvider[];
+/**
+ * Convenience hook that delegates to `useAgentModels` so the selector doesn't
+ * need to reach into the hooks directory directly.
+ */
+export function useAvailableModels() {
+  return useAgentModels();
+}

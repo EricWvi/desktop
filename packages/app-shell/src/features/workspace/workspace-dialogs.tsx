@@ -24,6 +24,7 @@ import {
   useDeleteSession,
 } from "../../state/hooks/use-workspace-mutations";
 import { useUiStore, type DialogState, type DeleteTarget } from "../../state/stores/ui-store";
+import { useSettingsStore } from "../../state/stores/settings-store";
 
 /** Derives a project name from either a Windows or POSIX directory path. */
 export function projectNameFromPath(rootPath: string): string {
@@ -129,6 +130,7 @@ function WorkspaceEntityDialog({ dialog, onOpenChange }: { dialog: DialogState; 
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
   const createSession = useCreateSession();
+  const settingsAgentCli = useSettingsStore((state) => state.settings.agentCli);
   let title: string;
   let description: string | undefined;
   let fields: EntityField[];
@@ -192,7 +194,7 @@ function WorkspaceEntityDialog({ dialog, onOpenChange }: { dialog: DialogState; 
     fields = [];
     submit = async () => {
       if (!dialog.entity) {
-        await createSession.mutateAsync({ taskId: dialog.taskId, agentCli: "open_code" });
+        await createSession.mutateAsync({ taskId: dialog.taskId, agentCli: settingsAgentCli });
       }
     };
   }

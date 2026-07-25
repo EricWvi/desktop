@@ -1,18 +1,48 @@
+import { createElement, type ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ChatThought, ChatToolCall, ChatTurn, ChatTurnItem } from "@ora/chat";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@ora/ui";
 import { AppI18nProvider } from "../../i18n/i18n";
+import { ContractsClientContext } from "../../contracts-client-context";
+import { createMockClient, createMockClientState } from "../../test/mock-client";
 import { ChatView } from "./chat-view";
 import { Composer } from "./composer";
 import { ConversationNavigator } from "./conversation-navigator";
 import { MessageList } from "./message-list";
 
-/** Renders chat components with the same isolated i18n provider as AppShell. */
-function renderWithI18n(element: React.ReactNode) {
-  return render(<AppI18nProvider>{element}</AppI18nProvider>);
+/** Stale-time-zero QueryClient so tests don't need to wait for refetch intervals. */
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+}
+
+/** Renders chat components wrapped in all providers required by the app shell. */
+function renderWithI18n(element: ReactNode) {
+  const client = createMockClient(createMockClientState());
+  const queryClient = createTestQueryClient();
+  return {
+    ...render(
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(
+          ContractsClientContext.Provider,
+          { value: client },
+          createElement(AppI18nProvider, null, element),
+        ),
+      ),
+    ),
+    client,
+    queryClient,
+  };
 }
 
 /** Builds one response turn so tests can describe threads without protocol plumbing. */

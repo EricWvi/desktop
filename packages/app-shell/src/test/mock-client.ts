@@ -116,7 +116,13 @@ export function createMockClient(state: MockClientState): ContractsClient {
       },
     },
     agentRuntime: {
-      listModels: async () => ({ groups: [] }),
+      listModels: async () => ({
+        groups: [
+          { agentCli: "open_code", models: ["opencode/big-pickle", "opencode/small-pickle"] },
+          { agentCli: "nga", models: ["nga/default"] },
+          { agentCli: "code_agent_cli", models: ["codeagentcli/default"] },
+        ],
+      }),
     },
     agent: {
       list: async () => ({ agents: [...state.agents] }),

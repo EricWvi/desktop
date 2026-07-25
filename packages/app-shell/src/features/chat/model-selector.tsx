@@ -8,29 +8,34 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@ora/ui";
-import { IconCheck, IconChevronDown } from "@tabler/icons-react";
-import type { ModelProvider } from "../../state/stores/settings-store";
+import { IconCheck, IconChevronDown, IconLoader2 } from "@tabler/icons-react";
+import type { AgentCli } from "@ora/contracts";
 import { useSettingsStore } from "../../state/stores/settings-store";
-import { PROVIDER_LABELS, PROVIDER_MODELS, PROVIDERS } from "./model-catalog";
+import { AGENT_CLI_LABELS, orderedGroups, useAvailableModels } from "./model-catalog";
 import { ProviderLogo } from "./provider-logos";
 
 /**
- * The composer's model picker. Collapsed, it shows only the provider logo and
- * the active model name; on hover (or while its menu is open) it expands to slot
- * the provider name between the two. The trigger carries no chrome of its own —
- * a muted fill appears only on hover — so it sits quietly beside the send button.
- *
- * Provider and model are persisted in the settings store; there is no backend
- * contract for switching them yet, so this drives the local prototype state only.
+ * The composer's model picker. It fetches live agent CLI model lists from the
+ * backend and groups them by CLI. The active selection is persisted in the
+ * settings store so the composer, settings dialog, and session creation all
+ * stay in sync.
  */
 export function ModelSelector({ disabled = false }: { disabled?: boolean }) {
   const { t } = useTranslation();
-  const provider = useSettingsStore((state) => state.settings.provider);
+  const agentCli = useSettingsStore((state) => state.settings.agentCli);
   const model = useSettingsStore((state) => state.settings.model);
   const updateSettings = useSettingsStore((state) => state.updateSettings);
+  const { data: groups, isLoading } = useAvailableModels();
 
-  const selectModel = (nextProvider: ModelProvider, nextModel: string) =>
-    updateSettings({ provider: nextProvider, model: nextModel });
+  const selectModel = (nextCli: AgentCli, nextModel: string) =>
+    updateSettings({ agentCli: nextCli, model: nextModel });
+
+  // Pick a representative label for the collapsed trigger.
+  const activeLabel = model || (isLoading ? t("chat.modelSelector.loading") : t("chat.modelSelector.placeholder"));
+
+  const visibleGroups = groups && groups.length > 0
+    ? orderedGroups(groups, agentCli)
+    : [];
 
   return (
     <DropdownMenu>
@@ -46,30 +51,47 @@ export function ModelSelector({ disabled = false }: { disabled?: boolean }) {
           />
         }
       >
-        <ProviderLogo provider={provider} className="size-3.5 shrink-0" />
-        {/* The provider name is width-animated in via a 0fr → 1fr grid so the
+        {agentCli && <ProviderLogo agentCli={agentCli} className="size-3.5 shrink-0" />}
+        {/* The CLI name is width-animated in via a 0fr → 1fr grid so the
             button grows smoothly on hover instead of snapping wider. */}
         <span className="grid grid-cols-[0fr] opacity-0 transition-all duration-200 group-hover/model:grid-cols-[1fr] group-hover/model:opacity-100 group-aria-expanded/model:grid-cols-[1fr] group-aria-expanded/model:opacity-100">
-          <span className="min-w-0 overflow-hidden whitespace-nowrap">{PROVIDER_LABELS[provider]}</span>
+          <span className="min-w-0 overflow-hidden whitespace-nowrap">
+            {agentCli ? AGENT_CLI_LABELS[agentCli] : ""}
+          </span>
         </span>
-        <span className="whitespace-nowrap">{model}</span>
-        <IconChevronDown className="size-3 shrink-0 opacity-50" aria-hidden="true" />
+        <span className="whitespace-nowrap">{activeLabel}</span>
+        {isLoading
+          ? <IconLoader2 className="size-3 shrink-0 animate-spin opacity-50" aria-hidden="true" />
+          : <IconChevronDown className="size-3 shrink-0 opacity-50" aria-hidden="true" />}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-56">
-        {PROVIDERS.map((candidate) => (
-          <DropdownMenuGroup key={candidate} className="p-1">
+        {isLoading && (
+          <div className="flex items-center justify-center gap-2 px-2 py-6 text-xs text-muted-foreground">
+            <IconLoader2 className="size-3.5 animate-spin" />
+            {t("chat.modelSelector.loading")}
+          </div>
+        )}
+        {!isLoading && visibleGroups.length === 0 && (
+          <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+            {t("chat.modelSelector.empty")}
+          </p>
+        )}
+        {visibleGroups.map((group) => (
+          <DropdownMenuGroup key={group.agentCli} className="p-1">
             <DropdownMenuLabel className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-normal text-muted-foreground">
-              <ProviderLogo provider={candidate} className="size-3.5" />
-              {PROVIDER_LABELS[candidate]}
+              <ProviderLogo agentCli={group.agentCli} className="size-3.5" />
+              {AGENT_CLI_LABELS[group.agentCli]}
             </DropdownMenuLabel>
-            {PROVIDER_MODELS[candidate].map((candidateModel) => (
+            {group.models.map((candidateModel) => (
               <DropdownMenuItem
-                key={candidateModel}
+                key={`${group.agentCli}:${candidateModel}`}
                 className="gap-1.5 rounded-sm px-2 py-1.5 text-xs"
-                onClick={() => selectModel(candidate, candidateModel)}
+                onClick={() => selectModel(group.agentCli, candidateModel)}
               >
                 {candidateModel}
-                {candidate === provider && candidateModel === model && <IconCheck className="ml-auto size-4" />}
+                {group.agentCli === agentCli && candidateModel === model && (
+                  <IconCheck className="ml-auto size-4" />
+                )}
               </DropdownMenuItem>
             ))}
           </DropdownMenuGroup>
