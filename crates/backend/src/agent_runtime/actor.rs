@@ -11,6 +11,7 @@ use ora_contracts::acp::session::{
     CloseSessionRequest, CloseSessionResponse, LoadSessionRequest as AcpLoadSessionRequest,
     LoadSessionResponse,
 };
+use ora_logging::ora_debug;
 use tokio::process::ChildStdin;
 use tokio::time::{Instant, timeout};
 

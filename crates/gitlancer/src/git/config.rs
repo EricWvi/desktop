@@ -98,7 +98,12 @@ mod tests {
     }
 
     fn ok(stdout: &str) -> Result<GitOutput, GitExecError> {
-        Ok(GitOutput::new(Some(0), stdout.to_string(), String::new(), 0))
+        Ok(GitOutput::new(
+            Some(0),
+            stdout.to_string(),
+            String::new(),
+            0,
+        ))
     }
 
     fn unset() -> Result<GitOutput, GitExecError> {
@@ -119,7 +124,8 @@ mod tests {
         ]));
 
         assert_eq!(
-            git.read_global_identity(Path::new(".")).expect("identity read"),
+            git.read_global_identity(Path::new("."))
+                .expect("identity read"),
             GlobalIdentity {
                 name: Some("RuihaoZhang".to_string()),
                 email: Some("r9644360@gmail.com".to_string()),
@@ -133,7 +139,8 @@ mod tests {
         let git = Git::new(ScriptedRunner::new(vec![unset(), ok("only@email.dev")]));
 
         assert_eq!(
-            git.read_global_identity(Path::new(".")).expect("identity read"),
+            git.read_global_identity(Path::new("."))
+                .expect("identity read"),
             GlobalIdentity {
                 name: None,
                 email: Some("only@email.dev".to_string()),

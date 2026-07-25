@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use tokio::process::ChildStdin;
 
 /// Resolves the authoritative task worktree path through persisted ownership and Git metadata.
-pub(super) fn resolve_task_cwd(
+pub(crate) fn resolve_task_cwd(
     pool: &RepositoryPool,
     task_id: &TaskId,
 ) -> Result<PathBuf, BackendError> {

@@ -6,7 +6,7 @@ mod stream;
 mod support;
 
 pub use stream::SessionEventStream;
-use support::*;
+pub(crate) use support::*;
 
 use crate::clock::SystemClock;
 use crate::{BackendError, BackendErrorKind};
@@ -19,6 +19,7 @@ use ora_contracts::{
 };
 use ora_db::{RepositoryPool, SqliteSessionRepository};
 use ora_domain::{AgentCli, AuditFields, Session, SessionId, SessionStatus, TaskId};
+use ora_logging::ora_debug;
 use routing::SessionChannel;
 use std::collections::HashMap;
 use std::path::PathBuf;
