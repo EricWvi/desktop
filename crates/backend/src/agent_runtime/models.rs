@@ -83,8 +83,7 @@ fn parse_models(stdout: &[u8]) -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{list_agent_models, parse_models};
-    use ora_contracts::{AgentCli as ContractAgentCli, AgentCliModels, ListAgentModelsResponse};
+    use super::parse_models;
     use pretty_assertions::assert_eq;
 
     /// Verifies discovery output is trimmed, stable, and free of duplicate identifiers.
