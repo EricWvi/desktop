@@ -153,6 +153,44 @@ export function createContractsClient(
       get: (request, options) =>
         executeOperation("getGitIdentity", request, transport, options),
     },
+    workflow: {
+      create: (request, options) =>
+        executeOperation("createWorkflow", request, transport, options),
+      get: (request, options) => executeOperation("getWorkflow", request, transport, options),
+      list: (request, options) =>
+        executeOperation("listWorkflows", request, transport, options),
+      update: (request, options) =>
+        executeOperation("updateWorkflow", request, transport, options),
+      delete: (request, options) =>
+        executeOperation("deleteWorkflow", request, transport, options),
+      getDraft: (request, options) => executeOperation("getDraft", request, transport, options),
+      updateDraft: (request, options) =>
+        executeOperation("updateDraft", request, transport, options),
+      publish: (request, options) =>
+        executeOperation("publishWorkflow", request, transport, options),
+      rollback: (request, options) =>
+        executeOperation("rollbackWorkflow", request, transport, options),
+      activate: (request, options) =>
+        executeOperation("activateWorkflow", request, transport, options),
+      listVersions: (request, options) =>
+        executeOperation("listVersions", request, transport, options),
+      getVersion: (request, options) =>
+        executeOperation("getVersion", request, transport, options),
+      deleteSnapshot: (request, options) =>
+        executeOperation("deleteSnapshot", request, transport, options),
+    },
+    workflowRun: {
+      create: (request, options) =>
+        executeOperation("createWorkflowRun", request, transport, options),
+      get: (request, options) =>
+        executeOperation("getWorkflowRun", request, transport, options),
+      list: (request, options) =>
+        executeOperation("listWorkflowRuns", request, transport, options),
+      listNodeRuns: (request, options) =>
+        executeOperation("listWorkflowNodeRuns", request, transport, options),
+      delete: (request, options) =>
+        executeOperation("deleteWorkflowRun", request, transport, options),
+    },
   };
 }
 

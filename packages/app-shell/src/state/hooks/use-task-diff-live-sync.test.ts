@@ -22,6 +22,8 @@ function conversation(
   toolStatus?: "in_progress" | "completed" | "failed",
 ): SessionConversation {
   return {
+    configOptions: [],
+    modelChanges: [],
     turns: toolStatus === undefined
       ? []
       : [{
@@ -49,9 +51,12 @@ function conversation(
           error: null,
           createdAt: 1,
         }],
+    availableCommands: [],
     isLoaded: true,
     isLoading: false,
     isResponding,
+    sessionTitle: null,
+    sessionUpdatedAt: null,
     pendingPermissions: [],
     error: null,
   };

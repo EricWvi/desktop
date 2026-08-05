@@ -17,8 +17,8 @@ import { WorkspaceView } from "./workspace-view";
 
 const USER = { name: "Eric", email: "eric@example.com" };
 const PROJECT: Project = { id: "p1", name: "Ora Desktop", rootPath: "/ora" };
-const TASK1: Task = { id: "t1", projectId: "p1", title: "Task One", status: "todo", workspaceMode: "worktree" };
-const TASK2: Task = { id: "t2", projectId: "p1", title: "Task Two", status: "todo", workspaceMode: "worktree" };
+const TASK1: Task = { id: "t1", projectId: "p1", title: "Task One", status: "todo", workspaceMode: "worktree", type: "default", workflowRunId: null };
+const TASK2: Task = { id: "t2", projectId: "p1", title: "Task Two", status: "todo", workspaceMode: "worktree", type: "default", workflowRunId: null };
 
 beforeEach(() => {
   useWorkspaceSelectionStore.getState().clearSelection();

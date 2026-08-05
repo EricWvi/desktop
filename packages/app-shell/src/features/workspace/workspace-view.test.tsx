@@ -20,7 +20,8 @@ import {
   createMockClientState,
 } from "../../test/mock-client";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
-import { directChatTitle, WorkspaceView } from "./workspace-view";
+import { WorkspaceView } from "./workspace-view";
+import { directChatTitle } from "./workspace-view-utils";
 
 beforeEach(() => {
   useWorkspaceSelectionStore.getState().clearSelection();
@@ -37,6 +38,8 @@ describe("WorkspaceView", () => {
         title: "Refresh history",
         status: "todo",
         workspaceMode: "worktree",
+        type: "default",
+        workflowRunId: null,
       },
     ];
     state.sessions = [
@@ -89,6 +92,8 @@ describe("WorkspaceView", () => {
         title: "Direct chat",
         status: "todo",
         workspaceMode: "project_root",
+        type: "default",
+        workflowRunId: null,
       },
     ];
     state.sessions = [
@@ -203,6 +208,8 @@ describe("WorkspaceView", () => {
         title: "Current worktree",
         status: "todo",
         workspaceMode: "worktree",
+        type: "default",
+        workflowRunId: null,
       },
       {
         id: "t2",
@@ -210,6 +217,8 @@ describe("WorkspaceView", () => {
         title: "Other worktree",
         status: "todo",
         workspaceMode: "worktree",
+        type: "default",
+        workflowRunId: null,
       },
       {
         id: "t3",
@@ -217,6 +226,8 @@ describe("WorkspaceView", () => {
         title: "Hidden direct session",
         status: "todo",
         workspaceMode: "project_root",
+        type: "default",
+        workflowRunId: null,
       },
     ];
     const client = createMockClient(state);
@@ -334,6 +345,8 @@ describe("WorkspaceView", () => {
           title: "你好 workspa",
           status: "todo",
           workspaceMode: "project_root",
+          type: "default",
+          workflowRunId: null,
         },
       ]);
       expect(state.sessions).toEqual([
@@ -439,6 +452,8 @@ describe("WorkspaceView", () => {
         title: "Existing task",
         status: "todo",
         workspaceMode: "project_root",
+        type: "default",
+        workflowRunId: null,
       },
     ];
     const baseClient = createMockClient(state);
@@ -734,6 +749,8 @@ describe("WorkspaceView", () => {
         title: "Replaying",
         status: "todo",
         workspaceMode: "worktree",
+        type: "default",
+        workflowRunId: null,
       },
     ];
     state.sessions = [
@@ -890,6 +907,8 @@ describe("WorkspaceView", () => {
         title: "Switch agent",
         status: "todo",
         workspaceMode: "worktree",
+        type: "default",
+        workflowRunId: null,
       },
     ];
     state.sessions = [
@@ -995,6 +1014,8 @@ describe("WorkspaceView", () => {
         title: "Broken history",
         status: "todo",
         workspaceMode: "worktree",
+        type: "default",
+        workflowRunId: null,
       },
     ];
     state.sessions = [

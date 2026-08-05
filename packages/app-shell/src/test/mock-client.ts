@@ -96,6 +96,8 @@ export function createMockClient(state: MockClientState): ContractsClient {
           title: req.title,
           status: req.status as TaskStatus,
           workspaceMode: req.workspaceMode ?? "worktree",
+          type: "default",
+          workflowRunId: null,
         };
         state.tasks.push(task);
         return { task };
@@ -241,6 +243,12 @@ export function createMockClient(state: MockClientState): ContractsClient {
         return { skillId: req.skillId };
       },
     },
+    skillImport: {
+      prepare: async () => { throw new Error("skillImport not implemented in mock"); },
+      get: async () => { throw new Error("skillImport not implemented in mock"); },
+      commit: async () => { throw new Error("skillImport not implemented in mock"); },
+      cancel: async () => { throw new Error("skillImport not implemented in mock"); },
+    },
     fileSystem: {
       listDirectory: async (request) => ({
         currentPath: request.path ?? "/home/test",
@@ -259,6 +267,31 @@ export function createMockClient(state: MockClientState): ContractsClient {
       watchWorkspace: () => (async function* () {
         yield* [];
       })(),
+    },
+    gitIdentity: {
+      get: async () => { throw new Error("gitIdentity not implemented in mock"); },
+    },
+    workflow: {
+      create: async () => { throw new Error("workflow not implemented in mock"); },
+      get: async () => { throw new Error("workflow not implemented in mock"); },
+      list: async () => { throw new Error("workflow not implemented in mock"); },
+      update: async () => { throw new Error("workflow not implemented in mock"); },
+      delete: async () => { throw new Error("workflow not implemented in mock"); },
+      getDraft: async () => { throw new Error("workflow not implemented in mock"); },
+      updateDraft: async () => { throw new Error("workflow not implemented in mock"); },
+      publish: async () => { throw new Error("workflow not implemented in mock"); },
+      rollback: async () => { throw new Error("workflow not implemented in mock"); },
+      activate: async () => { throw new Error("workflow not implemented in mock"); },
+      listVersions: async () => { throw new Error("workflow not implemented in mock"); },
+      getVersion: async () => { throw new Error("workflow not implemented in mock"); },
+      deleteSnapshot: async () => { throw new Error("workflow not implemented in mock"); },
+    },
+    workflowRun: {
+      create: async () => { throw new Error("workflowRun not implemented in mock"); },
+      get: async () => { throw new Error("workflowRun not implemented in mock"); },
+      list: async () => { throw new Error("workflowRun not implemented in mock"); },
+      listNodeRuns: async () => { throw new Error("workflowRun not implemented in mock"); },
+      delete: async () => { throw new Error("workflowRun not implemented in mock"); },
     },
   };
 }

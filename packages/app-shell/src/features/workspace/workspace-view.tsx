@@ -43,17 +43,12 @@ import { useWorkflowDetection } from "../workflow/use-workflow-detection";
 import type { ChatTurn } from "@ora/chat";
 import { LocationActionsButton } from "./location-actions-button";
 import { agentCliLabel } from "./agent-cli";
+import { directChatTitle } from "./workspace-view-utils";
 import { TaskChangesLayout } from "../diff/task-changes-layout";
 import { useTaskDiffLiveSync } from "../../state/hooks/use-task-diff-live-sync";
 
 interface WorkspaceViewProps {
   userName: string;
-}
-
-/** Builds a compact direct-chat title from the first message without splitting Unicode characters. */
-export function directChatTitle(text: string): string {
-  const normalized = text.trim().replace(/\s+/gu, " ");
-  return Array.from(normalized).slice(0, 10).join("");
 }
 
 /** Inserts a freshly-created entity into query data before the invalidation refetch completes. */
@@ -141,8 +136,7 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
     conversation?.error,
     conversation?.isLoaded,
     conversation?.isLoading,
-    session?.id,
-    session?.status,
+    session,
     sessionsQuery,
   ]);
 

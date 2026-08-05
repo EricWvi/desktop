@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "generate:error-schema": "ts-to-zod src/error.ts src/error.schema.ts",
+    "lint": "tsc -p tsconfig.json --noEmit && eslint src tests",
     "test": "tsc -p tsconfig.json && node --test .test-dist/tests/*.test.js"
   },
   "dependencies": {

@@ -41,8 +41,9 @@ export const usePendingAgentStore = create<PendingAgentState>((set) => ({
     set((state) => ({ switches: { ...state.switches, [sessionId]: agentCli } })),
   clearPendingSwitch: (sessionId) =>
     set((state) => {
-      const { [sessionId]: _removed, ...rest } = state.switches;
-      return { switches: rest };
+      const switches = { ...state.switches };
+      delete switches[sessionId];
+      return { switches };
     }),
 }));
 

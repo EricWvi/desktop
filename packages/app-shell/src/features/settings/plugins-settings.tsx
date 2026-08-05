@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Button,
@@ -78,11 +78,11 @@ export function PluginsSettings() {
     return statuses;
   }, [agentRuntimeStatuses]);
 
-  const isInstalled = (plugin: PluginEntry) => (
+  const isInstalled = useCallback((plugin: PluginEntry) => (
     plugin.detectionAgentCli
       ? detectionStatusByPluginId.get(plugin.id) === "ready"
       : installedIds.includes(plugin.id)
-  );
+  ), [detectionStatusByPluginId, installedIds]);
 
   const toggleInstall = (id: string) => {
     if (findPlugin(id)?.detectionAgentCli) return;
@@ -94,7 +94,7 @@ export function PluginsSettings() {
 
   const installed = useMemo(
     () => PLUGIN_CATALOG.filter(isInstalled),
-    [installedIds, detectionStatusByPluginId],
+    [isInstalled],
   );
 
   const needle = query.trim().toLowerCase();

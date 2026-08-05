@@ -119,6 +119,8 @@ describe("WorkspaceDialogs task creation", () => {
       title: "Worktree task",
       status: "todo",
       workspaceMode: "worktree",
+      type: "default",
+      workflowRunId: null,
     }]));
     expect(submittedBaseBranch).toBe("origin/main");
   });
@@ -136,6 +138,8 @@ describe("WorkspaceDialogs task creation", () => {
         title: "Existing task",
         status: "todo",
         workspaceMode: "worktree",
+        type: "default",
+        workflowRunId: null,
       },
     });
 
@@ -203,8 +207,8 @@ describe("WorkspaceDialogs project deletion", () => {
     const state = createMockClientState();
     state.projects = [{ id: "p1", name: "Ora", rootPath: "/ora" }];
     state.sessions = [
-      { id: "s1", taskId: "t1", agentCli: "open_code", status: "running" },
-      { id: "s2", taskId: "t2", agentCli: "open_code", status: "running" },
+      { id: "s1", taskId: "t1", agentCli: "open_code", status: "running", historyState: { type: "writable" } },
+      { id: "s2", taskId: "t2", agentCli: "open_code", status: "running", historyState: { type: "writable" } },
     ];
     const calls: string[] = [];
     const baseClient = createMockClient(state);
@@ -268,12 +272,15 @@ describe("WorkspaceDialogs task deletion", () => {
       title: "Delete me",
       status: "todo",
       workspaceMode: workspaceMode as TaskWorkspaceMode,
+      type: "default",
+      workflowRunId: null,
     }];
     state.sessions = sessionIds.map((id): Session => ({
       id,
       taskId: "t1",
       agentCli: "open_code",
       status: "running",
+      historyState: { type: "writable" },
     }));
     const calls: string[] = [];
     const baseClient = createMockClient(state);
