@@ -169,7 +169,7 @@ export function createMockClient(state: MockClientState): ContractsClient {
       switchAgent: async (req) => {
         const session = state.sessions.find((candidate) => candidate.id === req.sessionId)!;
         session.agentCli = req.agentCli;
-        return { session, availableCommands: [] };
+        return { session, availableCommands: [], configOptions: state.configOptions };
       },
       resumeHistory: async (req) => {
         const session = state.sessions.find((candidate) => candidate.id === req.sessionId)!;
@@ -189,6 +189,15 @@ export function createMockClient(state: MockClientState): ContractsClient {
         if (idx >= 0) state.sessions.splice(idx, 1);
         return { sessionId: req.sessionId };
       },
+    },
+    agentRuntime: {
+      getStatus: async () => ({
+        statuses: [
+          { agentCli: "open_code", status: "ready" },
+          { agentCli: "nga", status: "ready" },
+          { agentCli: "code_agent_cli", status: "ready" },
+        ],
+      }),
     },
     agent: {
       list: async () => ({ agents: [...state.agents] }),

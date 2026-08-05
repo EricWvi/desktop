@@ -96,6 +96,7 @@ pub const SESSION_PERMISSION_RESPONSE_PATH: &str = "/api/sessions/{sessionId}/pe
 pub const SESSION_STOP_PATH: &str = "/api/sessions/{sessionId}/stop";
 pub const SESSION_SWITCH_AGENT_PATH: &str = "/api/sessions/{sessionId}/agent";
 pub const SESSION_RESUME_HISTORY_PATH: &str = "/api/sessions/{sessionId}/history/resume";
+pub const AGENT_RUNTIME_STATUS_PATH: &str = "/api/agent-runtime/status";
 pub const SESSION_WARM_PATH: &str = "/api/sessions/warm";
 pub const SESSION_CONFIG_PATH: &str = "/api/sessions/{sessionId}/config";
 pub const SESSION_ATTACH_PATH: &str = "/api/sessions/{sessionId}/attach";
@@ -181,6 +182,7 @@ const PROJECT_NAMESPACE: &str = "project";
 const PROJECT_WORK_CONTEXT_NAMESPACE: &str = "projectWorkContext";
 const TASK_NAMESPACE: &str = "task";
 const SESSION_NAMESPACE: &str = "session";
+const AGENT_RUNTIME_NAMESPACE: &str = "agentRuntime";
 const SKILL_NAMESPACE: &str = "skill";
 const SKILL_IMPORT_NAMESPACE: &str = "skillImport";
 const AGENT_NAMESPACE: &str = "agent";
@@ -582,6 +584,20 @@ const FRONTEND_ENDPOINTS: &[FrontendEndpoint] = &[
         request_type: "DeleteSessionRequest",
         response_type: "DeleteSessionResponse",
         path_params: SESSION_PATH_PARAMS,
+        has_json_body: false,
+    },
+    // =============================================================================
+    // agentRuntime
+    // =============================================================================
+    FrontendEndpoint {
+        operation_name: "getAgentRuntimeStatus",
+        namespace: AGENT_RUNTIME_NAMESPACE,
+        member_name: "getStatus",
+        method: FrontendHttpMethod::Get,
+        path_template: AGENT_RUNTIME_STATUS_PATH,
+        request_type: "GetAgentRuntimeStatusRequest",
+        response_type: "GetAgentRuntimeStatusResponse",
+        path_params: NO_PATH_PARAMS,
         has_json_body: false,
     },
     // =============================================================================

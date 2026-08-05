@@ -1,7 +1,11 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createChatStore } from "@ora/chat";
-import type { ContractsClient, WarmSessionResponse } from "@ora/contracts";
+import type {
+  ContractsClient,
+  SwitchSessionAgentRequest,
+  WarmSessionResponse,
+} from "@ora/contracts";
 import { TooltipProvider } from "@ora/ui";
 import { PlatformProvider } from "@ora/platform";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,7 +40,13 @@ describe("WorkspaceView", () => {
       },
     ];
     state.sessions = [
-      { id: "s1", taskId: "t1", agentCli: "open_code", status: "running" },
+      {
+        id: "s1",
+        taskId: "t1",
+        agentCli: "open_code",
+        status: "running",
+        historyState: { type: "writable" },
+      },
     ];
     const client = createMockClient(state);
     const load = vi.fn(async function* () {
@@ -82,7 +92,13 @@ describe("WorkspaceView", () => {
       },
     ];
     state.sessions = [
-      { id: "s1", taskId: "t1", agentCli: "open_code", status: "running" },
+      {
+        id: "s1",
+        taskId: "t1",
+        agentCli: "open_code",
+        status: "running",
+        historyState: { type: "writable" },
+      },
     ];
     const client = createMockClient(state);
     const load = vi.fn(async function* () {
@@ -721,7 +737,13 @@ describe("WorkspaceView", () => {
       },
     ];
     state.sessions = [
-      { id: "s1", taskId: "t1", agentCli: "open_code", status: "running" },
+      {
+        id: "s1",
+        taskId: "t1",
+        agentCli: "open_code",
+        status: "running",
+        historyState: { type: "writable" },
+      },
     ];
     const client = createMockClient(state);
     let finishReplay: () => void = () => {};
@@ -816,6 +838,202 @@ describe("WorkspaceView", () => {
       ).toBeInTheDocument(),
     );
     expect(within(menu).queryByText(/加载中|Loading/)).toBeNull();
+  });
+
+  /**
+   * Builds a client whose `warm` reports Claude's own models, so a switch can be
+   * observed offering the incoming CLI's list rather than the outgoing one's.
+   */
+  function createSwitchTargetClient(state: ReturnType<typeof createMockClientState>) {
+    const baseClient = createMockClient(state);
+    const switched: SwitchSessionAgentRequest[] = [];
+    const client: ContractsClient = {
+      ...baseClient,
+      session: {
+        ...baseClient.session,
+        warm: async (request, options) => {
+          const response = await baseClient.session.warm(request, options);
+          if (request.agentCli !== "claude") return response;
+          return {
+            ...response,
+            configOptions: [
+              {
+                id: "model",
+                name: "Model",
+                category: "model",
+                type: "select",
+                currentValue: "claude/sonnet",
+                options: [
+                  { value: "claude/sonnet", name: "Sonnet" },
+                  { value: "claude/haiku", name: "Haiku" },
+                ],
+              },
+            ],
+          };
+        },
+        switchAgent: async (request, options) => {
+          switched.push(request);
+          return baseClient.session.switchAgent(request, options);
+        },
+      },
+    };
+    return { client, switched };
+  }
+
+  /** Seeds one running session on OpenCode under a worktree task. */
+  function seedSwitchableSession(state: ReturnType<typeof createMockClientState>) {
+    state.projects = [{ id: "p1", name: "Ora", rootPath: "/ora" }];
+    state.tasks = [
+      {
+        id: "t1",
+        projectId: "p1",
+        title: "Switch agent",
+        status: "todo",
+        workspaceMode: "worktree",
+      },
+    ];
+    state.sessions = [
+      {
+        id: "s1",
+        taskId: "t1",
+        agentCli: "open_code",
+        status: "running",
+        historyState: { type: "writable" },
+      },
+    ];
+  }
+
+  it("offers the incoming agent's models without rebinding the session yet", async () => {
+    const user = userEvent.setup();
+    const state = createMockClientState();
+    seedSwitchableSession(state);
+    const { client, switched } = createSwitchTargetClient(state);
+    const Wrapper = createHookWrapper(
+      client,
+      createTestQueryClient(),
+      createChatStore(client.session),
+    );
+    useWorkspaceSelectionStore.getState().selectSession("s1", "t1", "p1");
+
+    render(
+      <Wrapper>
+        <AppI18nProvider>
+          <PlatformProvider adapter={createStubPlatform()}>
+            <TooltipProvider>
+              <WorkspaceView userName="Eric" />
+            </TooltipProvider>
+          </PlatformProvider>
+        </AppI18nProvider>
+      </Wrapper>,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /选择模型|Select model/ }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Claude Code" }));
+
+    // Picking a CLI is only half the decision, so the menu is still open on the
+    // models that CLI actually offers rather than the ones it replaced. Those
+    // come from warming it, which leaves the conversation's own agent running.
+    const menu = await screen.findByRole("menu");
+    expect(
+      await within(menu).findByRole("menuitem", { name: "Haiku" }),
+    ).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "Small Pickle" })).toBeNull();
+    // Rebinding here would tear down an agent that may be mid-reply, so nothing
+    // is asked of the backend until the next message carries the move.
+    expect(switched).toEqual([]);
+    expect(state.sessions[0]?.agentCli).toBe("open_code");
+  });
+
+  it("commits a recorded agent move with the next message", async () => {
+    const user = userEvent.setup();
+    const state = createMockClientState();
+    seedSwitchableSession(state);
+    const { client, switched } = createSwitchTargetClient(state);
+    const Wrapper = createHookWrapper(
+      client,
+      createTestQueryClient(),
+      createChatStore(client.session),
+    );
+    useWorkspaceSelectionStore.getState().selectSession("s1", "t1", "p1");
+
+    render(
+      <Wrapper>
+        <AppI18nProvider>
+          <PlatformProvider adapter={createStubPlatform()}>
+            <TooltipProvider>
+              <WorkspaceView userName="Eric" />
+            </TooltipProvider>
+          </PlatformProvider>
+        </AppI18nProvider>
+      </Wrapper>,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /选择模型|Select model/ }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Claude Code" }));
+    await user.keyboard("{Escape}");
+
+    await user.type(await screen.findByRole("textbox"), "hello");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(state.sessions[0]?.agentCli).toBe("claude"));
+    expect(switched).toEqual([
+      { sessionId: "s1", agentCli: "claude", clientId: expect.any(String) },
+    ]);
+  });
+
+  it("resumes a session whose history stopped recording", async () => {
+    const user = userEvent.setup();
+    const state = createMockClientState();
+    state.projects = [{ id: "p1", name: "Ora", rootPath: "/ora" }];
+    state.tasks = [
+      {
+        id: "t1",
+        projectId: "p1",
+        title: "Broken history",
+        status: "todo",
+        workspaceMode: "worktree",
+      },
+    ];
+    state.sessions = [
+      {
+        id: "s1",
+        taskId: "t1",
+        agentCli: "open_code",
+        status: "running",
+        historyState: { type: "degraded", reason: "no space left on device" },
+      },
+    ];
+    const client = createMockClient(state);
+    const Wrapper = createHookWrapper(
+      client,
+      createTestQueryClient(),
+      createChatStore(client.session),
+    );
+    useWorkspaceSelectionStore.getState().selectSession("s1", "t1", "p1");
+
+    render(
+      <Wrapper>
+        <AppI18nProvider>
+          <PlatformProvider adapter={createStubPlatform()}>
+            <TooltipProvider>
+              <WorkspaceView userName="Eric" />
+            </TooltipProvider>
+          </PlatformProvider>
+        </AppI18nProvider>
+      </Wrapper>,
+    );
+
+    const banner = await screen.findByRole("alert");
+    expect(banner).toHaveTextContent("no space left on device");
+    await user.click(
+      within(banner).getByRole("button", { name: /恢复记录|Resume history/ }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(state.sessions[0]?.historyState).toEqual({ type: "writable" });
   });
 });
 

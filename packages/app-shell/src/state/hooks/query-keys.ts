@@ -14,6 +14,7 @@ export const queryKeys = {
   agents: ["agents"] as const,
   skills: ["skills"] as const,
   gitIdentity: ["gitIdentity"] as const,
+  agentRuntimeStatus: ["agentRuntimeStatus"] as const,
   taskWorkspace: (taskId: string) => ["task-workspace", taskId] as const,
   taskDiffs: (taskId: string) => ["task-diff", taskId] as const,
   taskDiff: (taskId: string, scope: TaskDiffScope) => ["task-diff", taskId, scope] as const,

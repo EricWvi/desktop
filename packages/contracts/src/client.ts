@@ -110,6 +110,10 @@ export function createContractsClient(
       delete: (request, options) =>
         executeOperation("deleteSession", request, transport, options),
     },
+    agentRuntime: {
+      getStatus: (request, options) =>
+        executeOperation("getAgentRuntimeStatus", request, transport, options),
+    },
     skill: {
       create: (request, options) => executeOperation("createSkill", request, transport, options),
       get: (request, options) => executeOperation("getSkill", request, transport, options),

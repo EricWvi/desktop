@@ -323,6 +323,8 @@ fn contract_module_for_type(type_name: &str) -> &'static str {
         | "AttachSessionResponse"
         | "DeleteSessionRequest"
         | "DeleteSessionResponse"
+        | "GetAgentRuntimeStatusRequest"
+        | "GetAgentRuntimeStatusResponse"
         | "GetSessionRequest"
         | "GetSessionResponse"
         | "SetSessionConfigRequest"
