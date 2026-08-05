@@ -68,7 +68,7 @@ Logging variables are documented in [Runtime Logging](runtime-logging.md).
 
 ## HTTP API
 
-Route paths come from the `ora-contracts` endpoint manifest constants, so a route and its generated client entry cannot drift apart. Path parameters are camelCase.
+Route paths come from shared `ora-contracts` path constants, while the generation-only endpoint catalog in `xtask` references those same constants for the generated client entry. Path parameters are camelCase.
 
 ### project
 
