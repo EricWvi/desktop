@@ -516,7 +516,6 @@ function runStatusClass(status: GraphWorkflowRunStatus): string {
     case "succeeded":
       return "bg-emerald-500";
     case "failed":
-    case "partial_failed":
       return "bg-rose-500";
     case "cancelled":
       return "bg-zinc-400";
