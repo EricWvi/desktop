@@ -8,17 +8,17 @@ use axum::extract::DefaultBodyLimit;
 use axum::middleware;
 use axum::routing::{get, post};
 use ora_contracts::{
-    AGENT_PATH, AGENT_RUNTIME_STATUS_PATH, AGENTS_PATH, FILE_SYSTEM_DIRECTORY_PATH,
-    GIT_IDENTITY_PATH, PROJECT_BRANCHES_PATH, PROJECT_PATH, PROJECT_SPEC_SOURCES_PATH,
-    PROJECT_WORK_CONTEXT_OPEN_PATH, PROJECT_WORK_CONTEXT_RENEW_PATH, PROJECTS_PATH,
-    SESSION_ATTACH_PATH, SESSION_CONFIG_PATH, SESSION_LOAD_PATH, SESSION_PATH,
-    SESSION_PERMISSION_RESPONSE_PATH, SESSION_PROMPT_PATH, SESSION_RESUME_HISTORY_PATH,
-    SESSION_STOP_PATH, SESSION_SWITCH_AGENT_PATH, SESSION_WARM_PATH, SESSIONS_PATH,
-    SKILL_IMPORT_COMMIT_PATH, SKILL_IMPORT_PATH, SKILL_IMPORTS_PATH, SKILL_PATH, SKILLS_PATH,
-    SPEC_CATALOG_PATH, SPEC_READ_PATH, SPEC_RESOLVE_SOURCE_PATH, SPEC_WATCH_PATH, TASK_COMMIT_PATH,
-    TASK_DIFF_COMMENT_REPLIES_PATH, TASK_DIFF_COMMENT_STATUS_PATH, TASK_DIFF_COMMENTS_PATH,
-    TASK_DIFF_PATH, TASK_PATH, TASK_PUSH_PATH, TASK_WORKSPACE_PATH, TASKS_PATH,
-    WORKFLOW_ACTIVATE_PATH, WORKFLOW_DRAFT_PATH, WORKFLOW_PATH, WORKFLOW_PUBLISH_PATH,
+    AGENT_IMPORT_COMMIT_PATH, AGENT_IMPORT_PREPARE_PATH, AGENT_PATH, AGENT_RUNTIME_STATUS_PATH,
+    AGENTS_PATH, FILE_SYSTEM_DIRECTORY_PATH, GIT_IDENTITY_PATH, PROJECT_BRANCHES_PATH,
+    PROJECT_PATH, PROJECT_SPEC_SOURCES_PATH, PROJECT_WORK_CONTEXT_OPEN_PATH,
+    PROJECT_WORK_CONTEXT_RENEW_PATH, PROJECTS_PATH, SESSION_ATTACH_PATH, SESSION_CONFIG_PATH,
+    SESSION_LOAD_PATH, SESSION_PATH, SESSION_PERMISSION_RESPONSE_PATH, SESSION_PROMPT_PATH,
+    SESSION_RESUME_HISTORY_PATH, SESSION_STOP_PATH, SESSION_SWITCH_AGENT_PATH, SESSION_WARM_PATH,
+    SESSIONS_PATH, SKILL_IMPORT_COMMIT_PATH, SKILL_IMPORT_PATH, SKILL_IMPORTS_PATH, SKILL_PATH,
+    SKILLS_PATH, SPEC_CATALOG_PATH, SPEC_READ_PATH, SPEC_RESOLVE_SOURCE_PATH, SPEC_WATCH_PATH,
+    TASK_COMMIT_PATH, TASK_DIFF_COMMENT_REPLIES_PATH, TASK_DIFF_COMMENT_STATUS_PATH,
+    TASK_DIFF_COMMENTS_PATH, TASK_DIFF_PATH, TASK_PATH, TASK_PUSH_PATH, TASK_WORKSPACE_PATH,
+    TASKS_PATH, WORKFLOW_ACTIVATE_PATH, WORKFLOW_DRAFT_PATH, WORKFLOW_PATH, WORKFLOW_PUBLISH_PATH,
     WORKFLOW_ROLLBACK_PATH, WORKFLOW_RUN_NODES_PATH, WORKFLOW_RUN_PATH, WORKFLOW_RUNS_PATH,
     WORKFLOW_SNAPSHOT_PATH, WORKFLOW_VERSION_PATH, WORKFLOW_VERSIONS_PATH, WORKFLOWS_PATH,
     WORKSPACE_DIRECTORY_PATH, WORKSPACE_FILE_PATH, WORKSPACE_SEARCH_PATH, WORKSPACE_WATCH_PATH,
@@ -161,6 +161,11 @@ pub fn build_router(app_state: AppState) -> Router {
                 .put(agents::update_agent)
                 .delete(agents::delete_agent),
         )
+        .route(
+            AGENT_IMPORT_PREPARE_PATH,
+            post(agents::prepare_agent_import),
+        )
+        .route(AGENT_IMPORT_COMMIT_PATH, post(agents::commit_agent_import))
         // =============================================================================
         // fileSystem
         // =============================================================================
@@ -1313,7 +1318,7 @@ mod tests {
             &app,
             Method::POST,
             "/api/skills",
-            json!({ "name": " review-guide ", "description": "Reviews guides" }),
+            json!({ "name": " review-guide ", "description": "Reviews guides", "content": "# Original skill" }),
         )
         .await;
         assert_eq!(skill_create.status(), StatusCode::OK);
@@ -1326,6 +1331,10 @@ mod tests {
         let skill_path = format!("/api/skills/{skill_id}");
         let skill_get = request_empty(&app, Method::GET, &skill_path).await;
         assert_eq!(skill_get.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(skill_get).await["skill"]["content"],
+            "# Original skill"
+        );
         let skill_list = request_empty(&app, Method::GET, "/api/skills").await;
         assert_eq!(skill_list.status(), StatusCode::OK);
         let skill_update = request_json(
@@ -1339,6 +1348,24 @@ mod tests {
         assert_eq!(
             response_json(skill_update).await,
             json!({ "skill": { "id": skill_id, "name": "reviewer", "description": "Reviews changes" } })
+        );
+        let preserved_skill = request_empty(&app, Method::GET, &skill_path).await;
+        assert_eq!(
+            response_json(preserved_skill).await["skill"]["content"],
+            "# Original skill"
+        );
+        let skill_content_update = request_json(
+            &app,
+            Method::PUT,
+            &skill_path,
+            json!({ "name": "reviewer", "description": "Reviews changes", "content": "# Updated skill" }),
+        )
+        .await;
+        assert_eq!(skill_content_update.status(), StatusCode::OK);
+        let updated_skill = request_empty(&app, Method::GET, &skill_path).await;
+        assert_eq!(
+            response_json(updated_skill).await["skill"]["content"],
+            "# Updated skill"
         );
         let duplicate_skill = request_json(
             &app,
@@ -1379,7 +1406,7 @@ mod tests {
             &app,
             Method::POST,
             "/api/agents",
-            json!({ "name": "opencode", "description": "OpenCode" }),
+            json!({ "name": "opencode", "description": "OpenCode", "content": "# Original agent" }),
         )
         .await;
         assert_eq!(agent_create.status(), StatusCode::OK);
@@ -1395,9 +1422,11 @@ mod tests {
                 .status(),
             StatusCode::OK
         );
+        let agent_get = request_empty(&app, Method::GET, &agent_path).await;
+        assert_eq!(agent_get.status(), StatusCode::OK);
         assert_eq!(
-            request_empty(&app, Method::GET, &agent_path).await.status(),
-            StatusCode::OK
+            response_json(agent_get).await["agent"]["content"],
+            "# Original agent"
         );
         let agent_update = request_json(
             &app,
@@ -1407,6 +1436,58 @@ mod tests {
         )
         .await;
         assert_eq!(agent_update.status(), StatusCode::OK);
+        let preserved_agent = request_empty(&app, Method::GET, &agent_path).await;
+        assert_eq!(
+            response_json(preserved_agent).await["agent"]["content"],
+            "# Original agent"
+        );
+        let agent_content_update = request_json(
+            &app,
+            Method::PUT,
+            &agent_path,
+            json!({ "name": "review-agent", "description": "Reviews changes", "content": "# Updated agent" }),
+        )
+        .await;
+        assert_eq!(agent_content_update.status(), StatusCode::OK);
+        let updated_agent = request_empty(&app, Method::GET, &agent_path).await;
+        assert_eq!(
+            response_json(updated_agent).await["agent"]["content"],
+            "# Updated agent"
+        );
+        let duplicate_agent = request_json(
+            &app,
+            Method::POST,
+            "/api/agents",
+            json!({ "name": " Review-Agent ", "description": "Duplicate" }),
+        )
+        .await;
+        assert_eq!(duplicate_agent.status(), StatusCode::CONFLICT);
+        assert_contract_error(&response_json(duplicate_agent).await, "agent_name_conflict");
+        let second_agent = response_json(
+            request_json(
+                &app,
+                Method::POST,
+                "/api/agents",
+                json!({ "name": "writer", "description": "Writes changes" }),
+            )
+            .await,
+        )
+        .await;
+        let second_agent_id = second_agent["agent"]["id"]
+            .as_str()
+            .unwrap_or_else(|| panic!("response did not include a second agent id"));
+        let conflicting_rename = request_json(
+            &app,
+            Method::PUT,
+            &format!("/api/agents/{second_agent_id}"),
+            json!({ "name": "REVIEW-AGENT", "description": "Duplicate" }),
+        )
+        .await;
+        assert_eq!(conflicting_rename.status(), StatusCode::CONFLICT);
+        assert_contract_error(
+            &response_json(conflicting_rename).await,
+            "agent_name_conflict",
+        );
         assert_eq!(
             request_empty(&app, Method::DELETE, &agent_path)
                 .await
@@ -1596,6 +1677,89 @@ mod tests {
         let delete_run = request_empty(&app, Method::DELETE, &run_path).await;
         assert_eq!(delete_run.status(), StatusCode::OK);
         assert_eq!(response_json(delete_run).await["runId"], json!(run_id));
+    }
+
+    /// Verifies one Markdown document is sent as JSON, imported, read back, and conflict-skipped.
+    #[tokio::test]
+    async fn imports_agent_markdown_through_json_routes() {
+        let (_temp_dir, _database_path, app) = test_router();
+        let markdown =
+            "---\nname: review-agent\ndescription: Reviews changes\n---\nReview changes.\n";
+
+        let prepare = request_json(
+            &app,
+            Method::POST,
+            "/api/agent-imports/prepare",
+            json!({ "content": markdown }),
+        )
+        .await;
+        assert_eq!(prepare.status(), StatusCode::OK);
+        let candidate = response_json(prepare).await;
+        assert_eq!(candidate["candidate"]["status"], "ready");
+        assert_eq!(candidate["candidate"]["name"], "review-agent");
+        assert_eq!(candidate["candidate"]["existingAgent"], Value::Null);
+
+        let commit = request_json(
+            &app,
+            Method::POST,
+            "/api/agent-imports/commit",
+            json!({
+                "content": markdown,
+                "decision": null,
+                "expectedAgentId": null,
+                "expectedUpdatedAt": null,
+            }),
+        )
+        .await;
+        assert_eq!(commit.status(), StatusCode::OK);
+        let imported = response_json(commit).await;
+        assert_eq!(imported["status"], "imported");
+        let agent_id = imported["agent"]["id"]
+            .as_str()
+            .unwrap_or_else(|| panic!("import response did not include an agent id"));
+        let details = response_json(
+            request_empty(&app, Method::GET, &format!("/api/agents/{agent_id}")).await,
+        )
+        .await;
+        assert_eq!(details["agent"]["content"], "Review changes.");
+
+        let conflict = response_json(
+            request_json(
+                &app,
+                Method::POST,
+                "/api/agent-imports/prepare",
+                json!({ "content": markdown }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(conflict["candidate"]["status"], "conflict");
+        assert_eq!(conflict["candidate"]["existingAgent"]["agentId"], agent_id);
+        let skipped = response_json(
+            request_json(
+                &app,
+                Method::POST,
+                "/api/agent-imports/commit",
+                json!({
+                    "content": markdown,
+                    "decision": "skip",
+                    "expectedAgentId": agent_id,
+                    "expectedUpdatedAt": conflict["candidate"]["existingAgent"]["updatedAt"],
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(skipped, json!({ "status": "skipped", "agent": null }));
+
+        let invalid = request_json(
+            &app,
+            Method::POST,
+            "/api/agent-imports/prepare",
+            json!({ "content": "# Missing frontmatter" }),
+        )
+        .await;
+        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
     }
 
     /// Sends one JSON request to the router under test.
