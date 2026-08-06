@@ -77,6 +77,7 @@ tasks:
       - pnpm --filter @ora/web-client lint
       - pnpm --filter @ora/chat lint
       - pnpm --filter @ora/platform lint
+      - pnpm --filter @ora/workflow-runtime typecheck
       - pnpm --filter @ora/app-shell lint
 
   lint:desktop:
@@ -99,13 +100,14 @@ tasks:
       - cargo build --workspace
 
   test:frontend:
-    desc: Run TypeScript package test suites (contracts, chat, platform, app-shell)
+    desc: Run TypeScript package test suites (contracts, chat, platform, workflow-runtime, app-shell)
     cmds:
       - task: export-contracts
       - task: lint:frontend
       - pnpm --filter @ora/contracts test
       - pnpm --filter @ora/chat test
       - pnpm --filter @ora/platform test
+      - pnpm --filter @ora/workflow-runtime test
       - pnpm --filter @ora/app-shell test
 
   test:backend:
@@ -144,6 +146,15 @@ tasks:
 
   run:web-frontend:
     desc: Run the web frontend against the real HTTP backend
+    env:
+      VITE_ORA_CONTRACT_TRANSPORT: fetch
+    cmds:
+      - pnpm --filter @ora/web-client dev
+
+  run:web-proto:
+    desc: Run the web frontend with the in-memory contracts client
+    env:
+      VITE_ORA_CONTRACT_TRANSPORT: mock
     cmds:
       - pnpm --filter @ora/web-client dev
 

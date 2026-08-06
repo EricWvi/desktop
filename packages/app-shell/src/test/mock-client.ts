@@ -21,6 +21,12 @@ export interface MockClientState {
   warmSessions: Map<string, AgentCli>;
   /** What every warm and persisted session reports as its configuration. */
   configOptions: acp.SessionConfigOption[];
+  /**
+   * Per-CLI warm-session config overrides for tests. A CLI mapped to `null`
+   * reports no model catalog (warm failed); a CLI mapped to an array uses
+   * those options instead of the shared `configOptions`.
+   */
+  warmModelsByCli?: Partial<Record<AgentCli, acp.SessionConfigOption[] | null>>;
 }
 
 /** Creates a fresh in-memory mock state with no records. */
@@ -153,7 +159,13 @@ export function createMockClient(state: MockClientState): ContractsClient {
       warm: async (req) => {
         const sessionId = nextId("s", state.sessions.length + state.warmSessions.size);
         state.warmSessions.set(sessionId, req.agentCli);
-        return { sessionId, configOptions: state.configOptions };
+        const perCli = state.warmModelsByCli?.[req.agentCli];
+        return {
+          sessionId,
+          // A CLI mapped to null reports an empty catalog, which is how the
+          // contract expresses "no models" after a failed warm handshake.
+          configOptions: perCli === undefined ? state.configOptions : (perCli ?? []),
+        };
       },
       setConfig: async () => ({ configOptions: state.configOptions }),
       attach: async (req) => {
@@ -254,10 +266,19 @@ export function createMockClient(state: MockClientState): ContractsClient {
       },
     },
     skillImport: {
-      prepare: async () => { throw new Error("skillImport not implemented in mock"); },
-      get: async () => { throw new Error("skillImport not implemented in mock"); },
-      commit: async () => { throw new Error("skillImport not implemented in mock"); },
-      cancel: async () => { throw new Error("skillImport not implemented in mock"); },
+      prepare: async () => {
+        throw new Error("skillImport.prepare not implemented in mock");
+      },
+      get: async () => {
+        throw new Error("skillImport.get not implemented in mock");
+      },
+      commit: async () => {
+        throw new Error("skillImport.commit not implemented in mock");
+      },
+      cancel: async (request) => ({
+        sessionId: request.sessionId,
+        cancelled: true,
+      }),
     },
     fileSystem: {
       listDirectory: async (request) => ({
@@ -295,7 +316,7 @@ export function createMockClient(state: MockClientState): ContractsClient {
       })(),
     },
     gitIdentity: {
-      get: async () => { throw new Error("gitIdentity not implemented in mock"); },
+      get: async () => ({ name: "Test User", email: "test@ora.local" }),
     },
     workflow: {
       create: async () => { throw new Error("workflow not implemented in mock"); },

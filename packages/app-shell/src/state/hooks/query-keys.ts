@@ -14,6 +14,16 @@ export const queryKeys = {
   agents: ["agents"] as const,
   skills: ["skills"] as const,
   gitIdentity: ["gitIdentity"] as const,
+  /** Project → mounted graph workflow definitions (mock host). */
+  workflowMounts: (projectId: string) => ["workflowMounts", projectId] as const,
+  /** Definition → projects that already mount it. */
+  workflowMountsByDefinition: (definitionId: string) =>
+    ["workflowMountsByDefinition", definitionId] as const,
+  /** Project → GraphWorkflowRun list (mock run repo). */
+  workflowRuns: (projectId: string) => ["workflowRuns", projectId] as const,
+  workflowRun: (runId: string) => ["workflowRun", runId] as const,
+  /** Artifacts produced by one graph workflow run. */
+  workflowArtifacts: (runId: string) => ["workflowArtifacts", runId] as const,
   agentRuntimeStatus: ["agentRuntimeStatus"] as const,
   taskWorkspace: (taskId: string) => ["task-workspace", taskId] as const,
   taskDiffs: (taskId: string) => ["task-diff", taskId] as const,

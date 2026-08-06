@@ -109,12 +109,21 @@ pub fn run() {
             // =============================================================================
             commands::get_git_identity,
             // =============================================================================
+            // workflowRun
+            // =============================================================================
+            commands::create_workflow_run,
+            commands::get_workflow_run,
+            commands::list_workflow_runs,
+            commands::list_workflow_node_runs,
+            commands::delete_workflow_run,
+            // =============================================================================
             // desktop
             // =============================================================================
             commands::get_desktop_config,
             commands::set_worktree_root,
             commands::resolve_task_cwd,
             commands::open_location,
+            commands::write_workflow_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

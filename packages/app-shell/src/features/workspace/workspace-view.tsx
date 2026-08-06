@@ -43,6 +43,7 @@ import { useWorkflowDetection } from "../workflow/use-workflow-detection";
 import type { ChatTurn } from "@ora/chat";
 import { LocationActionsButton } from "./location-actions-button";
 import { agentCliLabel } from "./agent-cli";
+import { WorkflowRunWorkspace } from "../workflow-run/workflow-run-workspace";
 import { directChatTitle } from "./workspace-view-utils";
 import { WorkspaceReviewLayout, type WorkspaceReviewContext } from "./workspace-review-layout";
 import { useTaskDiffLiveSync } from "../../state/hooks/use-task-diff-live-sync";
@@ -454,6 +455,11 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
     const displayText = t("workflow.startNode", { node: t(`workflow.node.${id}`) });
     void dispatchSend(displayText, buildWorkflowReminder(id, skillsDir)).catch(() => undefined);
   };
+
+  // Graph workflow runs own a dedicated workspace branch (D2), not the chat layout.
+  if (selection.workflowRunId !== null) {
+    return <WorkflowRunWorkspace runId={selection.workflowRunId} />;
+  }
 
   // Anything short of a persisted selected session is a new or optimistic chat.
   const chatIsOpen =

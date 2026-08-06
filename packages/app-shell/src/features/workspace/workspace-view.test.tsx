@@ -339,6 +339,7 @@ describe("WorkspaceView", () => {
         projectId: "p1",
         taskId: null,
         sessionId: "s1",
+        workflowRunId: null,
       });
     });
     expect(screen.getByText(/你好\s+workspace mode/)).toBeInTheDocument();
@@ -373,6 +374,7 @@ describe("WorkspaceView", () => {
       projectId: "p1",
       taskId: "t1",
       sessionId: "s1",
+      workflowRunId: null,
     });
     expect(chatStore.getState().conversations.s1?.isLoaded).toBe(true);
   });
@@ -640,7 +642,7 @@ describe("WorkspaceView", () => {
         ...baseClient.session,
         warm,
         // Reports back whichever model was requested, the way an agent answers
-        // a switch it accepted — the mock's default ignores the request.
+        // a switch it accepted �?the mock's default ignores the request.
         setConfig: async (req) => ({
           configOptions: state.configOptions.map((option) =>
             option.type === "select" ? { ...option, currentValue: req.value } : option,
@@ -686,7 +688,7 @@ describe("WorkspaceView", () => {
 
     picker = await screen.findByRole("button", { name: /选择模型|Select model/ });
     // The warm session is reused rather than re-opened, so its pinned handshake
-    // response — which still names the opening model — is what a remount sees.
+    // response �?which still names the opening model �?is what a remount sees.
     // Replaying it would silently undo a switch the agent already accepted.
     await waitFor(() => expect(picker).toHaveTextContent("Small Pickle"));
     expect(warm).toHaveBeenCalledOnce();

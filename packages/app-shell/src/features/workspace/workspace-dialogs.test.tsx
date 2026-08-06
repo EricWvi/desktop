@@ -60,6 +60,7 @@ describe("WorkspaceDialogs project creation", () => {
       projectId: "p1",
       taskId: null,
       sessionId: null,
+      workflowRunId: null,
     });
   });
 });
