@@ -32,11 +32,10 @@
     },
     {
       "id": "ora-context",
-      "name": "context",
+      "name": "context/error",
       "idx": 4,
       "width": 500,
-      "faceted": true,
-      "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.context ?? {}, isJson: true };\n}"
+      "handlerTsCode": "(line: Message): CellHandler => {\n  const content = line.json_content?.level === \"ERROR\"\n    ? line.json_content?.error ?? {}\n    : line.json_content?.context ?? {};\n  return { text: content, isJson: true };\n}"
     },
     {
       "id": "ora-target",
