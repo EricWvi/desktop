@@ -6,13 +6,15 @@ Ora's task workspace file feature gives the Web and Desktop frontends a read-onl
 
 The client sends a task id and, where needed, a workspace-relative path. The Web handler asks `ora-backend` to resolve the task's active working directory, then passes that server-owned root to `ora-fs`. The client never supplies a root path, and `ora-fs` does not depend on HTTP or frontend types.
 
+`GET /api/tasks/{taskId}/workspace` exposes that same authoritative root for platform directory-selection UX. Its `branchName` is optional so project-root tasks, non-Git projects, and detached contexts do not invent a branch.
+
 The layers are intentionally narrow:
 
 - `crates/fs` owns path validation, canonical containment checks, file bounds, ripgrep execution, and native watching.
 - `apps/web/server/src/service/workspace_file.rs` maps filesystem results to `ora-contracts` values.
 - `apps/web/server/src/handlers/workspace_files.rs` owns HTTP extraction, task-root resolution, NDJSON framing, and request lifecycle completion.
 - `apps/desktop/src-tauri/src/workspace_files.rs` maps the same filesystem results to Tauri commands and preserves typed lifecycle errors across IPC.
-- `packages/app-shell/src/features/files` owns the file tree, viewer, search UI, cache invalidation, and line-selection handoff to the composer.
+- `packages/app-shell/src/features/files` owns the file tree, viewer, search UI, cache invalidation, and line-selection handoff to the composer. The same Files panel hosts the Specs sub-view (`workspace-review-files-panel`); Spec catalog/viewer behavior is documented in [Specification management](spec-management.md).
 
 ## HTTP operations
 
