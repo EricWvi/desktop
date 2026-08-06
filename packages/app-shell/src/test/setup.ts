@@ -44,14 +44,55 @@ if (!window.matchMedia) {
   }) as MediaQueryList;
 }
 
-// jsdom lacks ResizeObserver; cmdk (the command menu behind worktree pickers)
-// observes its list on mount.
+// jsdom lacks ResizeObserver. Notify consumers with the fixture's declared
+// dimensions so geometry-driven libraries do not derive NaN SVG coordinates.
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
-    observe() {}
+    constructor(private readonly callback: ResizeObserverCallback) {}
+
+    observe(target: Element) {
+      const bounds = target.getBoundingClientRect();
+      const width = bounds.width || (target instanceof HTMLElement ? target.clientWidth : 0);
+      const height = bounds.height || (target instanceof HTMLElement ? target.clientHeight : 0);
+      const contentRect = {
+        x: bounds.x,
+        y: bounds.y,
+        top: bounds.top,
+        right: bounds.left + width,
+        bottom: bounds.top + height,
+        left: bounds.left,
+        width,
+        height,
+        toJSON: () => ({}),
+      };
+      this.callback([{
+        target,
+        contentRect,
+        borderBoxSize: [],
+        contentBoxSize: [],
+        devicePixelContentBoxSize: [],
+      }], this);
+    }
+
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
+}
+
+// React Flow reads the viewport's vertical scale while processing observed
+// node dimensions. jsdom does not provide DOMMatrixReadOnly.
+if (!window.DOMMatrixReadOnly) {
+  Object.defineProperty(window, "DOMMatrixReadOnly", {
+    configurable: true,
+    value: class {
+      readonly m22: number;
+
+      constructor(transform = "") {
+        const scale = /scale\(([^)]+)\)/u.exec(transform)?.[1];
+        this.m22 = scale === undefined ? 1 : Number(scale);
+      }
+    },
+  });
 }
 
 // jsdom does not implement scrollIntoView; cmdk scrolls its active item into

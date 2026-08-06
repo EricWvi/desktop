@@ -77,7 +77,7 @@ tasks:
       - pnpm --filter @ora/web-client lint
       - pnpm --filter @ora/chat lint
       - pnpm --filter @ora/platform lint
-      - pnpm --filter @ora/workflow-runtime typecheck
+      - pnpm --filter @ora/workflow-runtime lint
       - pnpm --filter @ora/app-shell lint
 
   lint:desktop:

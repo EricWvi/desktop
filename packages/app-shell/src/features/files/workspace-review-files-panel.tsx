@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@ora/ui";
 import {
   IconFileDescription,
@@ -34,10 +34,6 @@ export function WorkspaceReviewFilesPanel({
   const [surface, setSurface] = useState<FilesSurface>(specsOnly ? "specs" : "explorer");
   const specsRef = useRef<SpecsContentHandle>(null);
   const [specsRefreshing, setSpecsRefreshing] = useState(false);
-
-  useEffect(() => {
-    setSurface(specsOnly ? "specs" : "explorer");
-  }, [specsOnly, taskId, projectId]);
 
   const refreshSpecs = () => void specsRef.current?.refresh();
   const refreshFiles = () => {

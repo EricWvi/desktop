@@ -1,8 +1,6 @@
 //! Endpoint declarations for the spec generated-client namespace.
 
-use crate::frontend::{
-    FrontendEndpoint, FrontendHttpMethod, NO_PATH_PARAMS, PROJECT_PATH_PARAMS,
-};
+use crate::frontend::{FrontendEndpoint, FrontendHttpMethod, NO_PATH_PARAMS, PROJECT_PATH_PARAMS};
 use ora_contracts::{
     PROJECT_SPEC_SOURCES_PATH, SPEC_CATALOG_PATH, SPEC_READ_PATH, SPEC_RESOLVE_SOURCE_PATH,
     SPEC_WATCH_PATH,

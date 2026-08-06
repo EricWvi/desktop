@@ -12,7 +12,8 @@ import { queryKeys } from "../../state/hooks/query-keys";
 import { createMockClient, createMockClientState } from "../../test/mock-client";
 import { createStubPlatform } from "../../test/stub-platform";
 import { SpecSourceDialog } from "./spec-source-dialog";
-import { invalidateSpecQueries, resolveMarkdownLink, SpecsContent } from "./specs-view";
+import { invalidateSpecQueries, resolveMarkdownLink } from "./spec-query-utils";
+import { SpecsContent } from "./specs-view";
 
 /** Creates a retry-free query client so failures remain deterministic. */
 function createQueryClient() {
@@ -83,7 +84,7 @@ describe("SpecsContent", () => {
       byteSize: relativePath.endsWith("design.md") ? 57 : 7,
     }));
     client.spec.watch = (_request, options) => (async function* () {
-      if (false) yield { changes: [] };
+      yield* [];
       await new Promise<void>((resolve) => {
         if (options?.signal?.aborted) resolve();
         else options?.signal?.addEventListener("abort", () => resolve(), { once: true });

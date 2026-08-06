@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Button, ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@ora/ui";
 import {
   IconArrowsMaximize,
@@ -39,6 +39,7 @@ export function WorkspaceReviewLayout({ context, children }: WorkspaceReviewLayo
   const [fileTreeOpen, setFileTreeOpen] = useState(true);
   const [panel, setPanel] = useState<ReviewPanel>("files");
   const [fileRequest, setFileRequest] = useState<TaskDiffFileRequest | undefined>();
+  const [previousContextKind, setPreviousContextKind] = useState(context.kind);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRequestSequence = useRef(0);
   const taskId = context.kind === "task" ? context.taskId : undefined;
@@ -53,9 +54,17 @@ export function WorkspaceReviewLayout({ context, children }: WorkspaceReviewLayo
     setViewType("unified");
   }, []);
 
-  useEffect(() => {
-    if (context.kind === "none") close();
-  }, [close, context.kind, contextKey]);
+  // React permits guarded render-time adjustment for state that is directly tied to
+  // a prop. Closing here prevents one frame of stale review UI without an effect loop.
+  if (context.kind !== previousContextKind) {
+    setPreviousContextKind(context.kind);
+    if (context.kind === "none") {
+      setOpen(false);
+      setExpanded(false);
+      setClosing(false);
+      setViewType("unified");
+    }
+  }
 
   const openFile = useCallback((path: string) => {
     if (taskId === undefined) return;

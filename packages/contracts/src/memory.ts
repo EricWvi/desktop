@@ -348,6 +348,22 @@ export function createMemoryContractsClient(
           yield* [];
         })(),
     },
+    spec: {
+      catalog: async () => ({ sources: [], documents: [], truncated: false }),
+      read: async () => {
+        throw new Error("spec.read not implemented in memory client");
+      },
+      resolveSource: async () => {
+        throw new Error("spec.resolveSource not implemented in memory client");
+      },
+      updateProjectSources: async (request) => ({
+        sources: structuredClone(request.sources),
+      }),
+      watch: () =>
+        (async function* () {
+          yield* [];
+        })(),
+    },
     gitIdentity: {
       get: async () => ({ name: "Prototype User", email: "prototype@ora.local" }),
     },

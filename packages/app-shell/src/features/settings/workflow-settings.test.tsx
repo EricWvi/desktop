@@ -97,7 +97,9 @@ describe("WorkflowSettings", () => {
 
   afterEach(async () => {
     Reflect.deleteProperty(document, "elementFromPoint");
-    await appI18n.changeLanguage("zh-CN");
+    // The workflow tree is still mounted until Testing Library's cleanup hook runs,
+    // so resetting the shared i18n instance must flush its subscriber updates first.
+    await act(() => appI18n.changeLanguage("zh-CN"));
   });
 
   it("loads the mock graph and deploy control without an in-settings test run", async () => {

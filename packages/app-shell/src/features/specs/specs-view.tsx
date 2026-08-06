@@ -1,13 +1,11 @@
 import {
   forwardRef,
-  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
   useState,
-  type Components,
 } from "react";
-import type { SpecTarget, WorkspaceFileChange } from "@ora/contracts";
+import type { SpecTarget } from "@ora/contracts";
 import {
   Button,
   Input,
@@ -19,6 +17,7 @@ import {
 import { IconCode, IconEye, IconSearch } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import type { Components } from "react-markdown";
 import { useContractsClient } from "../../contracts-client-context";
 import { localizeContractError } from "../../i18n/contract-error";
 import { queryKeys } from "../../state/hooks/query-keys";
@@ -26,6 +25,7 @@ import { useTaskWorkspace } from "../../state/hooks/use-task-workspace";
 import { MarkdownDocument } from "../chat/markdown-message";
 import { WorkspaceFileViewer } from "../files/workspace-file-viewer";
 import { watchWorkspaceContinuously } from "../files/workspace-watch";
+import { invalidateSpecQueries, resolveMarkdownLink } from "./spec-query-utils";
 import { SpecSourceDialog } from "./spec-source-dialog";
 import { SpecTree } from "./spec-tree";
 
@@ -51,9 +51,12 @@ export const SpecsContent = forwardRef<SpecsContentHandle, SpecsContentProps>(fu
   const client = useContractsClient();
   const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const target: SpecTarget = taskId === undefined
-    ? { kind: "project", projectId }
-    : { kind: "task", taskId };
+  const target = useMemo<SpecTarget>(
+    () => taskId === undefined
+      ? { kind: "project", projectId }
+      : { kind: "task", taskId },
+    [projectId, taskId],
+  );
   const targetKey = taskId === undefined ? `project:${projectId}` : `task:${taskId}`;
   const workspaceQuery = useTaskWorkspace(taskId);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -75,20 +78,17 @@ export const SpecsContent = forwardRef<SpecsContentHandle, SpecsContentProps>(fu
     if (debouncedFilter === "") return all;
     return all.filter((document) => document.relativePath.toLowerCase().includes(debouncedFilter));
   }, [catalogQuery.data?.documents, debouncedFilter]);
-
-  // Keep an explicit empty viewer until the user picks a tree entry; never auto-open the
-  // first catalog document, which felt like restoring a previously opened Spec.
-  useEffect(() => {
-    const all = catalogQuery.data?.documents ?? [];
-    if (selectedPath !== null && !all.some((document) => document.relativePath === selectedPath)) {
-      setSelectedPath(null);
-    }
-  }, [catalogQuery.data?.documents, selectedPath]);
+  const selectedDocument = catalogQuery.data?.documents.find(
+    (document) => document.relativePath === selectedPath,
+  );
+  // Catalog membership is the authorization boundary, so a removed document becomes
+  // unselected immediately without a synchronization effect or a stale read request.
+  const activeSelectedPath = selectedDocument?.relativePath ?? null;
 
   const documentQuery = useQuery({
-    queryKey: queryKeys.specDocument(projectId, targetKey, selectedPath ?? ""),
-    queryFn: ({ signal }) => client.spec.read({ target, relativePath: selectedPath! }, { signal }),
-    enabled: selectedPath !== null,
+    queryKey: queryKeys.specDocument(projectId, targetKey, activeSelectedPath ?? ""),
+    queryFn: ({ signal }) => client.spec.read({ target, relativePath: activeSelectedPath! }, { signal }),
+    enabled: activeSelectedPath !== null,
   });
 
   useEffect(() => {
@@ -104,17 +104,17 @@ export const SpecsContent = forwardRef<SpecsContentHandle, SpecsContentProps>(fu
       ),
     });
     return () => controller.abort();
-  }, [client, projectId, queryClient, targetKey, taskId]);
+  }, [client, projectId, queryClient, target, targetKey]);
 
   const catalogPaths = useMemo(
     () => new Set((catalogQuery.data?.documents ?? []).map((document) => document.relativePath)),
     [catalogQuery.data?.documents],
   );
-  const markdownComponents = useMemo<Components>(() => ({
+  const markdownComponents: Components = {
     a: ({ href, children, ...props }) => {
-      const destination = href === undefined || selectedPath === null
+      const destination = href === undefined || activeSelectedPath === null
         ? null
-        : resolveMarkdownLink(selectedPath, href);
+        : resolveMarkdownLink(activeSelectedPath, href);
       const internal = destination !== null && catalogPaths.has(destination);
       return (
         <a
@@ -137,9 +137,8 @@ export const SpecsContent = forwardRef<SpecsContentHandle, SpecsContentProps>(fu
       );
     },
     img: ({ alt }) => <span className="text-sm text-muted-foreground">[{t("specs.localImageBlocked")}: {alt ?? ""}]</span>,
-  }), [catalogPaths, selectedPath, t]);
+  };
 
-  const selectedDocument = catalogQuery.data?.documents.find((document) => document.relativePath === selectedPath);
   const workflowLabel = selectedDocument === undefined
     ? null
     : selectedDocument.workflow.kind === "open_spec"
@@ -147,17 +146,17 @@ export const SpecsContent = forwardRef<SpecsContentHandle, SpecsContentProps>(fu
       : selectedDocument.workflow.kind === "superpowers"
         ? "Superpowers"
         : selectedDocument.workflow.name;
-  const refresh = useCallback(async () => {
+  const refresh = async () => {
     const invalidations = [
       queryClient.invalidateQueries({ queryKey: queryKeys.specCatalog(projectId, targetKey) }),
     ];
-    if (selectedPath !== null) {
+    if (activeSelectedPath !== null) {
       invalidations.push(
-        queryClient.invalidateQueries({ queryKey: queryKeys.specDocument(projectId, targetKey, selectedPath) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.specDocument(projectId, targetKey, activeSelectedPath) }),
       );
     }
     await Promise.all(invalidations);
-  }, [projectId, queryClient, selectedPath, targetKey]);
+  };
   const isRefreshing = catalogQuery.isFetching || documentQuery.isFetching;
 
   useEffect(() => {
@@ -168,7 +167,7 @@ export const SpecsContent = forwardRef<SpecsContentHandle, SpecsContentProps>(fu
     refresh,
     isRefreshing,
     clearSelection: () => setSelectedPath(null),
-  }), [isRefreshing, refresh]);
+  }));
 
   const workspaceRootPath = taskId === undefined ? projectRootPath : workspaceQuery.data?.rootPath;
 
@@ -177,18 +176,18 @@ export const SpecsContent = forwardRef<SpecsContentHandle, SpecsContentProps>(fu
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
         <ResizablePanel id="spec-content" minSize={420}>
           <div className="flex h-full min-w-0 flex-col">
-            {selectedPath !== null && (
+            {activeSelectedPath !== null && (
               <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
                 {workflowLabel && <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium">{workflowLabel}</span>}
-                <span className="min-w-0 flex-1 truncate font-mono text-xs">{selectedPath}</span>
-                <span className="text-[10px] text-muted-foreground">{selectedPath.toLowerCase().endsWith(".mdx") ? "MDX" : "MD"}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{activeSelectedPath}</span>
+                <span className="text-[10px] text-muted-foreground">{activeSelectedPath.toLowerCase().endsWith(".mdx") ? "MDX" : "MD"}</span>
                 {selectedDocument && <span className="text-[11px] text-muted-foreground">{selectedDocument.byteSize.toLocaleString()} B</span>}
                 <Button size="icon-sm" variant={mode === "preview" ? "secondary" : "ghost"} aria-label={t("specs.preview")} onClick={() => setMode("preview")}><IconEye /></Button>
                 <Button size="icon-sm" variant={mode === "source" ? "secondary" : "ghost"} aria-label={t("specs.source")} onClick={() => setMode("source")}><IconCode /></Button>
               </div>
             )}
             <SpecDocumentBody
-              selectedPath={selectedPath}
+              selectedPath={activeSelectedPath}
               content={documentQuery.data?.content}
               loading={documentQuery.isLoading}
               error={documentQuery.error ?? catalogQuery.error}
@@ -220,7 +219,7 @@ export const SpecsContent = forwardRef<SpecsContentHandle, SpecsContentProps>(fu
                     </Button>
                   </div>
                 )
-                  : <SpecTree documents={documents} selectedPath={selectedPath} onSelect={setSelectedPath} />}
+                  : <SpecTree documents={documents} selectedPath={activeSelectedPath} onSelect={setSelectedPath} />}
             </div>
             {catalogQuery.data?.truncated && <p className="border-t border-border px-3 py-2 text-[11px] text-amber-700">{t("specs.truncated")}</p>}
           </div>
@@ -265,40 +264,4 @@ function SpecDocumentBody({ selectedPath, content, loading, error, mode, markdow
 
 function Status({ text, destructive = false }: { text: string; destructive?: boolean }) {
   return <div data-selectable className={`flex h-full items-center justify-center p-6 text-sm ${destructive ? "text-destructive" : "text-muted-foreground"}`}>{text}</div>;
-}
-
-export function resolveMarkdownLink(currentPath: string, href: string): string | null {
-  const clean = href.split(/[?#]/u, 1)[0] ?? "";
-  if (!/\.mdx?$/iu.test(clean) || clean.startsWith("/")) return null;
-  const segments = [...currentPath.split("/").slice(0, -1), ...clean.split("/")];
-  const normalized: string[] = [];
-  for (const segment of segments) {
-    if (segment === "" || segment === ".") continue;
-    if (segment === "..") {
-      if (normalized.length === 0) return null;
-      normalized.pop();
-    } else {
-      normalized.push(segment);
-    }
-  }
-  return normalized.join("/");
-}
-
-export function invalidateSpecQueries(
-  queryClient: ReturnType<typeof useQueryClient>,
-  projectId: string,
-  targetKey: string,
-  changes: WorkspaceFileChange[],
-) {
-  let invalidateCatalog = false;
-  for (const change of changes) {
-    if (change.kind === "modified" && /\.mdx?$/iu.test(change.path)) {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.specDocument(projectId, targetKey, change.path) });
-      continue;
-    }
-    if (change.kind === "rescanRequired" || change.kind === "renamed" || change.path.endsWith(".gitignore") || /\.mdx?$/iu.test(change.path)) {
-      invalidateCatalog = true;
-    }
-  }
-  if (invalidateCatalog) void queryClient.invalidateQueries({ queryKey: queryKeys.specCatalog(projectId, targetKey) });
 }

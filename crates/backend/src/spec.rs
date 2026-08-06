@@ -515,11 +515,13 @@ fn spec_source_error(source: ora_fs::WorkspaceFileSystemError) -> BackendError {
         ),
         ora_fs::WorkspaceFileSystemError::Io { ref source, .. }
             if source.kind() == std::io::ErrorKind::PermissionDenied =>
-        (
-            ErrorClassification::InvalidRequest,
-            PublicError::FileSystemPathPermissionDenied(EmptyErrorParams {}),
-            "specification source path is not readable",
-        ),
+        {
+            (
+                ErrorClassification::InvalidRequest,
+                PublicError::FileSystemPathPermissionDenied(EmptyErrorParams {}),
+                "specification source path is not readable",
+            )
+        }
         ora_fs::WorkspaceFileSystemError::WorkspaceUnavailable { .. }
         | ora_fs::WorkspaceFileSystemError::Io { .. }
         | ora_fs::WorkspaceFileSystemError::NotFile { .. }

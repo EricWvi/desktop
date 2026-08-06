@@ -1155,7 +1155,10 @@ mod tests {
         )
         .await;
         assert_eq!(root_source.status(), StatusCode::BAD_REQUEST);
-        assert_contract_error(&response_json(root_source).await, "spec_source_invalid");
+        assert_contract_error(
+            &response_json(root_source).await,
+            "spec_source_workspace_root",
+        );
 
         let update = request_json(
             &app,

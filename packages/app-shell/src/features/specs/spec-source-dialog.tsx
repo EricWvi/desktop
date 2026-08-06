@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type {
   SpecSource,
   SpecSourceVisibility,
@@ -56,6 +56,27 @@ export function SpecSourceDialog({
   sources,
   onOpenChange,
 }: SpecSourceDialogProps) {
+  if (!open) return null;
+
+  return (
+    <OpenSpecSourceDialog
+      projectId={projectId}
+      target={target}
+      initialPath={initialPath}
+      sources={sources}
+      onOpenChange={onOpenChange}
+    />
+  );
+}
+
+/** Owns one editing session so closing the dialog discards its transient draft. */
+function OpenSpecSourceDialog({
+  projectId,
+  target,
+  initialPath,
+  sources,
+  onOpenChange,
+}: Omit<SpecSourceDialogProps, "open">) {
   const { t } = useTranslation();
   const platform = usePlatform();
   const client = useContractsClient();
@@ -63,13 +84,6 @@ export function SpecSourceDialog({
   const [rows, setRows] = useState<SpecSource[]>(sources);
   const [busy, setBusy] = useState<"selecting" | "saving" | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      setRows(sources);
-      setError(null);
-    }
-  }, [open, sources]);
 
   const addDirectory = async () => {
     setBusy("selecting");
@@ -119,7 +133,7 @@ export function SpecSourceDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (busy === null || next) && onOpenChange(next)}>
+    <Dialog open onOpenChange={(next) => (busy === null || next) && onOpenChange(next)}>
       <DialogContent className="max-w-3xl sm:max-w-3xl">
         <DialogHeader className="gap-2">
           <DialogTitle>{t("specs.sourcesTitle")}</DialogTitle>

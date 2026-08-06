@@ -60,3 +60,29 @@ test("opens and renews a project work-context lease in memory", async () => {
   });
   assert.ok(renewed.context.leaseExpiresAt >= opened.context.leaseExpiresAt);
 });
+
+test("provides safe empty specification data for prototype clients", async () => {
+  const client = createMemoryContractsClient();
+
+  assert.deepEqual(
+    await client.spec.catalog({ target: { kind: "project", projectId: "p1" } }),
+    { sources: [], documents: [], truncated: false },
+  );
+  assert.deepEqual(
+    await client.spec.updateProjectSources({
+      projectId: "p1",
+      sources: [{
+        relativePath: "docs/specs",
+        workflow: { kind: "open_spec" },
+        visibility: "enabled",
+      }],
+    }),
+    {
+      sources: [{
+        relativePath: "docs/specs",
+        workflow: { kind: "open_spec" },
+        visibility: "enabled",
+      }],
+    },
+  );
+});
