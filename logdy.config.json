@@ -5,14 +5,14 @@
       "id": "ora-timestamp",
       "name": "timestamp",
       "idx": 0,
-      "width": 220,
+      "width": 160,
       "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.timestamp ?? \"\" };\n}"
     },
     {
       "id": "ora-request-id",
       "name": "request_id",
       "idx": 1,
-      "width": 220,
+      "width": 160,
       "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.request_id ?? \"\" };\n}"
     },
     {
@@ -27,21 +27,29 @@
       "id": "ora-message",
       "name": "message",
       "idx": 3,
-      "width": 360,
+      "width": 200,
       "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.message ?? \"\" };\n}"
+    },
+    {
+      "id": "ora-context",
+      "name": "context",
+      "idx": 4,
+      "width": 500,
+      "faceted": true,
+      "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.context ?? {}, isJson: true };\n}"
     },
     {
       "id": "ora-target",
       "name": "target",
-      "idx": 4,
+      "idx": 5,
       "width": 220,
-      "faceted": true,
+      "hidden": true,
       "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.target ?? \"\" };\n}"
     },
     {
       "id": "ora-method",
       "name": "method",
-      "idx": 5,
+      "idx": 6,
       "width": 180,
       "faceted": true,
       "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.method ?? \"\" };\n}"
@@ -49,19 +57,11 @@
     {
       "id": "ora-span",
       "name": "span",
-      "idx": 6,
+      "idx": 7,
       "width": 180,
       "hidden": true,
       "faceted": true,
       "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.span ?? \"\" };\n}"
-    },
-    {
-      "id": "ora-context",
-      "name": "context",
-      "idx": 7,
-      "width": 360,
-      "hidden": true,
-      "handlerTsCode": "(line: Message): CellHandler => {\n  return { text: line.json_content?.context ?? {}, isJson: true };\n}"
     },
     {
       "id": "ora-error",
