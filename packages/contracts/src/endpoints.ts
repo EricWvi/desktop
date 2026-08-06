@@ -10,8 +10,8 @@ import type { CancelSkillImportRequest, CancelSkillImportResponse, CommitSkillIm
 import type { GetSpecCatalogRequest, ReadSpecRequest, ReadSpecResponse, ResolveSpecSourceRequest, ResolveSpecSourceResponse, SpecCatalogResponse, UpdateProjectSpecSourcesRequest, UpdateProjectSpecSourcesResponse, WatchSpecsRequest } from "./spec.js";
 import type { CreateTaskRequest, CreateTaskResponse, DeleteTaskRequest, DeleteTaskResponse, GetTaskRequest, GetTaskResponse, GetTaskWorkspaceRequest, GetTaskWorkspaceResponse, ListTasksRequest, ListTasksResponse, UpdateTaskRequest, UpdateTaskResponse } from "./task.js";
 import type { CommitTaskChangesRequest, CommitTaskChangesResponse, CreateTaskDiffCommentRequest, CreateTaskDiffCommentResponse, GetTaskDiffRequest, GetTaskDiffResponse, ListTaskDiffCommentsRequest, ListTaskDiffCommentsResponse, PushTaskBranchRequest, PushTaskBranchResponse, ReplyTaskDiffCommentRequest, ReplyTaskDiffCommentResponse, SetTaskDiffCommentStatusRequest, SetTaskDiffCommentStatusResponse } from "./task_diff.js";
-import type { ActivateWorkflowRequest, ActivateWorkflowResponse, CreateWorkflowRequest, CreateWorkflowResponse, DeleteSnapshotRequest, DeleteSnapshotResponse, DeleteWorkflowRequest, DeleteWorkflowResponse, GetDraftRequest, GetDraftResponse, GetVersionRequest, GetVersionResponse, GetWorkflowRequest, GetWorkflowResponse, ListVersionsRequest, ListVersionsResponse, ListWorkflowsRequest, ListWorkflowsResponse, PublishWorkflowRequest, PublishWorkflowResponse, RollbackWorkflowRequest, RollbackWorkflowResponse, UpdateDraftRequest, UpdateDraftResponse, UpdateWorkflowRequest, UpdateWorkflowResponse } from "./workflow.js";
-import type { CreateWorkflowRunRequest, CreateWorkflowRunResponse, DeleteWorkflowRunRequest, DeleteWorkflowRunResponse, GetWorkflowRunRequest, GetWorkflowRunResponse, ListWorkflowNodeRunsRequest, ListWorkflowNodeRunsResponse, ListWorkflowRunsRequest, ListWorkflowRunsResponse } from "./workflowRun.js";
+import type { ActivateWorkflowRequest, ActivateWorkflowResponse, CreateWorkflowRequest, CreateWorkflowResponse, DeleteSnapshotRequest, DeleteSnapshotResponse, DeleteWorkflowRequest, DeleteWorkflowResponse, GetDraftRequest, GetDraftResponse, GetVersionRequest, GetVersionResponse, GetWorkflowRequest, GetWorkflowResponse, GetWorkflowSnapshotRequest, GetWorkflowSnapshotResponse, ListVersionsRequest, ListVersionsResponse, ListWorkflowsRequest, ListWorkflowsResponse, PublishWorkflowRequest, PublishWorkflowResponse, RollbackWorkflowRequest, RollbackWorkflowResponse, UpdateDraftRequest, UpdateDraftResponse, UpdateWorkflowRequest, UpdateWorkflowResponse } from "./workflow.js";
+import type { CreateWorkflowRunRequest, CreateWorkflowRunResponse, DeleteWorkflowRunRequest, DeleteWorkflowRunResponse, GetWorkflowRunRequest, GetWorkflowRunResponse, ListWorkflowNodeRunsRequest, ListWorkflowNodeRunsResponse, ListWorkflowRunsByWorkflowRequest, ListWorkflowRunsByWorkflowResponse, ListWorkflowRunsRequest, ListWorkflowRunsResponse } from "./workflowRun.js";
 import type { HttpMethod } from "./transport.js";
 
 export type EndpointPathParam = {
@@ -111,9 +111,11 @@ export type RequestByOperation = {
   listVersions: ListVersionsRequest;
   getVersion: GetVersionRequest;
   deleteSnapshot: DeleteSnapshotRequest;
+  getWorkflowSnapshot: GetWorkflowSnapshotRequest;
   createWorkflowRun: CreateWorkflowRunRequest;
   getWorkflowRun: GetWorkflowRunRequest;
   listWorkflowRuns: ListWorkflowRunsRequest;
+  listWorkflowRunsByWorkflow: ListWorkflowRunsByWorkflowRequest;
   listWorkflowNodeRuns: ListWorkflowNodeRunsRequest;
   deleteWorkflowRun: DeleteWorkflowRunRequest;
 };
@@ -191,9 +193,11 @@ export type ResponseByOperation = {
   listVersions: ListVersionsResponse;
   getVersion: GetVersionResponse;
   deleteSnapshot: DeleteSnapshotResponse;
+  getWorkflowSnapshot: GetWorkflowSnapshotResponse;
   createWorkflowRun: CreateWorkflowRunResponse;
   getWorkflowRun: GetWorkflowRunResponse;
   listWorkflowRuns: ListWorkflowRunsResponse;
+  listWorkflowRunsByWorkflow: ListWorkflowRunsByWorkflowResponse;
   listWorkflowNodeRuns: ListWorkflowNodeRunsResponse;
   deleteWorkflowRun: DeleteWorkflowRunResponse;
 };
@@ -1137,6 +1141,19 @@ export const endpoints = {
     queryParams: [],
     hasJsonBody: false,
   },
+  getWorkflowSnapshot: {
+    operationName: "getWorkflowSnapshot",
+    namespace: "workflow",
+    memberName: "getSnapshot",
+    method: "GET",
+    pathTemplate: "/api/workflow-snapshots/{snapshotId}",
+    requestType: "GetWorkflowSnapshotRequest",
+    responseType: "GetWorkflowSnapshotResponse",
+    responseMode: "unary",
+    pathParams: [{ rustFieldName: "snapshot_id", wireName: "snapshotId" }],
+    queryParams: [],
+    hasJsonBody: false,
+  },
   createWorkflowRun: {
     operationName: "createWorkflowRun",
     namespace: "workflowRun",
@@ -1174,6 +1191,19 @@ export const endpoints = {
     responseMode: "unary",
     pathParams: [],
     queryParams: [{ rustFieldName: "project_id", wireName: "projectId" }],
+    hasJsonBody: false,
+  },
+  listWorkflowRunsByWorkflow: {
+    operationName: "listWorkflowRunsByWorkflow",
+    namespace: "workflowRun",
+    memberName: "listByWorkflow",
+    method: "GET",
+    pathTemplate: "/api/workflow-runs",
+    requestType: "ListWorkflowRunsByWorkflowRequest",
+    responseType: "ListWorkflowRunsByWorkflowResponse",
+    responseMode: "unary",
+    pathParams: [],
+    queryParams: [{ rustFieldName: "workflow_id", wireName: "workflowId" }],
     hasJsonBody: false,
   },
   listWorkflowNodeRuns: {

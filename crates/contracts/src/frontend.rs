@@ -59,3 +59,4 @@ pub const WORKFLOW_VERSION_PATH: &str = "/api/workflows/{workflowId}/versions/{v
 pub const WORKFLOW_RUNS_PATH: &str = "/api/workflow-runs";
 pub const WORKFLOW_RUN_PATH: &str = "/api/workflow-runs/{runId}";
 pub const WORKFLOW_RUN_NODES_PATH: &str = "/api/workflow-runs/{runId}/nodes";
+pub const WORKFLOW_SNAPSHOT_PATH: &str = "/api/workflow-snapshots/{snapshotId}";

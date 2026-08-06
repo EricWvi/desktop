@@ -67,14 +67,15 @@ pub use task_diff::{
 pub use workflow::{
     ActivateVersionResult, ActivateWorkflowHandler, CreateWorkflowHandler, DeleteSnapshotHandler,
     DeleteSnapshotResult, DeleteWorkflowHandler, DeleteWorkflowResult, GetDraftHandler,
-    GetVersionHandler, GetWorkflowHandler, ListVersionsHandler, ListWorkflowsHandler,
-    PublishSnapshotResult, PublishWorkflowHandler, RollbackDraftResult, RollbackWorkflowHandler,
-    UpdateDraftHandler, UpdateDraftResult, UpdateWorkflowHandler, UpdateWorkflowResult,
-    UuidWorkflowIdGenerator, WorkflowIdGenerator, WorkflowRepository,
+    GetVersionHandler, GetWorkflowHandler, GetWorkflowSnapshotHandler, ListVersionsHandler,
+    ListWorkflowsHandler, PublishSnapshotResult, PublishWorkflowHandler, RollbackDraftResult,
+    RollbackWorkflowHandler, UpdateDraftHandler, UpdateDraftResult, UpdateWorkflowHandler,
+    UpdateWorkflowResult, UuidWorkflowIdGenerator, WorkflowIdGenerator, WorkflowRepository,
 };
 pub use workflow_run::{
     CreateWorkflowRunHandler, DeleteWorkflowRunHandler, DeleteWorkflowRunResult,
-    GetWorkflowRunHandler, ListWorkflowNodeRunsHandler, ListWorkflowRunsHandler,
-    UuidWorkflowRunIdGenerator, WorkflowRunIdGenerator, WorkflowRunRepository,
+    GetWorkflowRunHandler, ListWorkflowNodeRunsHandler, ListWorkflowRunsByWorkflowHandler,
+    ListWorkflowRunsHandler, UuidWorkflowRunIdGenerator, WorkflowRunIdGenerator,
+    WorkflowRunRepository,
 };
 pub use worktree::{UuidWorktreeIdGenerator, WorktreeIdGenerator, WorktreeRepository};

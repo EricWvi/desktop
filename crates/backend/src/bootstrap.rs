@@ -715,6 +715,15 @@ impl Backend {
             .delete_snapshot(request)
             .map_err(BackendError::from)
     }
+    /// Gets one snapshot by its stable identifier through the shared application composition.
+    pub fn get_workflow_snapshot(
+        &self,
+        request: GetWorkflowSnapshotRequest,
+    ) -> Result<GetWorkflowSnapshotResponse, BackendError> {
+        self.workflow
+            .get_snapshot(request)
+            .map_err(BackendError::from)
+    }
 
     // =============================================================================
     // workflowRun
@@ -742,6 +751,15 @@ impl Backend {
         request: ListWorkflowRunsRequest,
     ) -> Result<ListWorkflowRunsResponse, BackendError> {
         self.workflow_run.list(request).map_err(BackendError::from)
+    }
+    /// Lists workflow runs for one workflow through the shared application composition.
+    pub fn list_workflow_runs_by_workflow(
+        &self,
+        request: ListWorkflowRunsByWorkflowRequest,
+    ) -> Result<ListWorkflowRunsByWorkflowResponse, BackendError> {
+        self.workflow_run
+            .list_by_workflow(request)
+            .map_err(BackendError::from)
     }
     /// Lists the node-run history of one run through the shared application composition.
     pub fn list_workflow_node_runs(

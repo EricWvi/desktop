@@ -1,7 +1,7 @@
 use crate::app_state::AppState;
 use crate::handlers::{
     agents, file_system, git, health, project_work_contexts, projects, sessions, skill_imports,
-    skills, specs, task_diffs, tasks, workspace_files,
+    skills, snapshots, specs, task_diffs, tasks, workflow_runs, workflows, workspace_files,
 };
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -18,6 +18,9 @@ use ora_contracts::{
     SPEC_CATALOG_PATH, SPEC_READ_PATH, SPEC_RESOLVE_SOURCE_PATH, SPEC_WATCH_PATH, TASK_COMMIT_PATH,
     TASK_DIFF_COMMENT_REPLIES_PATH, TASK_DIFF_COMMENT_STATUS_PATH, TASK_DIFF_COMMENTS_PATH,
     TASK_DIFF_PATH, TASK_PATH, TASK_PUSH_PATH, TASK_WORKSPACE_PATH, TASKS_PATH,
+    WORKFLOW_ACTIVATE_PATH, WORKFLOW_DRAFT_PATH, WORKFLOW_PATH, WORKFLOW_PUBLISH_PATH,
+    WORKFLOW_ROLLBACK_PATH, WORKFLOW_RUN_NODES_PATH, WORKFLOW_RUN_PATH, WORKFLOW_RUNS_PATH,
+    WORKFLOW_SNAPSHOT_PATH, WORKFLOW_VERSION_PATH, WORKFLOW_VERSIONS_PATH, WORKFLOWS_PATH,
     WORKSPACE_DIRECTORY_PATH, WORKSPACE_FILE_PATH, WORKSPACE_SEARCH_PATH, WORKSPACE_WATCH_PATH,
 };
 use tower_http::cors::CorsLayer;
@@ -173,6 +176,50 @@ pub fn build_router(app_state: AppState) -> Router {
         // gitIdentity
         // =============================================================================
         .route(GIT_IDENTITY_PATH, get(git::get_identity))
+        // =============================================================================
+        // workflow
+        // =============================================================================
+        .route(
+            WORKFLOWS_PATH,
+            post(workflows::create_workflow).get(workflows::list_workflows),
+        )
+        .route(
+            WORKFLOW_PATH,
+            get(workflows::get_workflow)
+                .put(workflows::update_workflow)
+                .delete(workflows::delete_workflow),
+        )
+        .route(
+            WORKFLOW_DRAFT_PATH,
+            get(workflows::get_draft).put(workflows::update_draft),
+        )
+        .route(WORKFLOW_PUBLISH_PATH, post(workflows::publish_workflow))
+        .route(WORKFLOW_ROLLBACK_PATH, post(workflows::rollback_workflow))
+        .route(WORKFLOW_ACTIVATE_PATH, post(workflows::activate_workflow))
+        .route(WORKFLOW_VERSIONS_PATH, get(workflows::list_versions))
+        .route(
+            WORKFLOW_VERSION_PATH,
+            get(workflows::get_version).delete(workflows::delete_snapshot),
+        )
+        .route(
+            WORKFLOW_SNAPSHOT_PATH,
+            get(snapshots::get_workflow_snapshot),
+        )
+        // =============================================================================
+        // workflowRun
+        // =============================================================================
+        .route(
+            WORKFLOW_RUNS_PATH,
+            post(workflow_runs::create_workflow_run).get(workflow_runs::list_workflow_runs),
+        )
+        .route(
+            WORKFLOW_RUN_PATH,
+            get(workflow_runs::get_workflow_run).delete(workflow_runs::delete_workflow_run),
+        )
+        .route(
+            WORKFLOW_RUN_NODES_PATH,
+            get(workflow_runs::list_workflow_node_runs),
+        )
         .with_state(app_state)
         .layer(PropagateRequestIdLayer::new(crate::error::X_REQUEST_ID))
         .layer(middleware::from_fn(crate::error::request_context))
@@ -1381,6 +1428,174 @@ mod tests {
             .status(),
             StatusCode::BAD_REQUEST
         );
+    }
+
+    /// Verifies the router supports workflow definition CRUD, publish, versions, and snapshot-by-id.
+    #[tokio::test]
+    async fn serves_workflow_definition_routes() {
+        let (_temp_dir, _database_path, app) = test_router();
+
+        let create_response = request_json(
+            &app,
+            Method::POST,
+            "/api/workflows",
+            json!({
+                "name": "Review flow",
+                "graph": "{\"nodes\":[]}",
+            }),
+        )
+        .await;
+        assert_eq!(create_response.status(), StatusCode::OK);
+        let workflow_id = response_json(create_response).await["workflow"]["id"]
+            .as_str()
+            .unwrap_or_else(|| panic!("response did not include a workflow id"))
+            .to_string();
+        let workflow_path = format!("/api/workflows/{workflow_id}");
+
+        let list_response = request_empty(&app, Method::GET, "/api/workflows").await;
+        assert_eq!(list_response.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(list_response).await["workflows"][0]["name"],
+            json!("Review flow")
+        );
+
+        let get_response = request_empty(&app, Method::GET, &workflow_path).await;
+        assert_eq!(get_response.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(get_response).await["workflow"]["name"],
+            json!("Review flow")
+        );
+
+        let draft_path = format!("{workflow_path}/draft");
+        let update_draft = request_json(
+            &app,
+            Method::PUT,
+            &draft_path,
+            json!({ "graph": "{\"nodes\":[{\"id\":\"start\"}]}" }),
+        )
+        .await;
+        assert_eq!(update_draft.status(), StatusCode::OK);
+        let get_draft = request_empty(&app, Method::GET, &draft_path).await;
+        assert_eq!(get_draft.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(get_draft).await["snapshot"]["graph"],
+            json!("{\"nodes\":[{\"id\":\"start\"}]}")
+        );
+
+        let publish_response = request_json(
+            &app,
+            Method::POST,
+            &format!("{workflow_path}/publish"),
+            json!({}),
+        )
+        .await;
+        assert_eq!(publish_response.status(), StatusCode::OK);
+        let published = response_json(publish_response).await;
+        let snapshot_id = published["snapshot"]["id"]
+            .as_str()
+            .unwrap_or_else(|| panic!("publish response did not include a snapshot id"))
+            .to_string();
+        let version = published["snapshot"]["version"]
+            .as_str()
+            .unwrap_or_else(|| panic!("publish response did not include a version"))
+            .to_string();
+
+        let versions_response =
+            request_empty(&app, Method::GET, &format!("{workflow_path}/versions")).await;
+        assert_eq!(versions_response.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(versions_response).await["versions"][0]["version"],
+            json!(version)
+        );
+
+        let snapshot_response = request_empty(
+            &app,
+            Method::GET,
+            &format!("/api/workflow-snapshots/{snapshot_id}"),
+        )
+        .await;
+        assert_eq!(snapshot_response.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(snapshot_response).await["snapshot"]["id"],
+            json!(snapshot_id)
+        );
+    }
+
+    /// Verifies the router supports workflow-run create, list scopes, get, and delete.
+    #[tokio::test]
+    async fn serves_workflow_run_routes() {
+        let (temp_dir, _database_path, app) = test_router();
+        let project_root = temp_dir.path().join("repo").to_string_lossy().to_string();
+        let project_id = create_project(&app, "Run project", &project_root).await;
+
+        let create_workflow = request_json(
+            &app,
+            Method::POST,
+            "/api/workflows",
+            json!({ "name": "Run flow", "graph": "{\"nodes\":[]}" }),
+        )
+        .await;
+        let workflow_id = response_json(create_workflow).await["workflow"]["id"]
+            .as_str()
+            .unwrap_or_else(|| panic!("create workflow response did not include an id"))
+            .to_string();
+        let publish_response = request_json(
+            &app,
+            Method::POST,
+            &format!("/api/workflows/{workflow_id}/publish"),
+            json!({}),
+        )
+        .await;
+        assert_eq!(publish_response.status(), StatusCode::OK);
+
+        let create_run = request_json(
+            &app,
+            Method::POST,
+            "/api/workflow-runs",
+            json!({
+                "projectId": project_id,
+                "workflowId": workflow_id,
+                "name": "First run",
+            }),
+        )
+        .await;
+        assert_eq!(create_run.status(), StatusCode::OK);
+        let run_id = response_json(create_run).await["run"]["id"]
+            .as_str()
+            .unwrap_or_else(|| panic!("create run response did not include an id"))
+            .to_string();
+
+        let by_project = request_empty(
+            &app,
+            Method::GET,
+            &format!("/api/workflow-runs?projectId={project_id}"),
+        )
+        .await;
+        assert_eq!(
+            response_json(by_project).await["runs"][0]["id"],
+            json!(run_id)
+        );
+        let by_workflow = request_empty(
+            &app,
+            Method::GET,
+            &format!("/api/workflow-runs?workflowId={workflow_id}"),
+        )
+        .await;
+        assert_eq!(
+            response_json(by_workflow).await["runs"][0]["id"],
+            json!(run_id)
+        );
+
+        let run_path = format!("/api/workflow-runs/{run_id}");
+        let get_run = request_empty(&app, Method::GET, &run_path).await;
+        assert_eq!(get_run.status(), StatusCode::OK);
+        let run_detail = response_json(get_run).await;
+        assert_eq!(run_detail["name"], json!("First run"));
+        assert!(run_detail["taskId"].as_str().is_some());
+
+        let delete_run = request_empty(&app, Method::DELETE, &run_path).await;
+        assert_eq!(delete_run.status(), StatusCode::OK);
+        assert_eq!(response_json(delete_run).await["runId"], json!(run_id));
     }
 
     /// Sends one JSON request to the router under test.

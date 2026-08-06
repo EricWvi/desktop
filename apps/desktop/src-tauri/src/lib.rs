@@ -111,11 +111,29 @@ pub fn run() {
             // =============================================================================
             commands::get_git_identity,
             // =============================================================================
+            // workflow
+            // =============================================================================
+            commands::create_workflow,
+            commands::get_workflow,
+            commands::list_workflows,
+            commands::update_workflow,
+            commands::delete_workflow,
+            commands::get_workflow_draft,
+            commands::update_workflow_draft,
+            commands::publish_workflow,
+            commands::rollback_workflow,
+            commands::activate_workflow,
+            commands::list_workflow_versions,
+            commands::get_workflow_version,
+            commands::delete_workflow_snapshot,
+            commands::get_workflow_snapshot,
+            // =============================================================================
             // workflowRun
             // =============================================================================
             commands::create_workflow_run,
             commands::get_workflow_run,
             commands::list_workflow_runs,
+            commands::list_workflow_runs_by_workflow,
             commands::list_workflow_node_runs,
             commands::delete_workflow_run,
             // =============================================================================
