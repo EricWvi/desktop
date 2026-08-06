@@ -138,7 +138,7 @@ impl RuntimeActor {
         self.session = running;
         let channel = match self
             .connection
-            .open_session_channel(&self.session.agent_session_id)
+            .open_session_channel(&self.session.agent_session_id, self.session.id.as_ref())
         {
             Ok(channel) => channel,
             Err(error) => {

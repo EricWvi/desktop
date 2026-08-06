@@ -62,6 +62,14 @@ impl PendingRequests {
         }
     }
 
+    /// Returns the provider session associated with an active ordered response.
+    pub(super) fn session_id(&self, request_id: &RequestId) -> Option<&SessionId> {
+        match self.active.get(request_id) {
+            Some(PendingRequest::Session { session_id }) => Some(session_id),
+            Some(PendingRequest::Direct(_)) | None => None,
+        }
+    }
+
     /// Releases active senders and retired ids when the connection generation ends.
     pub(super) fn clear(&mut self) {
         self.active.clear();

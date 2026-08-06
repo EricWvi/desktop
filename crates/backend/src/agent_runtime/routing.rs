@@ -1,6 +1,6 @@
 use super::connection::RuntimeConnection;
 use crate::BackendError;
-use ora_acp::{PermissionRequest, SessionResponse};
+use ora_acp::{PermissionRequest, SessionResponse, SessionTraceRegistration};
 use ora_contracts::acp::notification::SessionNotification;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -39,6 +39,7 @@ pub(super) struct SessionChannel {
     pub events: mpsc::Receiver<SessionEvent>,
     pub pending_updates: VecDeque<SessionNotification>,
     pub controls: mpsc::UnboundedReceiver<SessionControl>,
+    pub(super) _trace_registration: SessionTraceRegistration,
     pub(super) _registration: RouteRegistration,
 }
 

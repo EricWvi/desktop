@@ -18,6 +18,7 @@ This module owns the application-scoped runtime for supported agent CLIs and the
 - Connection loss and queue overflow use an independent control channel, so a terminal failure cannot be hidden behind the bounded event FIFO. An active actor drains already accepted events before applying that control and polls its command channel after a bounded event burst.
 - A load or prompt completes only after consuming its matching response fence. This keeps updates that precede the response in the same operation and prevents tail events from leaking into the next prompt.
 - Routes are generation-bound. Updates from old connections or unloaded sessions are discarded as stale.
+- Opening a session route also registers its provider-to-Ora identity mapping, so ACP frame traces correlate on the stable Ora session id.
 
 ## Lifecycle boundaries
 

@@ -262,7 +262,8 @@ impl AgentRuntimeManager {
         let response = async {
             let _lifecycle = self.inner.lifecycle.lock().await;
             let supervisor = self.inner.connections.for_agent(agent_cli);
-            let channel = supervisor.open_session_channel(&agent_session_id)?;
+            let channel =
+                supervisor.open_session_channel(&agent_session_id, session_id.as_ref())?;
             let now = self.inner.clock.now_timestamp_millis();
             let session = Session::new(
                 session_id.clone(),
@@ -370,7 +371,8 @@ impl AgentRuntimeManager {
         let response = async {
             let _lifecycle = self.inner.lifecycle.lock().await;
             let supervisor = self.inner.connections.for_agent(target);
-            let channel = supervisor.open_session_channel(&agent_session_id)?;
+            let channel =
+                supervisor.open_session_channel(&agent_session_id, session.id.as_ref())?;
             let (session, recorder) = self
                 .rebind_to_provider(&session.id, previous, target, &agent_session_id)
                 .await?;

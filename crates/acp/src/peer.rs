@@ -1,6 +1,7 @@
 use super::pending::{
     PendingRequest, PendingRequests, PendingResponse, ResponseRequest, lock_pending,
 };
+use super::trace::{SessionTraceRegistration, SessionTraceRegistry};
 use futures_util::StreamExt;
 use ora_contracts::acp::common::SessionId;
 use ora_contracts::acp::literals::CLIENT_METHOD_NAMES;
@@ -134,6 +135,7 @@ pub struct AcpClient<Writer> {
     writer: Arc<AsyncMutex<Writer>>,
     pending: Arc<Mutex<PendingRequests>>,
     next_request_id: Arc<AtomicI64>,
+    trace_sessions: SessionTraceRegistry,
 }
 
 impl<Writer> Clone for AcpClient<Writer> {
@@ -142,6 +144,7 @@ impl<Writer> Clone for AcpClient<Writer> {
             writer: self.writer.clone(),
             pending: self.pending.clone(),
             next_request_id: self.next_request_id.clone(),
+            trace_sessions: self.trace_sessions.clone(),
         }
     }
 }
@@ -150,6 +153,16 @@ impl<Writer> AcpClient<Writer>
 where
     Writer: AsyncWrite + Unpin + Send + 'static,
 {
+    /// Associates provider traffic with the Ora session identifier used by application logs.
+    pub fn register_session_trace(
+        &self,
+        agent_session_id: &str,
+        ora_session_id: &str,
+    ) -> SessionTraceRegistration {
+        self.trace_sessions
+            .register(agent_session_id, ora_session_id)
+    }
+
     /// Sends a typed request and waits for the independently-read correlated response.
     pub async fn request<Request, Response>(
         &self,
@@ -253,7 +266,7 @@ where
 
     /// Serializes one complete NDJSON frame so concurrent control writes cannot interleave.
     async fn write_frame(&self, value: &Value) -> Result<(), AcpError> {
-        write_frame(&self.writer, value).await
+        write_frame(&self.writer, &self.trace_sessions, value).await
     }
 }
 
@@ -274,6 +287,7 @@ where
     {
         let pending = Arc::new(Mutex::new(PendingRequests::default()));
         let writer = Arc::new(AsyncMutex::new(writer));
+        let trace_sessions = SessionTraceRegistry::default();
         // The application router applies bounded queues per provider session. Bounding this
         // connection-wide handoff would let one noisy session terminate every other session.
         let (inbound_sender, inbound) = mpsc::unbounded_channel();
@@ -281,6 +295,7 @@ where
             reader,
             writer.clone(),
             pending.clone(),
+            trace_sessions.clone(),
             inbound_sender,
         ));
         Self {
@@ -288,6 +303,7 @@ where
                 writer,
                 pending,
                 next_request_id: Arc::new(AtomicI64::new(1)),
+                trace_sessions,
             },
             inbound,
         }
@@ -309,6 +325,7 @@ async fn read_frames<Reader, Writer>(
     reader: Reader,
     writer: Arc<AsyncMutex<Writer>>,
     pending: Arc<Mutex<PendingRequests>>,
+    trace_sessions: SessionTraceRegistry,
     inbound: mpsc::UnboundedSender<AcpInboundEvent>,
 ) where
     Reader: AsyncRead + Unpin,
@@ -340,7 +357,8 @@ async fn read_frames<Reader, Writer>(
         };
         #[cfg(debug_assertions)]
         {
-            let (msg, jsonrpc_method, session_id) = trace_frame_summary(&value, "recv");
+            let (msg, jsonrpc_method, session_id) =
+                trace_frame_summary(&value, "recv", &trace_sessions, Some(&pending));
             ora_trace!(
                 direction = "recv",
                 jsonrpc_method = %jsonrpc_method,
@@ -349,7 +367,7 @@ async fn read_frames<Reader, Writer>(
                 "{}", msg,
             );
         }
-        if let Err(error) = route_frame(value, &writer, &pending, &inbound).await {
+        if let Err(error) = route_frame(value, &writer, &pending, &trace_sessions, &inbound).await {
             let _ = inbound.send(AcpInboundEvent::Fatal(error));
             lock_pending(&pending).clear();
             return;
@@ -365,6 +383,7 @@ async fn route_frame<Writer>(
     value: Value,
     writer: &AsyncMutex<Writer>,
     pending: &Mutex<PendingRequests>,
+    trace_sessions: &SessionTraceRegistry,
     inbound: &mpsc::UnboundedSender<AcpInboundEvent>,
 ) -> Result<(), AcpError>
 where
@@ -409,7 +428,7 @@ where
                     "message": format!("method not found: {method}"),
                 },
             });
-            write_frame(writer, &response).await
+            write_frame(writer, trace_sessions, &response).await
         }
         (Some(method), None) if method == CLIENT_METHOD_NAMES.session_update => {
             let notification =
@@ -462,13 +481,30 @@ where
 
 /// Extracts summary fields from a JSON-RPC frame for trace-level correlation without re-parsing.
 #[cfg(debug_assertions)]
-fn trace_frame_summary(value: &Value, direction: &str) -> (String, String, String) {
+fn trace_frame_summary(
+    value: &Value,
+    direction: &str,
+    trace_sessions: &SessionTraceRegistry,
+    pending: Option<&Mutex<PendingRequests>>,
+) -> (String, String, String) {
     let jsonrpc_method = value.get("method").and_then(|v| v.as_str()).unwrap_or("");
-    let session_id = value
+    let agent_session_id = value
         .get("params")
         .and_then(|p| p.get("sessionId"))
         .and_then(|v| v.as_str())
-        .unwrap_or("");
+        .map(str::to_string)
+        .or_else(|| {
+            let request_id = value
+                .get("id")
+                .cloned()
+                .and_then(|id| serde_json::from_value::<RequestId>(id).ok())?;
+            pending
+                .map(lock_pending)?
+                .session_id(&request_id)
+                .map(ToString::to_string)
+        })
+        .unwrap_or_default();
+    let session_id = trace_sessions.resolve(&agent_session_id);
     let is_response = value.get("result").is_some();
     let is_error = value.get("error").is_some();
 
@@ -482,17 +518,22 @@ fn trace_frame_summary(value: &Value, direction: &str) -> (String, String, Strin
         format!("{direction} frame")
     };
 
-    (message, jsonrpc_method.to_string(), session_id.to_string())
+    (message, jsonrpc_method.to_string(), session_id)
 }
 
 /// Writes a reader-originated protocol response through the connection's serialized sink.
-async fn write_frame<Writer>(writer: &AsyncMutex<Writer>, value: &Value) -> Result<(), AcpError>
+async fn write_frame<Writer>(
+    writer: &AsyncMutex<Writer>,
+    trace_sessions: &SessionTraceRegistry,
+    value: &Value,
+) -> Result<(), AcpError>
 where
     Writer: AsyncWrite + Unpin,
 {
     #[cfg(debug_assertions)]
     {
-        let (msg, jsonrpc_method, session_id) = trace_frame_summary(value, "send");
+        let (msg, jsonrpc_method, session_id) =
+            trace_frame_summary(value, "send", trace_sessions, /*pending*/ None);
         ora_trace!(
             direction = "send",
             jsonrpc_method = %jsonrpc_method,
@@ -515,13 +556,69 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{AcpError, AcpInboundEvent, AcpPeer};
+    use super::{
+        AcpError, AcpInboundEvent, AcpPeer, PendingRequest, PendingRequests, trace_frame_summary,
+    };
+    use crate::trace::SessionTraceRegistry;
     use ora_contracts::acp::common::SessionId;
     use ora_contracts::acp::notification::SessionNotification;
+    use ora_contracts::acp::rpc::RequestId;
     use ora_contracts::acp::session::{SessionInfoUpdate, SessionUpdate};
     use pretty_assertions::assert_eq;
     use serde_json::{Value, json};
+    use std::sync::Mutex;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, duplex, split};
+
+    /// Verifies ACP trace fields expose the registered Ora session identity.
+    #[test]
+    fn traces_the_registered_ora_session_id() {
+        let trace_sessions = SessionTraceRegistry::default();
+        let _registration = trace_sessions.register("agent-session-1", "ora-session-1");
+        let frame = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": { "sessionId": "agent-session-1" },
+        });
+
+        assert_eq!(
+            trace_frame_summary(&frame, "recv", &trace_sessions, /*pending*/ None),
+            (
+                "recv session/update".to_string(),
+                "session/update".to_string(),
+                "ora-session-1".to_string(),
+            )
+        );
+    }
+
+    /// Verifies response frames inherit identity from their pending session request.
+    #[test]
+    fn traces_the_ora_session_id_on_correlated_responses() {
+        let trace_sessions = SessionTraceRegistry::default();
+        let _registration = trace_sessions.register("agent-session-1", "ora-session-1");
+        let request_id = RequestId::Number(7);
+        let mut pending = PendingRequests::default();
+        pending.insert(
+            request_id.clone(),
+            PendingRequest::Session {
+                session_id: SessionId::new("agent-session-1"),
+            },
+        );
+        let pending = Mutex::new(pending);
+        let frame = json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": { "stopReason": "end_turn" },
+        });
+
+        assert_eq!(
+            trace_frame_summary(&frame, "recv", &trace_sessions, Some(&pending)),
+            (
+                "recv response".to_string(),
+                String::new(),
+                "ora-session-1".to_string(),
+            )
+        );
+    }
 
     /// Verifies connection-wide handoff cannot make one burst terminate unrelated sessions.
     #[tokio::test]

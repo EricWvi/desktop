@@ -6,6 +6,7 @@
 
 - `AcpPeer` owns the reader task and exposes an `AcpClient` for serialized writes.
 - `AcpClient` correlates direct requests by `RequestId`, decodes typed responses, sends notifications, and answers agent-originated requests.
+- Session trace registrations translate provider session identifiers into the Ora-owned identifiers used by the `session_id` log field.
 - Session requests return a pending handle whose response is emitted into the same inbound stream as that session's updates and permission requests. The reader preserves their wire order, so a terminating response cannot overtake an earlier update.
 - Abandoned session requests retire their ids in a bounded tombstone registry. A late response for an abandoned request is discarded, while a genuinely unknown response remains a connection failure.
 - Protocol, framing, I/O, and response-decoding failures are normalized as `AcpError`.

@@ -2,8 +2,10 @@
 
 mod peer;
 mod pending;
+mod trace;
 
 pub use peer::{
     AcpClient, AcpError, AcpInboundEvent, AcpPeer, PendingSessionRequest, PermissionRequest,
     SessionResponse,
 };
+pub use trace::SessionTraceRegistration;

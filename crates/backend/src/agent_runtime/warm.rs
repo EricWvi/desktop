@@ -192,7 +192,7 @@ impl WarmSessions {
                     agent_session_id,
                     config_options,
                     available_commands,
-                } = self.create(key.agent_cli, &cwd).await?;
+                } = self.create(key.agent_cli, &session_id, &cwd).await?;
                 let config_options = self
                     .replay(key.agent_cli, &agent_session_id, replay, config_options)
                     .await;
@@ -315,7 +315,7 @@ impl WarmSessions {
         }
 
         let connection = self.connections.for_agent(agent_cli).current()?;
-        let created = self.create(agent_cli, cwd).await?;
+        let created = self.create(agent_cli, session_id, cwd).await?;
         let config_options = self
             .replay(
                 agent_cli,
@@ -414,7 +414,7 @@ impl WarmSessions {
             ClaimDecision::Create(plan) => plan,
         };
 
-        let created = self.create(key.agent_cli, &cwd).await?;
+        let created = self.create(key.agent_cli, &session_id, &cwd).await?;
         let config_options = self
             .replay(
                 key.agent_cli,
@@ -509,6 +509,7 @@ impl WarmSessions {
     async fn create(
         &self,
         agent_cli: AgentCli,
+        ora_session_id: &SessionId,
         cwd: &Path,
     ) -> Result<CreatedProvider, BackendError> {
         let supervisor = self.connections.for_agent(agent_cli);
@@ -534,7 +535,8 @@ impl WarmSessions {
             agent_session_id = %response.session_id,
             "warm session created",
         );
-        let mut channel = supervisor.open_session_channel(response.session_id.0.as_ref())?;
+        let mut channel = supervisor
+            .open_session_channel(response.session_id.0.as_ref(), ora_session_id.as_ref())?;
         let available_commands = collect_setup_commands(&mut channel).await;
         Ok(CreatedProvider {
             agent_session_id: response.session_id.to_string(),

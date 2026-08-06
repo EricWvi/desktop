@@ -210,6 +210,7 @@ impl ConnectionSupervisor {
     pub fn open_session_channel(
         &self,
         agent_session_id: &str,
+        ora_session_id: &str,
     ) -> Result<SessionChannel, BackendError> {
         let connection = self.current()?;
         if self.active_generation.load(Ordering::Acquire) != connection.generation {
@@ -223,6 +224,9 @@ impl ConnectionSupervisor {
         }
         let (events_sender, events) = mpsc::channel(CONTRACT_QUEUE_CAPACITY);
         let (controls_sender, controls) = mpsc::unbounded_channel();
+        let trace_registration = connection
+            .client
+            .register_session_trace(agent_session_id, ora_session_id);
         let registration = self.routes.register(
             agent_session_id,
             connection.generation,
@@ -244,6 +248,7 @@ impl ConnectionSupervisor {
             events,
             pending_updates: std::collections::VecDeque::new(),
             controls,
+            _trace_registration: trace_registration,
             _registration: registration,
         })
     }
