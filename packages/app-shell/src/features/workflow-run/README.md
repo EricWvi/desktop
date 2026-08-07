@@ -78,7 +78,9 @@ Keep these stacks separate — shared chrome only where noted.
 - Does not persist definitions in `@ora/workflow-mock` (that package stays
   session-demo + validation).
 - Does not own OpenSpec Spec-mode state.
-- Does not call Rust/contracts workflow APIs yet (F2 HTTP/NDJSON later).
+- Does not own Task Diff rendering (reuses `WorkspaceReviewLayout` /
+  `TaskDiffView` from chat); only supplies the run-task `taskId` context.
+- Does not implement session-scoped Diff for Theater stage mode yet.
 - Does not reuse settings `WorkflowCanvas` (no catalog / reconnect / delete).
 - Does not implement HITL timeout (always waits for submit; `HitlTimeoutPolicy`
   enum reserved for later).
@@ -101,6 +103,16 @@ Keep these stacks separate — shared chrome only where noted.
   run, select that run, and close settings. Kickoff input belongs in the main
   workspace UI later (`create` / path policy already accept `kickoffInput`).
 - Selection: `useWorkspaceSelectionStore.selectWorkflowRun`.
+- **Changes / Diff**: the run workspace wraps Theater and Overview in the same
+  `WorkspaceReviewLayout` used by chat. Scope is the run-task worktree
+  (`GetWorkflowRunResponse.taskId` → `TaskDiffView`), i.e. all file changes for
+  the run — not a single node session. Stage-scoped Diff is deferred until a
+  session-level Git Diff API (or turn-level filter) exists; `nodeStates.sessionId`
+  is projected for that follow-up.
+- **Open location (Desktop)**: the run header reuses `LocationActionsButton`
+  (File Manager / Terminal / VS Code / Copy Path). Prefer
+  `GetWorkflowRunResponse.taskId` so opens target the run worktree; fall back to
+  the project root until that id is available. Hidden on Web (`unsupported`).
 - Lists: react-query via `queryKeys.workflowMounts` /
   `workflowMountsByDefinition` / `workflowRuns`.
 - Runtime: `WorkflowRuntimeProvider` in `AppShell` injects
@@ -115,8 +127,13 @@ Keep these stacks separate — shared chrome only where noted.
   emitted during setup are replayed instead of being lost or overwriting cache.
   Sidebar supports cancel (keep row) and delete (cancel then remove).
 - View toggle: Theater ↔ Overview. Overview node click returns to Theater
-  focused on that node and opens the act inspector. Header Theater toggle
-  does not force the rail open. Clicking Overview again while already there
+  focused on that node and opens the act inspector when the stage area is
+  wide enough (≥1000px); narrow windows skip the auto-open so the act card
+  stays readable. Header Theater toggle does not force the rail open.
+  Opening Changes/Files does not auto-open the act inspector (and seeded
+  Overview → Theater opens wait until Diff is closed). Clicking an act card
+  while Diff is open still opens the inspector beside Diff — they are not
+  mutually exclusive. Clicking Overview again while already there
   re-runs `fitView` and re-enables resize auto-fit after a manual pan/zoom.
   While Overview stays open, pane/window resize debounces a `fitView` so the
   graph stays framed — until the user pans or zooms, which pauses auto-fit.
