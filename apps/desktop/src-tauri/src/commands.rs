@@ -1172,6 +1172,34 @@ backend_command!(
     delete_workflow_run,
     "Deletes one workflow run through the shared Backend."
 );
+backend_command!(
+    start_workflow_run,
+    StartWorkflowRunRequest,
+    StartWorkflowRunResponse,
+    start_workflow_run,
+    "Starts one workflow run through the shared Backend."
+);
+backend_command!(
+    cancel_workflow_run,
+    CancelWorkflowRunRequest,
+    CancelWorkflowRunResponse,
+    cancel_workflow_run,
+    "Cancels one workflow run through the shared Backend."
+);
+backend_command!(
+    restart_workflow_run,
+    RestartWorkflowRunRequest,
+    RestartWorkflowRunResponse,
+    restart_workflow_run,
+    "Restarts one workflow run through the shared Backend."
+);
+backend_command!(
+    update_workflow_run_input,
+    UpdateWorkflowRunInputRequest,
+    UpdateWorkflowRunInputResponse,
+    update_workflow_run_input,
+    "Updates the kickoff input of one workflow run through the shared Backend."
+);
 
 // =============================================================================
 // desktop

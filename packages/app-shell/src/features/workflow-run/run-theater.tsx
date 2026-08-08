@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, cn } from "@ora/ui";
+import { Badge, cn, toast } from "@ora/ui";
+import { useUpdateWorkflowRunInput } from "../../state/hooks/use-workflow-runs";
 import { filterArtifacts, latestArtifact } from "./artifact-filter";
 import { RunActInspector } from "./run-act-inspector";
 import { RunResultAct } from "./run-result-act";
@@ -35,6 +36,8 @@ interface RunTheaterProps {
   onFocusNode: (nodeId: string) => void;
   /** Clears path pin so the terminal result act can own the stage. */
   onClearFocus?: () => void;
+  /** Total files the run-task worktree changed, shown on the terminal result act. */
+  changedFileCount?: number;
   artifacts: WorkflowArtifact[];
   conversationByNodeId: Map<string, WorkflowNodeConversationItem[]>;
   revealedArtifactId: string | null;
@@ -65,6 +68,7 @@ export function RunTheater({
   focusNodeId,
   onFocusNode,
   onClearFocus,
+  changedFileCount = 0,
   artifacts,
   conversationByNodeId,
   revealedArtifactId,
@@ -76,6 +80,11 @@ export function RunTheater({
   onSessionConversationNodeIdChange,
 }: RunTheaterProps) {
   const { t } = useTranslation();
+  const updateInput = useUpdateWorkflowRunInput();
+  // Local draft of the start-node instruction while the user edits it. Committed to the run's
+  // kickoff input only by the explicit save action, so per-keystroke refetches cannot clobber
+  // an in-progress edit or fire one mutation per character.
+  const [instructionDraft, setInstructionDraft] = useState<string | null>(null);
   const inspectorAnimationRef = useRef<number | null>(null);
   const inspectorWidthRef = useRef(DEFAULT_INSPECTOR_WIDTH);
   const inspectorCurrentWidthRef = useRef(0);
@@ -147,6 +156,17 @@ export function RunTheater({
   const primaryState = primaryId !== null
     ? run.nodeStates[primaryId]
     : undefined;
+  const isEditableStart = run.status === "pending" && primaryNode?.data?.kind === "start";
+
+  // Drop an uncommitted draft the moment the run leaves pending (or the run switches) so a stale
+  // draft cannot reappear on the start node after a restart. Implemented as a render-time reset
+  // keyed on the last pending lifecycle state instead of an effect to avoid a cascading render.
+  const [draftPendingKey, setDraftPendingKey] = useState("");
+  const nextDraftPendingKey = run.status === "pending" ? run.id : "";
+  if (nextDraftPendingKey !== draftPendingKey) {
+    setDraftPendingKey(nextDraftPendingKey);
+    setInstructionDraft(null);
+  }
   const primaryArtifacts = useMemo(
     () =>
       primaryId === null
@@ -154,11 +174,19 @@ export function RunTheater({
         : filterArtifacts(artifacts, { type: "node", nodeId: primaryId }),
     [artifacts, primaryId],
   );
+  const primaryRealConversation = primaryState?.conversation;
   const primaryConversation = useMemo(
-    () => primaryId === null
-      ? []
-      : (conversationByNodeId.get(primaryId) ?? []),
-    [primaryId, conversationByNodeId],
+    () => {
+      // The real adapter projects the node's conversation from its run output; the mock
+      // runtime provides it through the live snapshot instead.
+      const mockItems = primaryId === null
+        ? []
+        : (conversationByNodeId.get(primaryId) ?? []);
+      return primaryRealConversation != null && primaryRealConversation.length > 0
+        ? primaryRealConversation
+        : mockItems;
+    },
+    [primaryId, conversationByNodeId, primaryRealConversation],
   );
   const artifactCountByNode = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -250,6 +278,21 @@ export function RunTheater({
       onCollapsed: () => setInspectorCollapsed(true),
       onFrame: applyInspectorWidth,
       targetWidth: 0,
+    });
+  }
+
+  // Commits the drafted start-node instruction to the run's kickoff input in one request and
+  // clears the draft on success (the refetched run then surfaces the saved input).
+  function saveInstructionDraft(): void {
+    if (instructionDraft === null) {
+      return;
+    }
+    updateInput.mutate({
+      runId: run.id,
+      input: instructionDraft,
+    }, {
+      onSuccess: () => setInstructionDraft(null),
+      onError: () => toast.error(t("workflowRun.updateFailed")),
     });
   }
 
@@ -393,6 +436,7 @@ export function RunTheater({
                   <RunResultAct
                     run={run}
                     artifactCount={artifacts.length}
+                    changedFileCount={changedFileCount}
                     onShowOverview={onShowOverview}
                     onOpenArtifacts={artifacts.length > 0
                       ? () => {
@@ -469,20 +513,6 @@ export function RunTheater({
                     <Badge variant="secondary" className="tabular-nums">
                       {t("workflowRun.theater.parallelCount", {
                         count: focus.activeIds.length,
-                      })}
-                    </Badge>
-                  )}
-                  {run.totals.tokenUsage?.totalTokens !== undefined && (
-                    <Badge variant="secondary" className="tabular-nums">
-                      {t("workflowRun.totalsTokens", {
-                        count: run.totals.tokenUsage.totalTokens,
-                      })}
-                    </Badge>
-                  )}
-                  {run.totals.durationMs !== undefined && (
-                    <Badge variant="secondary" className="tabular-nums">
-                      {t("workflowRun.totalsDuration", {
-                        ms: run.totals.durationMs,
                       })}
                     </Badge>
                   )}
@@ -573,6 +603,24 @@ export function RunTheater({
                 state={primaryState ?? null}
                 artifacts={primaryArtifacts}
                 revealedArtifactId={revealedArtifactId}
+                editable={run.status === "pending"}
+                onPatchNode={isEditableStart
+                  ? (patch) => {
+                    // The start node's instruction is the run's kickoff input; the backend has no
+                    // way to edit other nodes of the frozen snapshot, so description patches are
+                    // intentionally ignored. Edits stay in a local draft until save.
+                    if (patch.instruction != null) {
+                      setInstructionDraft(patch.instruction);
+                    }
+                  }
+                  : undefined}
+                instructionDraft={isEditableStart ? instructionDraft : null}
+                onInstructionDraftChange={isEditableStart ? setInstructionDraft : undefined}
+                onSaveInstruction={isEditableStart ? saveInstructionDraft : undefined}
+                onDiscardInstructionDraft={isEditableStart
+                  ? () => setInstructionDraft(null)
+                  : undefined}
+                instructionSavePending={isEditableStart ? updateInput.isPending : false}
                 onClose={closeInspector}
               />
             </div>

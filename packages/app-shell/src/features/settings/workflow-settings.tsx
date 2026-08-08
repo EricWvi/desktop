@@ -178,12 +178,14 @@ function WorkflowSettingsContent({
       return capabilitiesOverride;
     }
     const baseCapabilities = createMockWorkflowCapabilities(locale);
+    // Store the agent/skill name in the JSON (roleId / skillId), so exported workflows are
+    // readable and portable across Ora instances instead of opaque catalog ids.
     const roles = (agentsQuery.data ?? []).map((agent) => ({
-      value: agent.id,
+      value: agent.name,
       label: agent.name,
     }));
     const skills = (skillsQuery.data ?? []).map((skill) => ({
-      value: skill.id,
+      value: skill.name,
       label: skill.name,
     }));
     const mcps = MCP_CATALOG.map((mcp) => ({
@@ -208,7 +210,8 @@ function WorkflowSettingsContent({
               modelId: defaultExecutor.modelId,
             },
           }),
-        roleId: roles[0]?.value ?? baseCapabilities.defaultAgentConfig.roleId,
+        // Roles are optional; a new agent node starts with no role selected.
+        roleId: "",
         mcps: [],
       },
     };

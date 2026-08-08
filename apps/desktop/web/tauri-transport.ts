@@ -155,6 +155,10 @@ const tauriCommands = {
   listWorkflowRunsByWorkflow: "list_workflow_runs_by_workflow",
   listWorkflowNodeRuns: "list_workflow_node_runs",
   deleteWorkflowRun: "delete_workflow_run",
+  startWorkflowRun: "start_workflow_run",
+  cancelWorkflowRun: "cancel_workflow_run",
+  restartWorkflowRun: "restart_workflow_run",
+  updateWorkflowRunInput: "update_workflow_run_input",
 } as const satisfies Record<SupportedTauriOperation, string>;
 
 /** Creates the Desktop contracts transport backed by unary commands and Tauri IPC channels. */

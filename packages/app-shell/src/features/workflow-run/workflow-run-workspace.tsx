@@ -25,13 +25,17 @@ import { WindowControls } from "../../components/window-controls";
 import { useUiStore } from "../../state/stores/ui-store";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import {
-  useCancelGraphWorkflowRun,
   useGraphWorkflowRunLive,
-  useRerunGraphWorkflowRun,
-  useStartGraphWorkflowRun,
 } from "../../state/hooks/use-graph-workflow-runs";
-import { useRealWorkflowRun } from "../../state/hooks/use-workflow-runs";
+import {
+  useCancelWorkflowRun,
+  useRealWorkflowRun,
+  useRestartWorkflowRun,
+  useStartWorkflowRun,
+} from "../../state/hooks/use-workflow-runs";
 import { useProjects } from "../../state/hooks/use-projects";
+import { useTaskDiff } from "../../state/hooks/use-task-diff";
+import { parseTaskDiffPatch } from "../diff/task-diff-data";
 import {
   resolveStageFocusNodeId,
   resolveTheaterFocus,
@@ -72,9 +76,15 @@ export function WorkflowRunWorkspace({ runId }: WorkflowRunWorkspaceProps) {
   const runQuery = useRealWorkflowRun(runId);
   const run = runQuery.data?.run ?? null;
   const runTaskId = runQuery.data?.taskId ?? null;
-  const startRun = useStartGraphWorkflowRun();
-  const cancelRun = useCancelGraphWorkflowRun();
-  const rerun = useRerunGraphWorkflowRun();
+  // Total files the run-task worktree changed, shown on the terminal result act.
+  // Shares the task-diff cache with the Changes panel once it has been opened.
+  const taskDiffQuery = useTaskDiff(runTaskId ?? "", "branch", runTaskId != null);
+  const changedFileCount = taskDiffQuery.data !== undefined
+    ? parseTaskDiffPatch(taskDiffQuery.data.patch).length
+    : 0;
+  const startRun = useStartWorkflowRun();
+  const cancelRun = useCancelWorkflowRun();
+  const rerun = useRestartWorkflowRun();
 
   const [viewMode, setViewMode] = useState<WorkflowRunViewMode>("overview");
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
@@ -369,8 +379,9 @@ export function WorkflowRunWorkspace({ runId }: WorkflowRunWorkspaceProps) {
       return;
     }
     try {
-      const next = await rerun.mutateAsync(run);
-      selectWorkflowRun(next.id, next.projectId);
+      // Restart re-runs the same run in place; the id is unchanged.
+      await rerun.mutateAsync({ runId: run.id });
+      selectWorkflowRun(run.id, run.projectId);
     } catch {
       toast.error(t("workflowRun.rerunFailed"));
     }
@@ -546,6 +557,7 @@ export function WorkflowRunWorkspace({ runId }: WorkflowRunWorkspaceProps) {
                     focusNodeId={stageFocusNodeId}
                     onFocusNode={focusNode}
                     onClearFocus={clearPathFocus}
+                    changedFileCount={changedFileCount}
                     artifacts={artifactsQuery.artifacts}
                     conversationByNodeId={artifactsQuery.conversationByNodeId}
                     revealedArtifactId={artifactsQuery.revealedId}

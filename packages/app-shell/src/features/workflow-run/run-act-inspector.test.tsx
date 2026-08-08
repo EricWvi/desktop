@@ -18,10 +18,10 @@ const AGENT_DATA: WorkflowNodeData = {
   agentConfig: {
     schemaVersion: 3,
     executor: { agentCli: "open_code", modelId: "deepseek/deepseek-v4-pro" },
-    roleId: "ag-researcher",
+    roleId: "研究员",
     skills: [
-      { skillId: "sk-explore", enabled: true },
-      { skillId: "sk-disabled", enabled: false },
+      { skillId: "openspec-explore", enabled: true },
+      { skillId: "hidden-skill", enabled: false },
     ],
     mcps: [],
     prompt: "阅读相关代码并输出风险。",

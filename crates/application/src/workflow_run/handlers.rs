@@ -7,9 +7,12 @@ use crate::task::{
 };
 use crate::workflow::WorkflowRepository;
 use crate::workflow_run::mapper::{map_node_run, map_run, map_run_summary};
-use crate::workflow_run::{DeleteWorkflowRunResult, WorkflowRunIdGenerator, WorkflowRunRepository};
+use crate::workflow_run::{
+    DeleteWorkflowRunResult, WorkflowRunIdGenerator, WorkflowRunRepository,
+    WorkflowRunWorktreeInitializer,
+};
 use crate::worktree::WorktreeIdGenerator;
-use crate::{ApplicationError, Clock};
+use crate::{ApplicationError, Clock, WorkflowGraph};
 use ora_contracts::{
     CreateWorkflowRunRequest, CreateWorkflowRunResponse, DeleteWorkflowRunRequest,
     DeleteWorkflowRunResponse, GetWorkflowRunRequest, GetWorkflowRunResponse,
@@ -34,6 +37,7 @@ pub struct CreateWorkflowRunHandler<
     TaskIdGeneratorPort,
     WorktreeIdGeneratorPort,
     WorktreeProvisioner,
+    WorktreeInitializer,
     ClockSource,
 > {
     workflow_repository: Arc<WorkflowRepositoryPort>,
@@ -42,6 +46,7 @@ pub struct CreateWorkflowRunHandler<
     task_id_generator: TaskIdGeneratorPort,
     worktree_id_generator: WorktreeIdGeneratorPort,
     worktree_provisioner: WorktreeProvisioner,
+    worktree_initializer: WorktreeInitializer,
     work_dir: PathBuf,
     clock: ClockSource,
 }
@@ -53,6 +58,7 @@ impl<
     TaskIdGeneratorPort,
     WorktreeIdGeneratorPort,
     WorktreeProvisioner,
+    WorktreeInitializer,
     ClockSource,
 >
     CreateWorkflowRunHandler<
@@ -62,6 +68,7 @@ impl<
         TaskIdGeneratorPort,
         WorktreeIdGeneratorPort,
         WorktreeProvisioner,
+        WorktreeInitializer,
         ClockSource,
     >
 {
@@ -73,6 +80,7 @@ impl<
         task_id_generator: TaskIdGeneratorPort,
         worktree_id_generator: WorktreeIdGeneratorPort,
         worktree_provisioner: WorktreeProvisioner,
+        worktree_initializer: WorktreeInitializer,
         work_dir: PathBuf,
         clock: ClockSource,
     ) -> Self {
@@ -83,6 +91,7 @@ impl<
             task_id_generator,
             worktree_id_generator,
             worktree_provisioner,
+            worktree_initializer,
             work_dir,
             clock,
         }
@@ -96,6 +105,7 @@ impl<
     TaskIdGeneratorPort,
     WorktreeIdGeneratorPort,
     WorktreeProvisioner,
+    WorktreeInitializer,
     ClockSource,
 >
     CreateWorkflowRunHandler<
@@ -105,6 +115,7 @@ impl<
         TaskIdGeneratorPort,
         WorktreeIdGeneratorPort,
         WorktreeProvisioner,
+        WorktreeInitializer,
         ClockSource,
     >
 where
@@ -114,6 +125,7 @@ where
     TaskIdGeneratorPort: TaskIdGenerator,
     WorktreeIdGeneratorPort: WorktreeIdGenerator,
     WorktreeProvisioner: TaskWorktreeProvisioner,
+    WorktreeInitializer: WorkflowRunWorktreeInitializer,
     ClockSource: Clock,
 {
     /// Resolves the frozen snapshot and provisions a worktree before persisting the run atomically.
@@ -153,9 +165,23 @@ where
             .create_task_worktree(CreateTaskWorktreeRequest {
                 branch_name: branch_name.clone(),
                 base_reference_name: base_reference_name.to_string(),
-                worktree_path,
+                worktree_path: worktree_path.clone(),
             })
             .map_err(ApplicationError::from_task_worktree_provisioner_error)?;
+
+        // Set up the worktree's initial state (validate declared roles and materialize enabled
+        // skills) while the worktree is being created, so the run is born complete and `start`
+        // needs no re-validation. A failure aborts creation and removes the physical worktree.
+        let graph = WorkflowGraph::parse(&snapshot.graph)
+            .map_err(ApplicationError::WorkflowRunGraphParse)?;
+        self.worktree_initializer
+            .initialize_worktree(&graph, &worktree_path)
+            .map_err(|error| {
+                self.compensate_provisioned_worktree(
+                    &branch_name,
+                    ApplicationError::from_start_prerequisites_error(error),
+                )
+            })?;
 
         let worktree = Worktree::new(
             worktree_id.clone(),

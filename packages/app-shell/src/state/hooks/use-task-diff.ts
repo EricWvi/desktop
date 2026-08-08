@@ -4,11 +4,12 @@ import { useContractsClient } from "../../contracts-client-context";
 import { queryKeys } from "./query-keys";
 
 /** Loads the current Git snapshot for one task-owned worktree. */
-export function useTaskDiff(taskId: string, scope: TaskDiffScope) {
+export function useTaskDiff(taskId: string, scope: TaskDiffScope, enabled = true) {
   const client = useContractsClient();
   return useQuery({
     queryKey: queryKeys.taskDiff(taskId, scope),
     queryFn: () => client.task.getDiff({ taskId, scope }),
+    enabled: enabled && taskId !== "",
   });
 }
 

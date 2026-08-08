@@ -10,6 +10,7 @@ mod task;
 mod task_diff_comment;
 mod workflow;
 mod workflow_run;
+mod workflow_run_engine;
 mod worktree;
 
 pub use agent_definition::SqliteAgentDefinitionRepository;
@@ -24,4 +25,5 @@ pub use task::SqliteTaskRepository;
 pub use task_diff_comment::SqliteTaskDiffCommentRepository;
 pub use workflow::SqliteWorkflowRepository;
 pub use workflow_run::SqliteWorkflowRunRepository;
+pub use workflow_run_engine::SqliteWorkflowRunEngineRepository;
 pub use worktree::SqliteWorktreeRepository;

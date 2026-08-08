@@ -27,7 +27,7 @@ Keep these stacks separate — shared chrome only where noted.
 - Wire project mounts and `GraphWorkflowRun` lists through react-query hooks
   against the injected `WorkflowRuntime`.
 - Render the Run Workspace when `workflowRunId` is selected:
-  - **Theater**: focused act stage + path rail + live totals. The path rail
+  - **Theater**: focused act stage + path rail. The path rail
     (and parallel act lists) use a derived order: topological constraints first,
     then canvas position (`x`, then `y`, then id) among concurrently ready
     nodes — not the frozen snapshot array order. Parallel
@@ -41,17 +41,17 @@ Keep these stacks separate — shared chrome only where noted.
     resizable/collapsible — drag the handle to resize, drag narrow or use the
     close control to dismiss. Switching acts updates the open panel.
     The focused stage card owns a **session dock**. Without HITL it sits
-    lower-right beside metrics. With embedded HITL it joins the gate chrome so
+    lower-right beside the clock range. With embedded HITL it joins the gate chrome so
     permission / clarify and conversation share one action cluster. Activating it
     keeps the card shell/header stable and morphs the body into a compact node
     conversation that reuses the full chat bubble and Markdown renderer.
     User input and formal Agent messages stay visible; thoughts and tool calls
     remain available behind one collapsed activity disclosure. The inspector
     therefore does not duplicate runtime input/output; it remains the
-    configuration, metrics, error, and artifact surface.
+    configuration, error, and artifact surface.
   - **Result act**: when the run is terminal and Theater focus is not pinned
     to a path node (`focusNodeId === null`), the stage shows an end-of-run
-    result surface (status, totals, artifact count, Overview CTA). Finishing
+    result surface (status, changed-file count, Overview CTA). Finishing
     clears focus so the result act is the default; path chips (and the Result
     chip) still open/close single-node review, and that pin survives Overview ↔
     Theater. Cold-open of a finished run still primes **Overview**. Run again
@@ -175,8 +175,8 @@ Keep these stacks separate — shared chrome only where noted.
   Esc collapses HITL first; a second Esc returns Overview. Submit payload keys
   match `field.name`. The focused card conversation shows node input, Agent
   messages, and submitted HITL answers (mock approval gates also append a short
-  assistant ack so the session visibly updates after submit); inspector metrics
-  remain available without duplicating that transcript.
+  assistant ack so the session visibly updates after submit); the inspector
+  remains available without duplicating that transcript.
 - Stop confirm: if the run reaches a terminal status while the dialog is open,
   the dialog dismisses (and Confirm is a no-op close) so a finished run cannot
   leave a stuck modal after `preventDefault` on the action button.

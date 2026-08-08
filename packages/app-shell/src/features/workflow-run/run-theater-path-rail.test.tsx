@@ -33,7 +33,6 @@ function terminalRun(
       ]),
     ),
     openHitls: [],
-    totals: {},
     createdAt: "2026-08-04T12:00:00+08:00",
     updatedAt: "2026-08-04T12:00:00+08:00",
   };
@@ -76,7 +75,6 @@ function waitingRun(): { run: GraphWorkflowRun; request: HitlRequest } {
         ]),
       ),
       openHitls: [request],
-      totals: {},
       createdAt: "2026-08-04T12:00:00+08:00",
       updatedAt: "2026-08-04T12:00:00+08:00",
     },
@@ -101,7 +99,6 @@ describe("RunTheaterPathRail", () => {
         reversed.nodes.map((node) => [node.id, { status: "idle" as const }]),
       ),
       openHitls: [],
-      totals: {},
       createdAt: "2026-08-04T12:00:00+08:00",
       updatedAt: "2026-08-04T12:00:00+08:00",
     };

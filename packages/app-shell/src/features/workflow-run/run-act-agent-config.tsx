@@ -25,13 +25,14 @@ export function RunActAgentConfig({ config }: RunActAgentConfigProps) {
   const { t } = useTranslation();
   const agentsQuery = useAgents();
   const skillsQuery = useSkills();
-  const agentById = new Map(
-    (agentsQuery.data ?? []).map((agent) => [agent.id, agent]),
+  // The workflow JSON stores role/skill by name, so resolve catalog descriptions by name.
+  const agentByName = new Map(
+    (agentsQuery.data ?? []).map((agent) => [agent.name, agent]),
   );
-  const skillById = new Map(
-    (skillsQuery.data ?? []).map((skill) => [skill.id, skill]),
+  const skillByName = new Map(
+    (skillsQuery.data ?? []).map((skill) => [skill.name, skill]),
   );
-  const role = agentById.get(config.roleId);
+  const role = agentByName.get(config.roleId);
   const roleLabel = role?.name ?? config.roleId;
   const roleDescription = role?.description?.trim() ?? "";
   const modelLabel = formatAgentExecutorLabel(config.executor);
@@ -80,7 +81,7 @@ export function RunActAgentConfig({ config }: RunActAgentConfigProps) {
           </p>
           <ul className="space-y-1.5" aria-label={t("settings.workflow.field.skills")}>
             {enabledSkills.map((binding) => {
-              const skill = skillById.get(binding.skillId);
+              const skill = skillByName.get(binding.skillId);
               const name = skill?.name ?? binding.skillId;
               const description = skill?.description?.trim() ?? "";
               return (

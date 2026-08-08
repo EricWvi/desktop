@@ -21,8 +21,9 @@ export function WorkflowNodeParameterSummary({ data }: { data: WorkflowNodeData 
   const { i18n, t } = useTranslation();
   const agentsQuery = useAgents();
   const skillsQuery = useSkills();
-  const agentNameById = new Map((agentsQuery.data ?? []).map((agent) => [agent.id, agent.name]));
-  const skillNameById = new Map((skillsQuery.data ?? []).map((skill) => [skill.id, skill.name]));
+  // The workflow JSON stores role/skill by name, so name-keyed lookups resolve directly.
+  const agentNameById = new Map((agentsQuery.data ?? []).map((agent) => [agent.name, agent.name]));
+  const skillNameById = new Map((skillsQuery.data ?? []).map((skill) => [skill.name, skill.name]));
   const mcpNameById = new Map(MCP_CATALOG.map((mcp) => [mcp.id, mcp.name]));
   const locale = i18n.resolvedLanguage === "en-US" ? "en-US" as const : "zh-CN" as const;
   const labels = createWorkflowSummaryLabels(locale);

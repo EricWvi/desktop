@@ -1,4 +1,5 @@
 use crate::clock::SystemClock;
+use crate::workflow_run_prerequisites::SkillRoleWorktreeInitializer;
 use ora_application::{
     ApplicationError, CreateWorkflowRunHandler, DeleteWorkflowRunHandler, GetWorkflowRunHandler,
     GitTaskWorktreeProvisioner, ListWorkflowNodeRunsHandler, ListWorkflowRunsByWorkflowHandler,
@@ -24,6 +25,8 @@ use std::sync::{Arc, RwLock};
 pub(crate) struct WorkflowRunApi {
     pool: RepositoryPool,
     worktree_root: Arc<RwLock<PathBuf>>,
+    /// Skill catalog root used to materialize a run worktree's initial `.agents/skills/`.
+    skills_root: PathBuf,
     get: GetWorkflowRunHandler<SqliteWorkflowRunRepository>,
     list: ListWorkflowRunsHandler<SqliteWorkflowRunRepository>,
     list_by_workflow: ListWorkflowRunsByWorkflowHandler<SqliteWorkflowRunRepository>,
@@ -32,10 +35,12 @@ pub(crate) struct WorkflowRunApi {
 }
 
 impl WorkflowRunApi {
-    /// Builds run handlers from shared persistence and the mutable worktree-root configuration.
+    /// Builds run handlers from shared persistence, the mutable worktree-root configuration, and
+    /// the skill catalog root used to set up each run worktree's initial state.
     pub(crate) fn new(
         pool: RepositoryPool,
         worktree_root: Arc<RwLock<PathBuf>>,
+        skills_root: PathBuf,
         clock: SystemClock,
     ) -> Self {
         let repository = Arc::new(SqliteWorkflowRunRepository::new(pool.clone()));
@@ -43,6 +48,7 @@ impl WorkflowRunApi {
         Self {
             pool,
             worktree_root,
+            skills_root,
             get: GetWorkflowRunHandler::new(repository.clone()),
             list: ListWorkflowRunsHandler::new(repository.clone()),
             list_by_workflow: ListWorkflowRunsByWorkflowHandler::new(repository.clone()),
@@ -51,7 +57,8 @@ impl WorkflowRunApi {
         }
     }
 
-    /// Resolves the run's project repository and provisions a dedicated worktree before persisting.
+    /// Resolves the run's project repository, provisions a dedicated worktree, and sets up its
+    /// initial `.agents/skills/` state before persisting.
     pub(crate) fn create(
         &self,
         request: CreateWorkflowRunRequest,
@@ -64,6 +71,7 @@ impl WorkflowRunApi {
             UuidTaskIdGenerator::new(),
             UuidWorktreeIdGenerator::new(),
             GitTaskWorktreeProvisioner::new(PathBuf::from(project.root_path)),
+            SkillRoleWorktreeInitializer::new(self.skills_root.clone(), self.pool.clone()),
             self.worktree_root_snapshot()?,
             self.clock,
         );

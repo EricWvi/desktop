@@ -110,30 +110,6 @@ export function RunTheaterActCard({
           {timingRange}
         </p>
       )}
-      <dl className={cn("grid gap-3", compact ? "grid-cols-2" : "sm:grid-cols-2")}>
-        <div className="rounded-lg border border-border/70 bg-background/80 px-3 py-2.5">
-          <dt className="text-[10px] text-muted-foreground">
-            {t("workflowRun.field.duration")}
-          </dt>
-          <dd className="mt-0.5 text-xs tabular-nums">
-            {state.durationMs !== undefined
-              ? t("workflowRun.totalsDuration", { ms: state.durationMs })
-              : "—"}
-          </dd>
-        </div>
-        <div className="rounded-lg border border-border/70 bg-background/80 px-3 py-2.5">
-          <dt className="text-[10px] text-muted-foreground">
-            {t("workflowRun.field.tokens")}
-          </dt>
-          <dd className="mt-0.5 text-xs tabular-nums">
-            {state.tokenUsage?.totalTokens !== undefined
-              ? t("workflowRun.totalsTokens", {
-                count: state.tokenUsage.totalTokens,
-              })
-              : "—"}
-          </dd>
-        </div>
-      </dl>
     </div>
   );
 
@@ -230,6 +206,9 @@ export function RunTheaterActCard({
             status={state.status}
             live={emphasized && isNodeWorking(state.status)}
           />
+          {state.stopReason != null && (
+            <span className="text-[10px] text-muted-foreground">{state.stopReason}</span>
+          )}
         </div>
       )}
       body={isConversationOpen

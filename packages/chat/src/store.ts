@@ -1087,6 +1087,49 @@ function sessionScopedConfigOptions(
   return update.sessionUpdate === "config_option_update" ? update.configOptions : null;
 }
 
+/**
+ * Loads one session's full history into a `SessionConversation` without a store.
+ *
+ * Read-only surfaces (workflow node sessions) reuse the same transcript
+ * normalization as the chat pane without attaching a live store, so the loaded
+ * conversation renders identically to the session page.
+ */
+export async function loadSessionConversation(
+  client: ChatSessionClient,
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<SessionConversation> {
+  const staged = new HistoryBuilder(() => crypto.randomUUID(), Date.now);
+  let completed = false;
+  for await (const event of client.load({ sessionId }, { signal })) {
+    if (event.type === "session_update") {
+      const configOptions = sessionScopedConfigOptions(event.update);
+      if (configOptions) {
+        staged.configOptions = configOptions;
+      } else {
+        staged.applyUpdate(event.update);
+      }
+    } else if (event.type === "permission_request") {
+      staged.addPermission(event);
+    } else if (event.type === "turn_ended") {
+      staged.endTurn(event.stopReason);
+    } else {
+      completed = true;
+    }
+  }
+  if (!completed) {
+    throw new Error("agent session load ended before completion");
+  }
+  const conversation = staged.finish();
+  return {
+    ...conversation,
+    // Replay rebuilds the transcript from the provider, which knows nothing about
+    // Ora's markers, so model-change markers are dropped rather than misplaced.
+    configOptions: staged.configOptions ?? conversation.configOptions,
+    modelChanges: [],
+  };
+}
+
 /** Applies an immutable update to one response turn. */
 function updateTurn(
   set: ChatStore["setState"],

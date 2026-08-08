@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::task::{
@@ -15,7 +15,10 @@ use crate::workflow_run::handlers::{
 use crate::workflow_run::mapper::{map_node_run, map_run, map_run_summary};
 use crate::workflow_run::{DeleteWorkflowRunResult, WorkflowRunIdGenerator, WorkflowRunRepository};
 use crate::worktree::WorktreeIdGenerator;
-use crate::{ApplicationError, Clock, RepositoryError};
+use crate::{
+    ApplicationError, Clock, RepositoryError, StartPrerequisitesError, WorkflowGraph,
+    WorkflowRunWorktreeInitializer,
+};
 use ora_contracts::{
     CreateWorkflowRunRequest, DeleteWorkflowRunRequest, DeleteWorkflowRunResponse,
     GetWorkflowRunRequest, GetWorkflowRunResponse, ListWorkflowNodeRunsRequest,
@@ -49,6 +52,7 @@ fn creates_run_with_explicit_snapshot() {
         FixedTaskIdGenerator::new(TASK_ID),
         FixedWorktreeIdGenerator::new("worktree-1"),
         provisioner.clone(),
+        MockWorktreeInitializer::default(),
         PathBuf::from(WORK_DIR),
         FixedClock::new(30),
     );
@@ -92,6 +96,51 @@ fn creates_run_with_explicit_snapshot() {
     );
 }
 
+/// Verifies a failing worktree initialization aborts creation and removes the provisioned worktree.
+#[test]
+fn fails_creation_and_compensates_when_worktree_initialization_fails() {
+    let workflow = workflow_fixture(Some("snapshot-a"));
+    let snapshot = snapshot_fixture("snapshot-a", "v1");
+    let workflow_repository = MockWorkflowRepository::with(workflow, vec![snapshot]);
+    let run_repository = MockWorkflowRunRepository::default();
+    let provisioner = Arc::new(FakeTaskWorktreeProvisioner::default());
+    let handler = CreateWorkflowRunHandler::new(
+        Arc::new(workflow_repository),
+        Arc::new(run_repository),
+        FixedRunIdGenerator::new("run-1"),
+        FixedTaskIdGenerator::new(TASK_ID),
+        FixedWorktreeIdGenerator::new("worktree-1"),
+        provisioner.clone(),
+        MockWorktreeInitializer {
+            worktrees: Arc::new(Mutex::new(Vec::new())),
+            fail: true,
+        },
+        PathBuf::from(WORK_DIR),
+        FixedClock::new(30),
+    );
+
+    let error = handler
+        .handle(CreateWorkflowRunRequest {
+            project_id: "project-1".to_string(),
+            workflow_id: "workflow-a".to_string(),
+            snapshot_id: Some("snapshot-a".to_string()),
+            kickoff_input: None,
+            name: None,
+            base_branch: None,
+        })
+        .unwrap_err();
+
+    assert!(matches!(error, ApplicationError::WorkflowRunStartFailed { .. }));
+    // The provisioned worktree must be removed so no orphan branch is left behind.
+    assert_eq!(
+        provisioner.deleted_requests(),
+        vec![DeleteTaskWorktreeRequest {
+            branch_name: format!("ora/{}", &TASK_ID[..8]),
+            mode: TaskWorktreeDeletionMode::Force,
+        }]
+    );
+}
+
 /// Verifies creation falls back to the workflow's published snapshot without an explicit id.
 #[test]
 fn uses_published_snapshot_when_no_explicit_id() {
@@ -106,6 +155,7 @@ fn uses_published_snapshot_when_no_explicit_id() {
         FixedTaskIdGenerator::new(TASK_ID),
         FixedWorktreeIdGenerator::new("worktree-1"),
         Arc::new(FakeTaskWorktreeProvisioner::default()),
+        MockWorktreeInitializer::default(),
         PathBuf::from(WORK_DIR),
         FixedClock::new(30),
     );
@@ -136,6 +186,7 @@ fn rejects_workflow_without_published_snapshot() {
         FixedTaskIdGenerator::new(TASK_ID),
         FixedWorktreeIdGenerator::new("worktree-1"),
         Arc::new(FakeTaskWorktreeProvisioner::default()),
+        MockWorktreeInitializer::default(),
         PathBuf::from(WORK_DIR),
         FixedClock::new(30),
     );
@@ -167,6 +218,7 @@ fn rejects_draft_snapshot() {
         FixedTaskIdGenerator::new(TASK_ID),
         FixedWorktreeIdGenerator::new("worktree-1"),
         Arc::new(FakeTaskWorktreeProvisioner::default()),
+        MockWorktreeInitializer::default(),
         PathBuf::from(WORK_DIR),
         FixedClock::new(30),
     );
@@ -197,6 +249,7 @@ fn rejects_snapshot_not_in_workflow() {
         FixedTaskIdGenerator::new(TASK_ID),
         FixedWorktreeIdGenerator::new("worktree-1"),
         provisioner.clone(),
+        MockWorktreeInitializer::default(),
         PathBuf::from(WORK_DIR),
         FixedClock::new(30),
     );
@@ -239,6 +292,7 @@ fn compensates_worktree_when_persistence_fails() {
         FixedTaskIdGenerator::new(TASK_ID),
         FixedWorktreeIdGenerator::new("worktree-1"),
         provisioner.clone(),
+        MockWorktreeInitializer::default(),
         PathBuf::from(WORK_DIR),
         FixedClock::new(30),
     );
@@ -288,6 +342,7 @@ fn reports_provisioning_failure() {
         FixedTaskIdGenerator::new(TASK_ID),
         FixedWorktreeIdGenerator::new("worktree-1"),
         provisioner.clone(),
+        MockWorktreeInitializer::default(),
         PathBuf::from(WORK_DIR),
         FixedClock::new(30),
     );
@@ -582,7 +637,9 @@ fn snapshot_fixture(id: &str, version: &str) -> WorkflowSnapshot {
         WorkflowSnapshotId::new(id),
         WorkflowId::new("workflow-a"),
         version,
-        "{\"nodes\":[]}",
+        // A structurally valid graph (nodes + edges) so the create handler can parse it before
+        // asking the worktree initializer to set up the run's initial state.
+        "{\"nodes\":[],\"edges\":[]}",
         20,
         Some(20),
         /*is_deleted*/ false,
@@ -836,6 +893,30 @@ impl WorkflowRunRepository for MockWorkflowRunRepository {
             .unwrap()
             .clone()
             .unwrap_or(DeleteWorkflowRunResult::Deleted))
+    }
+}
+
+/// A deploy-time worktree initializer spy: records the worktree it was asked to set up and can be
+/// configured to fail so create-time compensation is testable.
+#[derive(Clone, Default)]
+struct MockWorktreeInitializer {
+    worktrees: Arc<Mutex<Vec<PathBuf>>>,
+    fail: bool,
+}
+
+impl WorkflowRunWorktreeInitializer for MockWorktreeInitializer {
+    fn initialize_worktree(
+        &self,
+        _graph: &WorkflowGraph,
+        worktree_root: &Path,
+    ) -> Result<(), StartPrerequisitesError> {
+        self.worktrees.lock().unwrap().push(worktree_root.to_path_buf());
+        if self.fail {
+            return Err(StartPrerequisitesError::SkillMaterializationError {
+                message: "boom".to_string(),
+            });
+        }
+        Ok(())
     }
 }
 

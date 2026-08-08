@@ -69,7 +69,15 @@ export function useDeleteWorkflow() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (workflowId: string) => client.workflow.delete({ workflowId }),
-    onSuccess: () => {
+    onSuccess: (_result, workflowId) => {
+      // Drop the deleted row from the library cache synchronously: the settings page's
+      // render-phase auto-select reads this cache to pick the next selected workflow, and
+      // waiting for invalidateQueries' async refetch would briefly keep the deleted id in
+      // the list, selecting it and leaving a stale canvas / "workflow not found" error.
+      queryClient.setQueryData<WorkflowSummary[]>(
+        workflowLibraryKey,
+        (current) => current?.filter((item) => item.id !== workflowId),
+      );
       void queryClient.invalidateQueries({ queryKey: workflowLibraryKey });
     },
   });

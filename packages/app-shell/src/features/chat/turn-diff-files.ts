@@ -100,7 +100,7 @@ function stringField(
 }
 
 /** Removes the private managed-worktree prefix from absolute provider paths. */
-function displayPath(path: string): string {
+export function displayPath(path: string): string {
   const managedWorktreePath = path.match(
     /(?:^|[\\/])worktrees[\\/][^\\/]+[\\/](.+)$/,
   )?.[1];

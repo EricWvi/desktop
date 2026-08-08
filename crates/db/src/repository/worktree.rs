@@ -134,7 +134,7 @@ impl WorktreeRepository for SqliteWorktreeRepository {
 }
 
 /// Reconstructs a domain worktree from the selected worktree columns.
-fn map_worktree_row(row: &Row<'_>) -> Result<Worktree, crate::DatabaseError> {
+pub(super) fn map_worktree_row(row: &Row<'_>) -> Result<Worktree, crate::DatabaseError> {
     let activity = WorktreeActivity::from_database_value(row.get("is_active")?)?;
     let is_deleted = row.get::<_, i64>("is_deleted")? != 0;
 

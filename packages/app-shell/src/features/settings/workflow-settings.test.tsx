@@ -10,7 +10,9 @@ import { appI18n } from "../../i18n/i18n-instance";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { createHookWrapper, createTestQueryClient } from "../../test/hook-harness";
 import { createMockClient, createMockClientState, type MockClientState } from "../../test/mock-client";
+import { renderHookWithClient } from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
+import { useDeleteWorkflow } from "./workflow-definitions";
 import { WorkflowSettings } from "./workflow-settings";
 
 /** Seeds the mock client with the demo workflows and their published versions. */
@@ -78,14 +80,14 @@ function renderSettings(
   state.projects = [{ id: "p1", name: "Demo", rootPath: "/demo" }];
   // Live Agent/Skill catalogs consumed by the workflow inspector's selectors.
   state.agents = [
-    { id: "Architect", name: "架构师", description: "role" },
-    { id: "Planner", name: "规划师", description: "role" },
-    { id: "Researcher", name: "研究员", description: "role" },
-    { id: "Implementer", name: "实施者", description: "role" },
-    { id: "Reviewer", name: "审查员", description: "role" },
-    { id: "Tester", name: "测试员", description: "role" },
-    { id: "Debugger", name: "调试员", description: "role" },
-    { id: "Documentation Agent", name: "文档专员", description: "role" },
+    { id: "ag-architect", name: "Architect", description: "role" },
+    { id: "ag-planner", name: "Planner", description: "role" },
+    { id: "ag-researcher", name: "Researcher", description: "role" },
+    { id: "ag-implementer", name: "Implementer", description: "role" },
+    { id: "ag-reviewer", name: "Reviewer", description: "role" },
+    { id: "ag-tester", name: "Tester", description: "role" },
+    { id: "ag-debugger", name: "Debugger", description: "role" },
+    { id: "ag-documentation", name: "Documentation Agent", description: "role" },
   ];
   state.skills = [
     { id: "openspec-verify-change", name: "openspec-verify-change", description: "skill" },
@@ -622,7 +624,7 @@ describe("WorkflowSettings", () => {
     await user.click(reviewNode.closest(".react-flow__node") ?? reviewNode);
 
     expect(screen.getByLabelText("Agent 模型")).toBeInTheDocument();
-    expect(screen.getByLabelText("角色")).toHaveTextContent("审查员");
+    expect(screen.getByLabelText("角色")).toHaveTextContent("Reviewer");
     expect(screen.getAllByText("Skills")).toHaveLength(2);
     expect(screen.getByLabelText("自定义 Prompt")).toHaveValue(
       "按严重程度整理问题，并给出定位与修复建议。",
@@ -636,7 +638,7 @@ describe("WorkflowSettings", () => {
       );
     });
     const configuredParameters = within(reviewNode).getByLabelText("配置参数");
-    expect(configuredParameters).toHaveTextContent("角色审查员");
+    expect(configuredParameters).toHaveTextContent("角色Reviewer");
     expect(configuredParameters).toHaveTextContent("code_agent_cli · opencode/big-pickle");
     expect(configuredParameters).toHaveTextContent("Skillsopenspec-verify-change");
     expect(configuredParameters).not.toHaveTextContent("按严重程度整理问题，并给出定位与修复建议。");
@@ -679,9 +681,9 @@ describe("WorkflowSettings", () => {
 
     await user.click(screen.getByLabelText("角色"));
     const roleSearch = screen.getByLabelText("搜索可用角色");
-    await user.type(roleSearch, "测试");
-    await user.click(screen.getByRole("option", { name: "测试员" }));
-    expect(screen.getByLabelText("角色")).toHaveTextContent("测试员");
+    await user.type(roleSearch, "tester");
+    await user.click(screen.getByRole("option", { name: "Tester" }));
+    expect(screen.getByLabelText("角色")).toHaveTextContent("Tester");
   });
 
   it("keeps a manually switched Agent CLI when that CLI reports no models", async () => {
@@ -887,5 +889,54 @@ describe("WorkflowSettings", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Deploy to project" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Test run" })).not.toBeInTheDocument();
+  });
+
+  it("deleting the selected workflow auto-selects the next one and loads its canvas", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+
+    // The mock library is seeded with code-review first and auto-selected.
+    await screen.findByText("代码审查工作流");
+    await screen.findByLabelText("工作流画布");
+    expect(screen.getByDisplayValue("代码审查工作流")).toBeInTheDocument();
+
+    // Delete the currently selected workflow.
+    await user.click(screen.getByRole("button", { name: "删除代码审查工作流" }));
+    const deleteDialog = await screen.findByRole("alertdialog", { name: "删除“代码审查工作流”？" });
+    await user.click(within(deleteDialog).getByRole("button", { name: "删除" }));
+
+    // The deleted workflow leaves the list and the first remaining one becomes selected,
+    // without a "workflow not found" error or a stale canvas from the deleted workflow.
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "删除代码审查工作流" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("错开并行演示")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("错开并行演示")).toBeInTheDocument();
+    expect(screen.queryByText("未找到该工作流。")).not.toBeInTheDocument();
+  });
+});
+
+describe("useDeleteWorkflow", () => {
+  it("removes the deleted workflow from the library cache synchronously", async () => {
+    const state = createMockClientState();
+    seedDemoWorkflows(state);
+    const client = createMockClient(state);
+    const { result, queryClient } = renderHookWithClient(() => useDeleteWorkflow(), client);
+    // Pre-warm the library query like the settings page does.
+    await queryClient.fetchQuery({
+      queryKey: ["workflow", "library"],
+      queryFn: async () => (await client.workflow.list({})).workflows,
+    });
+    const before = queryClient.getQueryData(["workflow", "library"]) as Array<{ id: string }>;
+    expect(before.some((item) => item.id === "code-review")).toBe(true);
+
+    await act(async () => {
+      await result.current.mutateAsync("code-review");
+    });
+
+    // The cache must drop the row immediately, before any invalidateQueries refetch lands,
+    // so the settings auto-select reads a list that no longer contains the deleted id.
+    const after = queryClient.getQueryData(["workflow", "library"]) as Array<{ id: string }>;
+    expect(after.some((item) => item.id === "code-review")).toBe(false);
   });
 });

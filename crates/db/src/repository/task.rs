@@ -136,7 +136,7 @@ impl TaskRepository for SqliteTaskRepository {
 }
 
 /// Reconstructs a domain task from the selected task columns.
-fn map_task_row(row: &Row<'_>) -> Result<Task, crate::DatabaseError> {
+pub(super) fn map_task_row(row: &Row<'_>) -> Result<Task, crate::DatabaseError> {
     let worktree_id = row
         .get::<_, Option<String>>("worktree_id")?
         .map(WorktreeId::new);

@@ -417,7 +417,6 @@ describe("mock run engine", () => {
     unsubscribe();
 
     expect(finished?.status).toBe("succeeded");
-    expect(finished?.totals.tokenUsage?.totalTokens).toBeGreaterThan(0);
     expect(events[0]).toBe("run_started");
     expect(events.at(-1)).toBe("run_finished");
     for (const nodeId of plan.order) {
@@ -426,8 +425,6 @@ describe("mock run engine", () => {
     }
     // Default zh path takes??????so tests stays reachable ? nothing skipped.
     expect(plan.skipped).toEqual([]);
-    expect(finished?.nodeStates.start?.tokenUsage).toBeUndefined();
-    expect(finished?.nodeStates.understand?.tokenUsage?.totalTokens).toBeGreaterThan(0);
     const artifacts = await runtime.runs.listArtifacts(run.id);
     expect(artifacts.length).toBeGreaterThan(0);
     expect(artifacts.every((item) => item.nodeId.length > 0)).toBe(true);
@@ -745,7 +742,7 @@ describe("mock run engine", () => {
     // quick_scan is human ? HITL; lint/index start on timers.
     expect(snap?.nodeStates).toEqual(
       expect.objectContaining({
-        start: expect.objectContaining({ status: "succeeded", durationMs: 800 }),
+        start: expect.objectContaining({ status: "succeeded" }),
         quick_scan: expect.objectContaining({ status: "awaiting_input" }),
         lint: expect.objectContaining({ status: "running" }),
         slow_index: expect.objectContaining({ status: "running" }),
@@ -760,7 +757,7 @@ describe("mock run engine", () => {
     await vi.advanceTimersByTimeAsync(3_500);
     snap = await runtime.runs.get(run.id);
     expect(snap?.nodeStates.lint).toEqual(
-      expect.objectContaining({ status: "succeeded", durationMs: 3_500 }),
+      expect.objectContaining({ status: "succeeded" }),
     );
     expect(snap?.nodeStates.slow_index?.status).toBe("running");
     expect(snap?.nodeStates.deep_security?.status).toBe("idle");
@@ -770,7 +767,7 @@ describe("mock run engine", () => {
     await vi.advanceTimersByTimeAsync(2_000);
     snap = await runtime.runs.get(run.id);
     expect(snap?.nodeStates.slow_index).toEqual(
-      expect.objectContaining({ status: "succeeded", durationMs: 5_500 }),
+      expect.objectContaining({ status: "succeeded" }),
     );
     expect(snap?.nodeStates.docs_pass?.status).toBe("awaiting_input");
     expect(snap?.openHitls.map((item) => item.nodeId).sort()).toEqual([

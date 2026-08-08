@@ -85,9 +85,6 @@ export const RunOverviewNode = memo(function RunOverviewNode({
     ? formatRunClock(state.finishedAt, locale)
     : null;
   const hasTiming = startedLabel !== null || finishedLabel !== null;
-  const hasMetrics = hasTiming
-    || state.durationMs !== undefined
-    || state.tokenUsage?.totalTokens !== undefined;
 
   return (
     <WorkflowNodeCardShell
@@ -129,28 +126,12 @@ export const RunOverviewNode = memo(function RunOverviewNode({
           />
         </div>
       )}
-      footer={hasMetrics
+      footer={hasTiming
         ? (
           <p className="font-mono text-[9px] tabular-nums text-muted-foreground">
-            {state.durationMs !== undefined ? `${state.durationMs}ms` : ""}
-            {state.durationMs !== undefined
-              && state.tokenUsage?.totalTokens !== undefined
-              ? " · "
-              : ""}
-            {state.tokenUsage?.totalTokens !== undefined
-              ? `${state.tokenUsage.totalTokens} tok`
-              : ""}
-            {hasTiming && (
-              <span className="text-muted-foreground/55">
-                {(state.durationMs !== undefined
-                  || state.tokenUsage?.totalTokens !== undefined)
-                  ? " · "
-                  : ""}
-                {startedLabel ?? "—"}
-                {" — "}
-                {finishedLabel ?? "—"}
-              </span>
-            )}
+            {startedLabel ?? "—"}
+            {" — "}
+            {finishedLabel ?? "—"}
           </p>
         )
         : undefined}

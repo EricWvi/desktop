@@ -242,7 +242,6 @@ export function createMemoryWorkflowRuntime(
         kickoffInput,
         nodeStates: idleNodeStates(snapshot),
         openHitls: [],
-        totals: {},
         createdAt,
         updatedAt: createdAt,
       };

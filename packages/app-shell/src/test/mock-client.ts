@@ -36,6 +36,25 @@ export interface MockWorkflowRunRecord {
   updatedAt: bigint;
 }
 
+/** Builds the public run payload for one mock workflow-run record. */
+function mockWorkflowRun(record: MockWorkflowRunRecord): WorkflowRun {
+  return {
+    id: record.id,
+    workflowId: record.workflowId,
+    snapshotId: record.snapshotId,
+    status: record.status,
+    state: "{\"current_nodes\":[]}",
+    input: null,
+    output: null,
+    error: null,
+    payload: null,
+    startedAt: null,
+    finishedAt: null,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
 /** In-memory state mutated by the mock client so tests can assert post-call state. */
 export interface MockClientState {
   projects: Project[];
@@ -563,6 +582,26 @@ export function createMockClient(state: MockClientState): ContractsClient {
           taskId: record.taskId,
           nodes: [],
         };
+      },
+      start: async (req) => {
+        const record = state.workflowRuns.find((candidate) => candidate.id === req.runId);
+        if (record === undefined) throw new Error(`workflow run ${req.runId} not found`);
+        return { run: mockWorkflowRun(record) };
+      },
+      cancel: async (req) => {
+        const record = state.workflowRuns.find((candidate) => candidate.id === req.runId);
+        if (record === undefined) throw new Error(`workflow run ${req.runId} not found`);
+        return { run: mockWorkflowRun(record) };
+      },
+      restart: async (req) => {
+        const record = state.workflowRuns.find((candidate) => candidate.id === req.runId);
+        if (record === undefined) throw new Error(`workflow run ${req.runId} not found`);
+        return { run: mockWorkflowRun(record) };
+      },
+      updateInput: async (req) => {
+        const record = state.workflowRuns.find((candidate) => candidate.id === req.runId);
+        if (record === undefined) throw new Error(`workflow run ${req.runId} not found`);
+        return { run: mockWorkflowRun(record) };
       },
       list: async (req) => ({
         runs: state.workflowRuns

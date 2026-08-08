@@ -195,6 +195,13 @@ pub enum PublicError {
     WorkflowRunCannotUseDraftSnapshot(EmptyErrorParams),
     WorkflowRunNotFound(EmptyErrorParams),
     WorkflowRunActive(EmptyErrorParams),
+    WorkflowRunGraphParse(EmptyErrorParams),
+    WorkflowRunValidation(EmptyErrorParams),
+    WorkflowSkillNotFound(EmptyErrorParams),
+    WorkflowRoleNotFound(EmptyErrorParams),
+    WorkflowRunStartFailed(EmptyErrorParams),
+    WorkflowRunNotRestartable(EmptyErrorParams),
+    WorkflowRunNotEditable(EmptyErrorParams),
 }
 
 impl PublicError {
@@ -302,6 +309,13 @@ impl PublicError {
             Self::WorkflowRunCannotUseDraftSnapshot(_) => "workflow_run_cannot_use_draft_snapshot",
             Self::WorkflowRunNotFound(_) => "workflow_run_not_found",
             Self::WorkflowRunActive(_) => "workflow_run_active",
+            Self::WorkflowRunGraphParse(_) => "workflow_run_graph_parse",
+            Self::WorkflowRunValidation(_) => "workflow_run_validation",
+            Self::WorkflowSkillNotFound(_) => "workflow_skill_not_found",
+            Self::WorkflowRoleNotFound(_) => "workflow_role_not_found",
+            Self::WorkflowRunStartFailed(_) => "workflow_run_start_failed",
+            Self::WorkflowRunNotRestartable(_) => "workflow_run_not_restartable",
+            Self::WorkflowRunNotEditable(_) => "workflow_run_not_editable",
         }
     }
 }
@@ -602,7 +616,14 @@ mod tests {
                 | PublicError::WorkflowNoPublishedSnapshot(_)
                 | PublicError::WorkflowRunCannotUseDraftSnapshot(_)
                 | PublicError::WorkflowRunNotFound(_)
-                | PublicError::WorkflowRunActive(_) => {}
+                | PublicError::WorkflowRunActive(_)
+                | PublicError::WorkflowRunGraphParse(_)
+                | PublicError::WorkflowRunValidation(_)
+                | PublicError::WorkflowSkillNotFound(_)
+                | PublicError::WorkflowRoleNotFound(_)
+                | PublicError::WorkflowRunStartFailed(_)
+                | PublicError::WorkflowRunNotRestartable(_)
+                | PublicError::WorkflowRunNotEditable(_) => {}
             }
         }
 

@@ -19,6 +19,6 @@ pub use repository::{
     SqliteProjectRepository, SqliteProjectSpecSourceOverrideRepository,
     SqliteProjectWorkContextRepository, SqliteSessionRepository, SqliteSkillRepository,
     SqliteTaskDiffCommentRepository, SqliteTaskRepository, SqliteWorkflowRepository,
-    SqliteWorkflowRunRepository, SqliteWorktreeRepository,
+    SqliteWorkflowRunEngineRepository, SqliteWorkflowRunRepository, SqliteWorktreeRepository,
 };
 pub use time::{SystemTimestampSource, TimestampSource};

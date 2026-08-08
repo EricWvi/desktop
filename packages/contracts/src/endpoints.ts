@@ -14,7 +14,7 @@ import type { GetSpecCatalogRequest, ReadSpecRequest, ReadSpecResponse, ResolveS
 import type { CreateTaskRequest, CreateTaskResponse, DeleteTaskRequest, DeleteTaskResponse, GetTaskRequest, GetTaskResponse, GetTaskWorkspaceRequest, GetTaskWorkspaceResponse, ListTasksRequest, ListTasksResponse, UpdateTaskRequest, UpdateTaskResponse } from "./task.js";
 import type { CommitTaskChangesRequest, CommitTaskChangesResponse, CreateTaskDiffCommentRequest, CreateTaskDiffCommentResponse, GetTaskDiffRequest, GetTaskDiffResponse, ListTaskDiffCommentsRequest, ListTaskDiffCommentsResponse, PushTaskBranchRequest, PushTaskBranchResponse, ReplyTaskDiffCommentRequest, ReplyTaskDiffCommentResponse, SetTaskDiffCommentStatusRequest, SetTaskDiffCommentStatusResponse } from "./task_diff.js";
 import type { ActivateWorkflowRequest, ActivateWorkflowResponse, CreateWorkflowRequest, CreateWorkflowResponse, DeleteSnapshotRequest, DeleteSnapshotResponse, DeleteWorkflowRequest, DeleteWorkflowResponse, GetDraftRequest, GetDraftResponse, GetVersionRequest, GetVersionResponse, GetWorkflowRequest, GetWorkflowResponse, GetWorkflowSnapshotRequest, GetWorkflowSnapshotResponse, ListVersionsRequest, ListVersionsResponse, ListWorkflowsRequest, ListWorkflowsResponse, PublishWorkflowRequest, PublishWorkflowResponse, RollbackWorkflowRequest, RollbackWorkflowResponse, UpdateDraftRequest, UpdateDraftResponse, UpdateWorkflowRequest, UpdateWorkflowResponse } from "./workflow.js";
-import type { CreateWorkflowRunRequest, CreateWorkflowRunResponse, DeleteWorkflowRunRequest, DeleteWorkflowRunResponse, GetWorkflowRunRequest, GetWorkflowRunResponse, ListWorkflowNodeRunsRequest, ListWorkflowNodeRunsResponse, ListWorkflowRunsByWorkflowRequest, ListWorkflowRunsByWorkflowResponse, ListWorkflowRunsRequest, ListWorkflowRunsResponse } from "./workflowRun.js";
+import type { CancelWorkflowRunRequest, CancelWorkflowRunResponse, CreateWorkflowRunRequest, CreateWorkflowRunResponse, DeleteWorkflowRunRequest, DeleteWorkflowRunResponse, GetWorkflowRunRequest, GetWorkflowRunResponse, ListWorkflowNodeRunsRequest, ListWorkflowNodeRunsResponse, ListWorkflowRunsByWorkflowRequest, ListWorkflowRunsByWorkflowResponse, ListWorkflowRunsRequest, ListWorkflowRunsResponse, RestartWorkflowRunRequest, RestartWorkflowRunResponse, StartWorkflowRunRequest, StartWorkflowRunResponse, UpdateWorkflowRunInputRequest, UpdateWorkflowRunInputResponse } from "./workflowRun.js";
 import type { HttpMethod } from "./transport.js";
 
 export type EndpointPathParam = {
@@ -125,6 +125,10 @@ export type RequestByOperation = {
   listWorkflowRunsByWorkflow: ListWorkflowRunsByWorkflowRequest;
   listWorkflowNodeRuns: ListWorkflowNodeRunsRequest;
   deleteWorkflowRun: DeleteWorkflowRunRequest;
+  startWorkflowRun: StartWorkflowRunRequest;
+  cancelWorkflowRun: CancelWorkflowRunRequest;
+  restartWorkflowRun: RestartWorkflowRunRequest;
+  updateWorkflowRunInput: UpdateWorkflowRunInputRequest;
 };
 
 export type ResponseByOperation = {
@@ -211,6 +215,10 @@ export type ResponseByOperation = {
   listWorkflowRunsByWorkflow: ListWorkflowRunsByWorkflowResponse;
   listWorkflowNodeRuns: ListWorkflowNodeRunsResponse;
   deleteWorkflowRun: DeleteWorkflowRunResponse;
+  startWorkflowRun: StartWorkflowRunResponse;
+  cancelWorkflowRun: CancelWorkflowRunResponse;
+  restartWorkflowRun: RestartWorkflowRunResponse;
+  updateWorkflowRunInput: UpdateWorkflowRunInputResponse;
 };
 
 export type EndpointOperation = keyof RequestByOperation;
@@ -1294,5 +1302,57 @@ export const endpoints = {
     pathParams: [{ rustFieldName: "run_id", wireName: "runId" }],
     queryParams: [],
     hasJsonBody: false,
+  },
+  startWorkflowRun: {
+    operationName: "startWorkflowRun",
+    namespace: "workflowRun",
+    memberName: "start",
+    method: "POST",
+    pathTemplate: "/api/workflow-runs/{runId}/start",
+    requestType: "StartWorkflowRunRequest",
+    responseType: "StartWorkflowRunResponse",
+    responseMode: "unary",
+    pathParams: [{ rustFieldName: "run_id", wireName: "runId" }],
+    queryParams: [],
+    hasJsonBody: false,
+  },
+  cancelWorkflowRun: {
+    operationName: "cancelWorkflowRun",
+    namespace: "workflowRun",
+    memberName: "cancel",
+    method: "POST",
+    pathTemplate: "/api/workflow-runs/{runId}/cancel",
+    requestType: "CancelWorkflowRunRequest",
+    responseType: "CancelWorkflowRunResponse",
+    responseMode: "unary",
+    pathParams: [{ rustFieldName: "run_id", wireName: "runId" }],
+    queryParams: [],
+    hasJsonBody: false,
+  },
+  restartWorkflowRun: {
+    operationName: "restartWorkflowRun",
+    namespace: "workflowRun",
+    memberName: "restart",
+    method: "POST",
+    pathTemplate: "/api/workflow-runs/{runId}/restart",
+    requestType: "RestartWorkflowRunRequest",
+    responseType: "RestartWorkflowRunResponse",
+    responseMode: "unary",
+    pathParams: [{ rustFieldName: "run_id", wireName: "runId" }],
+    queryParams: [],
+    hasJsonBody: false,
+  },
+  updateWorkflowRunInput: {
+    operationName: "updateWorkflowRunInput",
+    namespace: "workflowRun",
+    memberName: "updateInput",
+    method: "POST",
+    pathTemplate: "/api/workflow-runs/{runId}/input",
+    requestType: "UpdateWorkflowRunInputRequest",
+    responseType: "UpdateWorkflowRunInputResponse",
+    responseMode: "unary",
+    pathParams: [{ rustFieldName: "run_id", wireName: "runId" }],
+    queryParams: [],
+    hasJsonBody: true,
   },
 } as const satisfies Record<EndpointOperation, FrontendEndpointDefinition>;

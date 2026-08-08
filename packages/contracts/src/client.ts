@@ -220,6 +220,14 @@ export function createContractsClient(
         executeOperation("listWorkflowNodeRuns", request, transport, options),
       delete: (request, options) =>
         executeOperation("deleteWorkflowRun", request, transport, options),
+      start: (request, options) =>
+        executeOperation("startWorkflowRun", request, transport, options),
+      cancel: (request, options) =>
+        executeOperation("cancelWorkflowRun", request, transport, options),
+      restart: (request, options) =>
+        executeOperation("restartWorkflowRun", request, transport, options),
+      updateInput: (request, options) =>
+        executeOperation("updateWorkflowRunInput", request, transport, options),
     },
   };
 }

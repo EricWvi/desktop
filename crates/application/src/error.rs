@@ -1,5 +1,8 @@
 use crate::skill::SkillStorageError;
 use crate::skill_import::SkillImportError;
+use crate::workflow_run::{
+    EngineError, GraphError, StartPrerequisitesError, WorkflowValidationError,
+};
 use crate::{
     BoxRepositorySource, BranchListingError, RepositoryError, TaskDiffCommentRepositoryError,
     TaskDiffReaderError, TaskWorktreeProvisionerError,
@@ -211,6 +214,20 @@ pub enum ApplicationError {
     WorkflowRunCannotUseDraftSnapshot,
     #[error("workflow run not found: {run_id}")]
     WorkflowRunNotFound { run_id: String },
+    #[error("workflow graph is invalid")]
+    WorkflowRunGraphParse(#[from] GraphError),
+    #[error("workflow run is not executable")]
+    WorkflowRunValidation(#[from] WorkflowValidationError),
+    #[error("workflow skill not found: {skill_id}")]
+    WorkflowSkillNotFound { skill_id: String },
+    #[error("workflow role not found: {role_id}")]
+    WorkflowRoleNotFound { role_id: String },
+    #[error("workflow run start failed: {message}")]
+    WorkflowRunStartFailed { message: String },
+    #[error("workflow run cannot be restarted while running")]
+    WorkflowRunNotRestartable,
+    #[error("workflow run input can only be changed while the run is pending")]
+    WorkflowRunNotEditable,
     #[error("workflow run is active and cannot be deleted")]
     WorkflowRunActive,
     #[error("workflow repository operation failed")]
@@ -389,6 +406,32 @@ impl ApplicationError {
     pub(crate) fn from_workflow_run_repository_error(error: RepositoryError) -> Self {
         Self::WorkflowRunRepository { source: error }
     }
+
+    /// Maps run-engine failures into stable application errors.
+    pub(crate) fn from_workflow_engine_error(error: EngineError) -> Self {
+        match error {
+            EngineError::WorkflowRunNotFound { run_id } => Self::WorkflowRunNotFound { run_id },
+            EngineError::GraphParse(error) => Self::WorkflowRunGraphParse(error),
+            EngineError::Validation(error) => Self::WorkflowRunValidation(error),
+            EngineError::Repository(source) => Self::WorkflowRunRepository { source },
+        }
+    }
+
+    /// Maps deploy-time worktree-initialization failures into stable application errors.
+    pub(crate) fn from_start_prerequisites_error(error: StartPrerequisitesError) -> Self {
+        match error {
+            StartPrerequisitesError::WorkflowSkillNotFound { skill_id } => {
+                Self::WorkflowSkillNotFound { skill_id }
+            }
+            StartPrerequisitesError::WorkflowRoleNotFound { role_id } => {
+                Self::WorkflowRoleNotFound { role_id }
+            }
+            StartPrerequisitesError::SkillMaterializationError { message } => {
+                Self::WorkflowRunStartFailed { message }
+            }
+            StartPrerequisitesError::Repository(source) => Self::WorkflowRunRepository { source },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -541,6 +584,21 @@ impl PartialEq for ApplicationError {
             (WorkflowRunNotFound { run_id: left }, WorkflowRunNotFound { run_id: right }) => {
                 left == right
             }
+            (WorkflowRunGraphParse(_), WorkflowRunGraphParse(_))
+            | (WorkflowRunValidation(_), WorkflowRunValidation(_))
+            | (WorkflowRunNotRestartable, WorkflowRunNotRestartable)
+            | (WorkflowRunNotEditable, WorkflowRunNotEditable) => true,
+            (
+                WorkflowSkillNotFound { skill_id: left },
+                WorkflowSkillNotFound { skill_id: right },
+            ) => left == right,
+            (WorkflowRoleNotFound { role_id: left }, WorkflowRoleNotFound { role_id: right }) => {
+                left == right
+            }
+            (
+                WorkflowRunStartFailed { message: left },
+                WorkflowRunStartFailed { message: right },
+            ) => left == right,
             (
                 WorkflowVersionAlreadyExists {
                     workflow_id: left_wf,

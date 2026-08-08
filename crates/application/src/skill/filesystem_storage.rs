@@ -31,6 +31,28 @@ impl FilesystemSkillStorage {
         self.skills_root.join(kind)
     }
 
+    /// Copies the entire formal package of one skill into `destination`, overwriting existing files.
+    ///
+    /// Used by the workflow engine to materialize skills into a run worktree's `.claude/skills/`
+    /// directory. `destination` is created when missing.
+    pub fn copy_package_to(&self, name: &str, destination: &Path) -> Result<(), SkillStorageError> {
+        let source = self.formal_path(name);
+        if !source.is_dir() {
+            return Err(SkillStorageError::FormalDirectoryMissing {
+                name: name.to_string(),
+            });
+        }
+        fs::create_dir_all(destination).map_err(map_storage_error)?;
+        copy_dir_contents(&source, destination).map_err(|source| {
+            SkillStorageError::OperationFailed {
+                message: format!(
+                    "failed to copy skill {name} to {}: {source}",
+                    destination.display()
+                ),
+            }
+        })
+    }
+
     /// Writes a journal marker with the current phase, ensuring the journal root exists.
     fn write_journal(&self, journal: &TransactionJournal) -> Result<(), SkillStorageError> {
         if let Some(parent) = Path::new(&journal.file).parent() {

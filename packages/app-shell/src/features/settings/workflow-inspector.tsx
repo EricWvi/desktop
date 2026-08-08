@@ -330,10 +330,13 @@ function AgentConfigurationFields({
   );
   const enabledMcpCount = config.mcps.filter((mcp) => mcp.enabled).length;
   const configuredRole = capabilities.roles.find((role) => role.value === config.roleId);
-  const selectedRole = configuredRole ?? { value: config.roleId, label: config.roleId };
-  const selectableRoles = configuredRole === undefined
-    ? [selectedRole, ...capabilities.roles]
-    : capabilities.roles;
+  const noRoleOption = { value: "", label: t("settings.workflow.noRole") };
+  const selectedRole = configuredRole
+    ?? (config.roleId === "" ? noRoleOption : { value: config.roleId, label: config.roleId });
+  // The empty option is always selectable; an out-of-catalog role stays visible so it can be re-picked.
+  const selectableRoles = configuredRole === undefined && config.roleId !== ""
+    ? [noRoleOption, selectedRole, ...capabilities.roles]
+    : [noRoleOption, ...capabilities.roles];
 
   /** Adds a new Skill in its enabled state, preserving configuration order. */
   function addSkill(skillId: string): void {

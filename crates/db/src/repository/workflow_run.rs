@@ -329,7 +329,7 @@ impl WorkflowRunRepository for SqliteWorkflowRunRepository {
 }
 
 /// Reconstructs a domain run from the selected run columns.
-fn map_run_row(row: &Row<'_>) -> Result<WorkflowRun, crate::DatabaseError> {
+pub(super) fn map_run_row(row: &Row<'_>) -> Result<WorkflowRun, crate::DatabaseError> {
     let status = WorkflowRunStatus::from_database_value(row.get("run_status")?)?;
     let is_deleted = row.get::<_, i64>("is_deleted")? != 0;
 
@@ -350,7 +350,7 @@ fn map_run_row(row: &Row<'_>) -> Result<WorkflowRun, crate::DatabaseError> {
 }
 
 /// Reconstructs a domain node run from the selected node-run columns.
-fn map_node_run_row(row: &Row<'_>) -> Result<WorkflowNodeRun, crate::DatabaseError> {
+pub(super) fn map_node_run_row(row: &Row<'_>) -> Result<WorkflowNodeRun, crate::DatabaseError> {
     let status = WorkflowNodeStatus::from_database_value(row.get("status")?)?;
     let is_deleted = row.get::<_, i64>("is_deleted")? != 0;
 
@@ -373,7 +373,7 @@ fn map_node_run_row(row: &Row<'_>) -> Result<WorkflowNodeRun, crate::DatabaseErr
 }
 
 /// Lists the node-run rows of one run in stable ascending order.
-fn list_node_runs(
+pub(super) fn list_node_runs(
     connection: &rusqlite::Connection,
     run_id: &WorkflowRunId,
 ) -> Result<Vec<WorkflowNodeRun>, crate::DatabaseError> {

@@ -168,12 +168,6 @@ export type GraphWorkflowNodeStatus =
 /** HITL timeout policy; MVP mock always waits (`wait`) until submit. */
 export type HitlTimeoutPolicy = "fail" | "skip" | "wait";
 
-export interface GraphWorkflowTokenUsage {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-}
-
 /** Glanceable runtime I/O for Theater inspector (not raw wire frames). */
 export interface GraphWorkflowNodeIo {
   /** One-line summary shown by default. */
@@ -182,19 +176,31 @@ export interface GraphWorkflowNodeIo {
   detail?: string;
 }
 
+/** One file this node incrementally changed, recorded from the worktree git diff. */
+export interface WorkflowNodeFileChange {
+  /** Worktree-relative file path. */
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
 export interface GraphWorkflowNodeState {
   status: GraphWorkflowNodeStatus;
   /** Session bound to this node execution; opaque to the workflow UI. */
   sessionId?: string;
   startedAt?: string;
   finishedAt?: string;
-  durationMs?: number;
-  tokenUsage?: GraphWorkflowTokenUsage;
   errorMessage?: string;
+  /** ACP stop reason recorded in `payload.stop_reason` when the node succeeded. */
+  stopReason?: string;
   /** What this step received when it started (kickoff, upstream, schema…). */
   input?: GraphWorkflowNodeIo;
   /** What this step produced when it finished (or HITL answer summary). */
   output?: GraphWorkflowNodeIo;
+  /** The node's own conversation, projected from its run output by the real adapter. */
+  conversation?: WorkflowNodeConversationItem[];
+  /** Incremental worktree changes recorded in `payload.file_changes`. */
+  fileChanges?: WorkflowNodeFileChange[];
 }
 
 /** Lifecycle state for one projected session item. */
@@ -260,10 +266,6 @@ export interface GraphWorkflowRun {
   nodeStates: Record<string, GraphWorkflowNodeState>;
   /** Open HITL gates (parallel prompts may all wait at once). Cleared on resolve / cancel. */
   openHitls: HitlRequest[];
-  totals: {
-    durationMs?: number;
-    tokenUsage?: GraphWorkflowTokenUsage;
-  };
   createdAt: string;
   updatedAt: string;
   finishedAt?: string;
@@ -294,8 +296,6 @@ export type WorkflowRunEvent =
       runId: string;
       nodeId: string;
       status: GraphWorkflowNodeStatus;
-      durationMs?: number;
-      tokenUsage?: GraphWorkflowTokenUsage;
     }
   | {
       type: "artifact_added";
@@ -316,12 +316,7 @@ export type WorkflowRunEvent =
       /** Submitted field values (keys = field.name). */
       payload: Record<string, unknown>;
     }
-  | {
-      type: "run_finished";
-      runId: string;
-      status: GraphWorkflowRunStatus;
-      totals: GraphWorkflowRun["totals"];
-    };
+  | { type: "run_finished"; runId: string; status: GraphWorkflowRunStatus };
 
 /** Opaque resume marker returned to a future NDJSON transport unchanged. */
 export type WorkflowEventCursor = string;

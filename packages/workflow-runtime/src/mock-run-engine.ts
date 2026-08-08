@@ -1,6 +1,5 @@
 import {
   createDefaultMockPathPolicy,
-  nodeKindUsesTokens,
   planMockExecution,
   topologicalOrder,
   type MockExecutionPlan,
@@ -11,7 +10,6 @@ import type {
   GraphWorkflowNodeIo,
   GraphWorkflowNodeState,
   GraphWorkflowRun,
-  GraphWorkflowTokenUsage,
   HitlRequest,
   HitlSchema,
   WorkflowArtifact,
@@ -446,7 +444,7 @@ export function createMockRunEngine(
       if (current === undefined || current.status === "cancelled") {
         return;
       }
-      completeNode(runId, nodeId, startedAt, stepMs);
+      completeNode(runId, nodeId, startedAt);
       pump(runId);
     }, stepMs);
     timersFor(runId).set(nodeId, timer);
@@ -563,11 +561,6 @@ export function createMockRunEngine(
     const nodeId = request.nodeId;
     const startedAt = run.nodeStates[nodeId]?.startedAt ?? host.nowIso();
     const finishedAt = host.nowIso();
-    const durationMs = Math.max(
-      Date.parse(finishedAt) - Date.parse(startedAt),
-      1,
-    );
-    const tokenUsage = stubTokenUsage(nodeId);
     const remaining = run.openHitls.filter((item) => item.id !== requestId);
     const prev = run.nodeStates[nodeId];
     const answer = hitlAnswerOutput(request.schema, payload);
@@ -583,8 +576,6 @@ export function createMockRunEngine(
           sessionId,
           startedAt,
           finishedAt,
-          durationMs,
-          tokenUsage,
           input: prev?.input,
           output: answer,
         },
@@ -642,8 +633,6 @@ export function createMockRunEngine(
       runId,
       nodeId,
       status: "succeeded",
-      durationMs,
-      tokenUsage,
     });
     pump(runId);
   }
@@ -651,25 +640,18 @@ export function createMockRunEngine(
     runId: string,
     nodeId: string,
     startedAt: string,
-    stepMs: number,
   ): void {
     const run = host.getRun(runId);
     if (run === undefined) {
       return;
     }
     const finishedAt = host.nowIso();
-    const durationMs = Math.max(stepMs, 1);
     const node = run.definitionSnapshot.nodes.find((item) => item.id === nodeId);
-    const tokenUsage = node && nodeKindUsesTokens(node.data.kind)
-      ? stubTokenUsage(nodeId)
-      : undefined;
     const prev = run.nodeStates[nodeId];
     patchNode(runId, nodeId, {
       status: "succeeded",
       startedAt,
       finishedAt,
-      durationMs,
-      tokenUsage,
       input: prev?.input,
       output: stubNodeOutput(run, nodeId),
     });
@@ -678,8 +660,6 @@ export function createMockRunEngine(
       runId,
       nodeId,
       status: "succeeded",
-      durationMs,
-      tokenUsage,
     });
 
     if (node?.data.kind === "agent" || node?.data.kind === "output") {
@@ -745,27 +725,16 @@ export function createMockRunEngine(
       return;
     }
     const finishedAt = host.nowIso();
-    let totalTokens = 0;
-    let durationMs = 0;
-    for (const state of Object.values(run.nodeStates)) {
-      totalTokens += state.tokenUsage?.totalTokens ?? 0;
-      durationMs += state.durationMs ?? 0;
-    }
-    const totals = {
-      durationMs,
-      tokenUsage: totalTokens > 0 ? { totalTokens } : {},
-    };
     const updated: GraphWorkflowRun = {
       ...run,
       status,
-      totals,
       openHitls: [],
       updatedAt: finishedAt,
       finishedAt,
     };
     host.setRun(updated);
     host.notifyChanged(updated);
-    host.emit(runId, { type: "run_finished", runId, status, totals });
+    host.emit(runId, { type: "run_finished", runId, status });
   }
 
   /**
@@ -1130,14 +1099,6 @@ function isTerminal(status: GraphWorkflowRun["status"]): boolean {
     || status === "failed"
     || status === "cancelled"
   );
-}
-
-function stubTokenUsage(nodeId: string): GraphWorkflowTokenUsage {
-  return {
-    inputTokens: 40 + nodeId.length * 3,
-    outputTokens: 60 + nodeId.length * 2,
-    totalTokens: 100 + nodeId.length * 5,
-  };
 }
 
 /**

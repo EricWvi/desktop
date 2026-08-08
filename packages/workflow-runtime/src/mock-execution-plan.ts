@@ -2,7 +2,6 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionEdge,
   WorkflowDefinitionNode,
-  WorkflowNodeData,
 } from "./types";
 import { validateWorkflowDefinition } from "./definition";
 
@@ -183,9 +182,4 @@ export function topologicalOrder(
     }
   }
   return order;
-}
-
-/** Kinds that participate in mock token accounting (LLM/tool work). */
-export function nodeKindUsesTokens(kind: WorkflowNodeData["kind"]): boolean {
-  return kind === "agent" || kind === "tool";
 }

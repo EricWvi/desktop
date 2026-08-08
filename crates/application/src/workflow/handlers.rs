@@ -24,7 +24,9 @@ use crate::workflow::ports::{
 use crate::{ApplicationError, Clock};
 
 const DRAFT_VERSION: &str = "draft";
-const DEFAULT_GRAPH: &str = "{}";
+// Every valid workflow is created with its required Start node; the node catalog deliberately
+// hides the start kind, so the seed graph must carry one.
+const DEFAULT_GRAPH: &str = r#"{"nodes":[{"id":"start","type":"workflow","deletable":false,"position":{"x":120,"y":260},"data":{"kind":"start","title":"开始","description":"接收工作流输入"}}],"edges":[]}"#;
 const MAX_AUTOMATIC_VERSION_COLLISION_RETRIES: u16 = 100;
 
 /// Handles creation of a new workflow with its initial draft snapshot.
