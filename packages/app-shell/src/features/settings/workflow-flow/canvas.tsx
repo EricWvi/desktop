@@ -450,7 +450,9 @@ function WorkflowCanvasInner({
             panOnScroll={false}
             zoomOnScroll
             zoomOnPinch
-            panOnDrag
+            // Left-drag box-selects multiple nodes; middle-drag keeps panning.
+            panOnDrag={[1]}
+            selectionOnDrag={!readOnly}
             selectNodesOnDrag={false}
             isValidConnection={isValidConnection}
             onNodesChange={onNodesChange}
@@ -522,10 +524,11 @@ function WorkflowCanvasInner({
       {!readOnly && (
         <div
           data-workflow-controls
-          className="absolute bottom-3 left-1/2 z-30 w-fit max-w-[calc(100%_-_12rem)] -translate-x-1/2"
+          className="absolute bottom-3 left-1/2 z-30 w-fit max-w-[calc(100%_-_6rem)] -translate-x-1/2"
         >
           <WorkflowNodeCatalog
             capabilities={capabilities}
+            hasStartNode={nodes.some((node) => node.data.kind === "start")}
             onAdd={addNodeAtViewportCenter}
             onDrop={dropNodeAtClientPosition}
           />
