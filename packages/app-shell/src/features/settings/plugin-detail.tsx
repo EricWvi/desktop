@@ -20,6 +20,7 @@ import {
   IconDots,
   IconDownload,
   IconExternalLink,
+  IconLoader2,
   IconPlayerPause,
   IconPlayerPlay,
   IconTrash,
@@ -27,8 +28,7 @@ import {
 import type { PluginEntry } from "./plugin-catalog";
 import { PluginTile } from "./plugin-tile";
 
-/** The prompt suggestions and feature bullets are generic; each is filled with the plugin's name. */
-const SAMPLE_PROMPT_KEYS = ["settings.plugins.prompt1", "settings.plugins.prompt2", "settings.plugins.prompt3"];
+/** The feature bullets are generic; each is filled with the plugin's name. */
 const FEATURE_KEYS = [
   "settings.plugins.feature1",
   "settings.plugins.feature2",
@@ -47,10 +47,12 @@ const RESOURCE_KEYS = [
  * the skills it contributes, a details section and a VS Code-style info table. Every
  * value is read from the hard-coded catalog; the skill switches are local-only.
  */
-export function PluginDetail({ plugin, installed, enabled, onBack, onToggleEnabled, onToggleInstall }: {
+export function PluginDetail({ plugin, installed, enabled, installPending, enablePending, onBack, onToggleEnabled, onToggleInstall }: {
   plugin: PluginEntry;
   installed: boolean;
   enabled: boolean;
+  installPending: boolean;
+  enablePending: boolean;
   onBack: () => void;
   onToggleEnabled: () => void;
   onToggleInstall: () => void;
@@ -88,32 +90,45 @@ export function PluginDetail({ plugin, installed, enabled, onBack, onToggleEnabl
           <p className="mt-1 text-sm text-muted-foreground">{summary}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {installed
+          {/* An uninstall in flight takes over the whole control group: the enable
+              toggle would be acting on a plugin that is about to be gone. */}
+          {installPending
             ? (
-              <>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={<Button variant="ghost" size="icon-sm" aria-label={t("settings.plugins.openMenu", { name: plugin.name })} className="text-muted-foreground" />}
-                  >
-                    <IconDots />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40">
-                    <DropdownMenuItem variant="destructive" onClick={onToggleInstall}><IconTrash />{t("settings.plugins.uninstall")}</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button variant={enabled ? "outline" : "default"} onClick={onToggleEnabled}>
-                  {enabled ? <IconPlayerPause /> : <IconPlayerPlay />}
-                  {t(enabled ? "settings.plugins.disable" : "settings.plugins.enable")}
-                </Button>
-              </>
+              <Button variant="outline" disabled>
+                <IconLoader2 className="animate-spin" />
+                {t(installed ? "settings.plugins.uninstalling" : "settings.plugins.installing")}
+              </Button>
             )
-            : <Button variant="outline" onClick={onToggleInstall}><IconDownload />{t("settings.plugins.install")}</Button>}
+            : installed
+              ? (
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={<Button variant="ghost" size="icon-sm" aria-label={t("settings.plugins.openMenu", { name: plugin.name })} className="text-muted-foreground" />}
+                    >
+                      <IconDots />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem variant="destructive" onClick={onToggleInstall}><IconTrash />{t("settings.plugins.uninstall")}</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button variant={enabled ? "outline" : "default"} disabled={enablePending} onClick={onToggleEnabled}>
+                    {enablePending
+                      ? <IconLoader2 className="animate-spin" />
+                      : enabled ? <IconPlayerPause /> : <IconPlayerPlay />}
+                    {enablePending
+                      ? t(enabled ? "settings.plugins.disabling" : "settings.plugins.enabling")
+                      : t(enabled ? "settings.plugins.disable" : "settings.plugins.enable")}
+                  </Button>
+                </>
+              )
+              : <Button variant="outline" onClick={onToggleInstall}><IconDownload />{t("settings.plugins.install")}</Button>}
         </div>
       </header>
 
       <div className="rounded-xl border border-border bg-gradient-to-br from-muted/70 via-muted/30 to-background p-6">
         <div className="mx-auto flex max-w-sm flex-col gap-2.5">
-          {SAMPLE_PROMPT_KEYS.map((key) => (
+          {[1, 2, 3].map((step) => `settings.plugins.prompt.${plugin.id}.${step}`).map((key) => (
             <div key={key} className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-2 text-xs shadow-sm">
               <PluginTile plugin={plugin} size="sm" className="size-4 [&_svg]:size-4" />
               <span className="shrink-0 font-medium">{plugin.name}</span>
@@ -128,24 +143,26 @@ export function PluginDetail({ plugin, installed, enabled, onBack, onToggleEnabl
         {t("settings.plugins.overview", { name: plugin.name, publisher: plugin.publisher, summary })}
       </p>
 
-      <PluginSection title={t("settings.plugins.skills")} count={plugin.skills.length}>
-        <div className="divide-y divide-border">
-          {plugin.skills.map((skill) => (
-            <div key={skill} className="flex items-center gap-3 py-3">
-              <PluginTile plugin={plugin} size="sm" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{skill}</p>
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">{t("settings.plugins.skillSummary", { name: skill })}</p>
+      {plugin.skills.length > 0 && (
+        <PluginSection title={t("settings.plugins.skills")} count={plugin.skills.length}>
+          <div className="divide-y divide-border">
+            {plugin.skills.map((skill) => (
+              <div key={skill} className="flex items-center gap-3 py-3">
+                <PluginTile plugin={plugin} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{skill}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{t("settings.plugins.skillSummary", { name: skill })}</p>
+                </div>
+                <Switch
+                  checked={!disabledSkills.includes(skill)}
+                  onCheckedChange={() => toggleSkill(skill)}
+                  aria-label={t("settings.plugins.toggleSkill", { name: skill })}
+                />
               </div>
-              <Switch
-                checked={!disabledSkills.includes(skill)}
-                onCheckedChange={() => toggleSkill(skill)}
-                aria-label={t("settings.plugins.toggleSkill", { name: skill })}
-              />
-            </div>
-          ))}
-        </div>
-      </PluginSection>
+            ))}
+          </div>
+        </PluginSection>
+      )}
 
       <PluginSection title={t("settings.plugins.details")}>
         <ul data-selectable className="space-y-2 pt-3">

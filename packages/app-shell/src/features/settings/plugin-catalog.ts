@@ -18,7 +18,7 @@ import {
 } from "@tabler/icons-react";
 import type { AgentCli } from "@ora/contracts";
 import { OpenAiLogo } from "../chat/provider-logos";
-import { ClaudeMark, CodeAgentCliMark, NgaMark, OpenCodeMark } from "./plugin-marks";
+import { ClaudeMark, CodeAgentCliMark, NgaMark, OpenCodeMark, RtkMark } from "./plugin-marks";
 
 /** A plugin's brand mark. Tabler icons and the hand-drawn marks both satisfy this. */
 export type PluginMark = ComponentType<{ className?: string }>;
@@ -57,8 +57,8 @@ export interface PluginEntry {
   detectionAgentCli?: AgentCli;
 }
 
-/** No plugin starts pre-installed; the five CLI runtimes report their own detected state instead. */
-export const DEFAULT_INSTALLED_PLUGIN_IDS: string[] = [];
+/** Category shared by the coding-agent CLI plugins, kept separate so composer surfaces can exclude them. */
+export const AI_AGENT_CATEGORY_KEY = "settings.plugins.category.aiAgent";
 
 /**
  * The hard-coded plugin marketplace. No backend contract exposes plugins yet, so the
@@ -75,7 +75,7 @@ export const PLUGIN_CATALOG: PluginEntry[] = [
     size: "18.4 MB",
     collection: "public",
     featured: true,
-    categoryKey: "settings.plugins.category.coding",
+    categoryKey: AI_AGENT_CATEGORY_KEY,
     capabilityKeys: ["settings.plugins.capability.interactive", "settings.plugins.capability.write", "settings.plugins.capability.terminal"],
     mark: OpenCodeMark,
     tone: "text-neutral-900 dark:text-neutral-100",
@@ -93,7 +93,7 @@ export const PLUGIN_CATALOG: PluginEntry[] = [
     size: "—",
     collection: "public",
     featured: true,
-    categoryKey: "settings.plugins.category.coding",
+    categoryKey: AI_AGENT_CATEGORY_KEY,
     capabilityKeys: ["settings.plugins.capability.interactive", "settings.plugins.capability.write", "settings.plugins.capability.terminal"],
     mark: NgaMark,
     tone: "text-sky-600 dark:text-sky-400",
@@ -111,7 +111,7 @@ export const PLUGIN_CATALOG: PluginEntry[] = [
     size: "—",
     collection: "public",
     featured: true,
-    categoryKey: "settings.plugins.category.coding",
+    categoryKey: AI_AGENT_CATEGORY_KEY,
     capabilityKeys: ["settings.plugins.capability.interactive", "settings.plugins.capability.write", "settings.plugins.capability.terminal"],
     mark: CodeAgentCliMark,
     tone: "text-orange-600 dark:text-orange-400",
@@ -129,7 +129,7 @@ export const PLUGIN_CATALOG: PluginEntry[] = [
     size: "—",
     collection: "public",
     featured: true,
-    categoryKey: "settings.plugins.category.coding",
+    categoryKey: AI_AGENT_CATEGORY_KEY,
     capabilityKeys: ["settings.plugins.capability.interactive", "settings.plugins.capability.write", "settings.plugins.capability.terminal"],
     mark: ClaudeMark,
     tone: "text-[#D97757]",
@@ -147,13 +147,30 @@ export const PLUGIN_CATALOG: PluginEntry[] = [
     size: "—",
     collection: "public",
     featured: true,
-    categoryKey: "settings.plugins.category.coding",
+    categoryKey: AI_AGENT_CATEGORY_KEY,
     capabilityKeys: ["settings.plugins.capability.interactive", "settings.plugins.capability.write"],
     mark: OpenAiLogo,
     tone: "text-emerald-600 dark:text-emerald-400",
     summaryKey: "settings.plugins.catalog.codex",
     skills: ["Codex", "Code Review"],
     detectionAgentCli: "codex",
+  },
+  {
+    id: "rtk",
+    name: "RTK",
+    publisher: "rtk-ai",
+    identifier: "rtk-ai.rtk",
+    version: "0.45.0",
+    updated: "2026-08-07",
+    size: "6.5 MB",
+    collection: "public",
+    featured: true,
+    categoryKey: "settings.plugins.category.devtools",
+    capabilityKeys: ["settings.plugins.capability.interactive", "settings.plugins.capability.terminal"],
+    mark: RtkMark,
+    tone: "text-lime-600 dark:text-lime-400",
+    summaryKey: "settings.plugins.catalog.rtk",
+    skills: [],
   },
   {
     id: "github",
