@@ -231,18 +231,10 @@ Shared backend failures project to the same typed `{ code, params, requestId }` 
 
 Task workspace failures use the same mapping: missing task or workspace path returns a typed not-found response, invalid relative paths and unreadable text return a typed bad request, and bounded-output failures retain their native `413`/`422` classification. Watch failures are emitted as `{ "type": "error", "error": { "code", "params", "requestId" } }` frames rather than raw filesystem messages.
 
-## Frontend development modes
+## Frontend development
 
 - `task run:backend` starts the Rust HTTP backend on its default port.
-- `task run:frontend` starts Vite with the fetch contracts transport and expects the backend to run separately.
-- `task run:web-proto` starts Vite with an isolated in-memory `ContractsClient` and never calls `/api/*`.
-- Running `pnpm --filter @ora/web-client dev` directly also defaults to the in-memory client.
-
-Development defaults to `mock`; production builds default to `fetch`. Set
-`VITE_ORA_CONTRACT_TRANSPORT` explicitly to `mock` or `fetch` when overriding
-that behavior. Mock records live only for the current page lifetime and reset
-on refresh; the explicit fetch mode remains the integration path for the Rust
-HTTP backend.
+- `task run:frontend` starts Vite and expects the backend to run separately.
 
 Long-lived task workspace watch responses defer completion until an end or error frame so the request id, error payload, and log event remain correlated. This keeps the watcher aligned with the ACP stream lifecycle and prevents an early success event followed by a duplicate failure event.
 

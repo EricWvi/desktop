@@ -146,15 +146,6 @@ tasks:
 
   run:frontend:
     desc: Run the web frontend against the real HTTP backend
-    env:
-      VITE_ORA_CONTRACT_TRANSPORT: fetch
-    cmds:
-      - pnpm --filter @ora/web-client dev
-
-  run:web-proto:
-    desc: Run the web frontend with the in-memory contracts client
-    env:
-      VITE_ORA_CONTRACT_TRANSPORT: mock
     cmds:
       - pnpm --filter @ora/web-client dev
 
