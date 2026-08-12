@@ -282,15 +282,6 @@ impl ProjectRepository for Rc<FakeProjectRepository> {
             .cloned())
     }
 
-    fn find_project_by_name(
-        &self,
-        _project_name: &str,
-    ) -> Result<Option<Project>, RepositoryError> {
-        Err(RepositoryError::from_message(
-            "name lookup is unsupported in branch-list tests",
-        ))
-    }
-
     /// Rejects unsupported project listing in this focused fixture.
     fn list_projects(&self) -> Result<Vec<Project>, RepositoryError> {
         Err(RepositoryError::from_message(

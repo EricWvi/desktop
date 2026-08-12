@@ -32,22 +32,16 @@ Two Ora processes must not share one data root. SQLite tolerates it, but session
 
 Startup asks `ora-backend` to create the required directories, bootstrap the database, apply the active migration catalog, and construct the shared composition before the runtime is marked ready. A SQLite database that cannot be opened, migrated, or pooled fails startup with a typed bootstrap error rather than serving requests from a partially initialized runtime. The server retains direct composition only for the Web-only filesystem services.
 
-## Project configuration
+## Project and worktree configuration
 
-The web server also requires a bootstrap project identity:
+The web server does not require a bootstrap project. A new database starts with an empty project
+catalog, and users add repositories through the project API or Web UI.
 
-- `ORA_PROJECT_NAME`: persisted workspace project name. Required.
-- `ORA_PROJECT_PATH`: persisted workspace root path. Required.
-
-A blank or missing value for either fails startup with a typed bootstrap error rather than serving requests with an unknown workspace identity.
-
-Startup reconciles this configured project into the `projects` table before the runtime is marked ready:
-
-- If no visible project exists with the configured name, startup creates one row.
-- If a visible project exists with the configured name but a different stored path, startup fails, because project roots are immutable.
-- If both the configured name and path already match, startup leaves the row unchanged.
-
-Task creation resolves the project named in the request and provisions linked worktrees under `<ORA_DATA_DIR>/worktrees/<full-task-id>`. Agent session startup instead resolves Task → Worktree → branch name and then asks Git for the authoritative linked-worktree path, which becomes the ACP session `cwd`. See [Task Worktrees](task-worktrees.md).
+The global worktree root is `<ORA_DATA_DIR>/worktrees`. Task creation resolves the project identified
+by the request and provisions linked worktrees under `<ORA_DATA_DIR>/worktrees/<full-task-id>`.
+Agent session startup instead resolves Task → Worktree → branch name and then asks Git for the
+authoritative linked-worktree path, which becomes the ACP session `cwd`. See
+[Task Worktrees](task-worktrees.md).
 
 ## Bind configuration
 
@@ -63,7 +57,8 @@ Logging variables are documented in [Runtime Logging](runtime-logging.md).
 - `GET /health/live`: confirms that the process is running
 - `GET /health/ready`: confirms that application-state bootstrap completed successfully
 
-`/health/ready` does not return success until the runtime finishes constructing its application state.
+`/health/ready` does not return success until the runtime finishes constructing its application
+state. An empty project catalog is ready for use.
 
 ## HTTP API
 

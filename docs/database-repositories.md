@@ -44,10 +44,6 @@ File-backed parent directories are not created here. The composition root prepar
 
 `create_*` operations persist the domain value they are given and return what is now stored. Session mutation is intentionally not a full-snapshot replacement: `update_session_title`, `update_session_status`, `update_session_binding`, and `update_session_history_state` each update only the columns owned by that business intent and use `RETURNING` to return the latest complete `Session`. `update_session_title` takes a validated `&SessionTitle`; it cannot clear a title through an ambiguous `Option` argument. The database column remains nullable only for sessions that have not acquired a title. This prevents an actor or connection supervisor holding an older snapshot from overwriting an unrelated title or lifecycle change.
 
-## Name-based project lookup
-
-`find_project_by_name` loads one visible project by its exact stored `name` so web-server bootstrap can reconcile its configured workspace identity without listing the whole table. It ignores soft-deleted rows the same way identifier reads do, and returns `None` when only deleted rows match or nothing matches.
-
 ## Row mapping
 
 Repositories map SQLite columns onto the current `ora-domain` shapes, including audit fields and enum-backed columns:
