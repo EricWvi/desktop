@@ -144,7 +144,7 @@ tasks:
           git clone https://github.com/ora-space/rustun.git .data/rustun
         fi
 
-  run:web-frontend:
+  run:frontend:
     desc: Run the web frontend against the real HTTP backend
     env:
       VITE_ORA_CONTRACT_TRANSPORT: fetch
@@ -166,11 +166,11 @@ tasks:
   run:desktop:
     desc: Run the desktop Tauri app in development mode
     env:
-      ORA_DATA_DIR: '{{.ROOT_DIR}}/.data'
+      ORA_DATA_DIR: "{{.ROOT_DIR}}/.data"
     cmds:
       - pnpm --filter @ora/desktop tauri dev
 
-  run:web-backend:
+  run:backend:
     desc: Run the web server backend in development mode
     env:
       ORA_DATA_DIR: .data

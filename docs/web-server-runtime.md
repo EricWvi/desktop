@@ -120,7 +120,6 @@ The first data frame is `Ready`. During an idle connection the Web adapter may w
 
 ### skill
 
-
 - `POST /api/skills`
 - `GET /api/skills`
 - `GET /api/skills/{skillId}`
@@ -234,8 +233,8 @@ Task workspace failures use the same mapping: missing task or workspace path ret
 
 ## Frontend development modes
 
-- `task run:web-backend` starts the Rust HTTP backend on its default port.
-- `task run:web-frontend` starts Vite with the fetch contracts transport and expects the backend to run separately.
+- `task run:backend` starts the Rust HTTP backend on its default port.
+- `task run:frontend` starts Vite with the fetch contracts transport and expects the backend to run separately.
 - `task run:web-proto` starts Vite with an isolated in-memory `ContractsClient` and never calls `/api/*`.
 - Running `pnpm --filter @ora/web-client dev` directly also defaults to the in-memory client.
 
