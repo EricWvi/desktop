@@ -67,6 +67,11 @@ admission and drop cleanup are injected into that interface as a restricted capa
 never sequences workflow state transitions itself. App-event startup subscribes through
 `backend.app_events()` without gaining a publisher.
 
+Runtime readiness/model discovery and Effect status use their own handles as well. Git identity
+uses the stateless Backend export through the same blocking request executor, without capturing
+Desktop state. The command macros only support domain-owned operations; the transitional root
+forwarding arms have been removed.
+
 The frontend injects `createTauriTransport()` into `createContractsClient`. The transport maps contract operation names to Tauri commands and forwards the original request DTO unchanged. Backend failures use the direct `{ code, params, requestId }` payload without a public message or outer envelope. Local Tauri invocation failures never invent a request id.
 
 Task workspace lookup is part of that shared contract surface. `get_task_workspace` returns the authoritative task root with an optional branch. `watchAppEvents` uses the same channel framing, cancellation, and exactly-once completion lifecycle as other Desktop streams.

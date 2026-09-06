@@ -6,6 +6,6 @@ backend_command!(
     get_effect_target_status,
     GetEffectTargetStatusRequest,
     GetEffectTargetStatusResponse,
-    get_effect_target_status,
+    effects.target_status,
     "Loads one generic Effect Target status."
 );

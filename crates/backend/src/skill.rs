@@ -16,6 +16,9 @@ use ora_contracts::{
 use ora_db::{RepositoryPool, SqliteSkillRepository};
 use std::path::PathBuf;
 
+#[cfg(test)]
+mod package_tests;
+
 /// Groups the concrete skill handlers and import service shared by runtime adapters.
 pub struct SkillApi {
     create: CreateSkillHandler<

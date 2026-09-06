@@ -5,9 +5,9 @@ mod tests {
     use ora_backend::Backend;
     use ora_contracts::{
         AgentStatus, CommitSkillImportRequest, CreateProjectRequest, DeleteSkillRequest,
-        GetAgentRuntimeStatusRequest, GetSkillImportSessionRequest, ListSkillsRequest,
-        PrepareSkillImportRequest, SkillImportProgress, SkillImportResult, SkillImportResultStatus,
-        SkillImportSessionStatus, SkillImportSource,
+        GetAgentRuntimeStatusRequest, GetEffectTargetStatusRequest, GetSkillImportSessionRequest,
+        ListSkillsRequest, ListWorkspacesRequest, PrepareSkillImportRequest, SkillImportProgress,
+        SkillImportResult, SkillImportResultStatus, SkillImportSessionStatus, SkillImportSource,
     };
     use pretty_assertions::assert_eq;
     use std::fs;
@@ -35,7 +35,8 @@ mod tests {
         let agent_ref = format!("{AGENT_NAMESPACE}/{AGENT_NAME}");
         wait_until("fake OpenCode agent did not become ready", || {
             backend
-                .get_agent_runtime_status(GetAgentRuntimeStatusRequest {})
+                .agent_runtime()
+                .status(GetAgentRuntimeStatusRequest {})
                 .is_ok_and(|response| {
                     response.statuses.iter().any(|runtime| {
                         runtime.agent_ref == agent_ref && runtime.status == AgentStatus::Ready
@@ -102,6 +103,30 @@ mod tests {
         wait_until("imported Skill was not promptly materialized", || {
             materialized_skill.join("SKILL.md").is_file()
         })?;
+        let workspace_id = backend
+            .workspaces()
+            .list(ListWorkspacesRequest {})?
+            .workspaces
+            .into_iter()
+            .next()
+            .ok_or("fixture workspace missing")?
+            .id;
+        let status = backend
+            .effects()
+            .target_status(GetEffectTargetStatusRequest::WorkspaceAgent {
+                workspace_id,
+                agent_plugin_id: agent_ref,
+            })?
+            .status
+            .ok_or("materialization must have a persisted target status")?;
+        let by_id = backend
+            .effects()
+            .target_status(GetEffectTargetStatusRequest::Target {
+                target_id: status.target_id.clone(),
+            })?
+            .status
+            .ok_or("target id must resolve the same status")?;
+        assert_eq!(by_id.target_id, status.target_id);
         backend.skills().delete(DeleteSkillRequest {
             skill_id: skills[0].id.clone(),
         })?;

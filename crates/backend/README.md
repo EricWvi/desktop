@@ -44,6 +44,13 @@ owns prompt admission, failed-start restoration, and stream-drop cleanup using t
 and completion claims. `Backend::app_events()` exposes the shared subscriber source; publication
 remains crate-private. Consumers do not retain the whole Backend to run a session use case.
 
+`Backend::agent_runtime()` offers only readiness and on-demand model discovery, and
+`Backend::effects()` offers persisted target status from the worker's shared pool. Their private
+implementations retain the existing supervisor/reconciliation ownership. Stateless Git identity
+resolution is an explicitly exported function, not a method that requires the entire Backend.
+The root now contains path/bootstrap handling and handle accessors; adding an operation in an
+existing domain does not change it. No legacy root-operation forwarding interface remains.
+
 ## Responsibilities
 
 - `Backend::open` creates required directories, bootstraps and migrates SQLite, reconciles imported

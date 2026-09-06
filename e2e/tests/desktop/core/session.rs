@@ -59,7 +59,7 @@ mod tests {
         let workspace_id = main_workspace_id(&backend)?;
 
         let runtime = current_thread_runtime()?;
-        let models = runtime.block_on(backend.list_agent_models(ListAgentModelsRequest {
+        let models = runtime.block_on(backend.agent_runtime().models(ListAgentModelsRequest {
             agent_ref: agent_ref(),
             workspace_id,
         }))?;
@@ -99,7 +99,7 @@ mod tests {
         let workspace_id = main_workspace_id(&backend)?;
         let runtime = current_thread_runtime()?;
         let chosen = runtime
-            .block_on(backend.list_agent_models(ListAgentModelsRequest {
+            .block_on(backend.agent_runtime().models(ListAgentModelsRequest {
                 agent_ref: agent_ref(),
                 workspace_id: workspace_id.clone(),
             }))?
@@ -178,7 +178,8 @@ mod tests {
         let expected = agent_ref();
         wait_until("fake OpenCode agent did not become ready", || {
             backend
-                .get_agent_runtime_status(GetAgentRuntimeStatusRequest {})
+                .agent_runtime()
+                .status(GetAgentRuntimeStatusRequest {})
                 .is_ok_and(|response| {
                     response.statuses.iter().any(|runtime| {
                         runtime.agent_ref == expected && runtime.status == AgentStatus::Ready

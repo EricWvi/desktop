@@ -10,7 +10,7 @@
 | 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成 |
 | 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                |
 | 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
-| 4：Backend 迁移 | 进行中 | 普通用例迁移中；聚合删除和运行控制随后迁移        |
+| 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除          |
 | 5：前端归属     | 待实施 | feature 资源、查询和按需测试 transport            |
 | 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`              |
 
@@ -152,3 +152,11 @@
 - 缺少 agent 时的历史回放测试改为通过公开 Sessions 执行；新增真实 SQLite 改名成功/失败通知测试，以及 prompt 启动失败在返回前恢复 awaiting node 的测试。
 - E2E fake ACP 增加显式 held prompt：收到首帧后一直等待真实 ACP cancel，不靠延时制造竞争。新增真实 actor/进程链路验证 stream drop 后 session 可复用、活跃 session 删除后记录与历史清理、workflow 取消后 actor 停止，以及人类 follow-up stream drop 后恢复 awaiting 并可手工完成。
 - 验证：Backend 219 项通过、1 项 ignored；标准 Rust lint、58 项 Tauri、7 项 E2E 与生成漂移检查通过。runtime status、Effect status 和无状态 identity 是阶段 4 余下收口项。
+
+### 阶段 4g：根组合收口（2026-09-06）
+
+- `AgentRuntime` 只公开 readiness/model discovery；`Effects` 只公开持久化 target status。Git identity 改用明确导出的无状态函数，Desktop 不再为它捕获 Backend。
+- 根 Backend 现在只保留路径/启动、领域 handle 和访问器，生产部分约 340 行。删除最后 4 个 operation 及两条旧 command 宏分支，不保留兼容转发；原 pool、锁、supervisor 和 worker 的实例关系、恢复顺序、退出语义与磁盘布局不变。
+- Skill package 更新保留附加文件的测试随职责移到 Skill module；根启动测试保留装配与 plugin Skill 投影验证，并改为 scoped TRACE。
+- 新增 Effects 无 runtime 的真实 SQLite 缺失/读失败区分测试；已有 Effect E2E 现在同时经公开 interface 查询 materialization 的 target status，两种 selector 指向同一 target。
+- 最终 `task test` 全量通过：Frontend lint/clean-stderr 测试、Rust workspace lint/测试、220 项 Backend 测试（另 1 项原有 ignored）、58 项 Tauri 和 7 项 E2E。生成漂移检查也通过。

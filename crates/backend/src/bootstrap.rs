@@ -1,7 +1,8 @@
 use crate::agent::AgentApi;
-use crate::agent_runtime::{AgentRuntimeManager, AgentRuntimeSetup};
+use crate::agent_runtime::{AgentRuntime, AgentRuntimeManager, AgentRuntimeSetup};
 use crate::app_event::AppEventHub;
 use crate::clock::SystemClock;
+use crate::effects::Effects;
 use crate::error::BackendError;
 use crate::plugin::{PluginApi, Plugins};
 use crate::project::ProjectApi;
@@ -15,9 +16,8 @@ use crate::workflow::run::{
     build_workflow_run_engine, prune_orphaned_baselines, run_workflow_run_boot_sweep,
 };
 use crate::workspace::WorkspaceApi;
-use ora_application::{ApplicationError, EffectService};
-use ora_contracts::*;
-use ora_db::{DatabaseBootstrapper, DatabaseLocation, RepositoryPool, default_migration_catalog};
+use ora_application::ApplicationError;
+use ora_db::{DatabaseBootstrapper, DatabaseLocation, default_migration_catalog};
 use ora_scheduler::Scheduler;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -77,13 +77,13 @@ pub enum BackendBootstrapError {
 /// Owns the concrete persisted use-case composition used by the Desktop adapter.
 #[derive(Clone)]
 pub struct Backend {
-    pool: RepositoryPool,
+    effect: Effects,
     project: Arc<ProjectApi>,
     task: Arc<TaskApi>,
     workspace: WorkspaceApi,
     settings: Arc<Settings>,
     session: Arc<Sessions>,
-    agent_runtime: Arc<AgentRuntimeManager>,
+    agent_runtime: AgentRuntime,
     plugin: Plugins,
     skill: Arc<SkillApi>,
     agent: Arc<AgentApi>,
@@ -93,10 +93,10 @@ pub struct Backend {
 }
 
 impl Backend {
-    /// Opens persistent storage and constructs every shared CRUD API.
+    /// Opens persistent storage and composes domain interfaces with shared runtime ownership.
     ///
-    /// Installed agent plugins join the built-in CLIs as agent providers; they are discovered
-    /// under `paths.home_directory`, which also owns their processes and default worktrees.
+    /// Agent providers come from installed plugins discovered under `paths.home_directory`, which
+    /// also owns their processes and default worktrees.
     pub fn open(paths: BackendPaths) -> Result<Self, BackendBootstrapError> {
         let database_path = paths.app_data_directory.join("ora.sqlite3");
         let skills_root = paths.app_data_directory.join("atoms").join("skills");
@@ -250,7 +250,7 @@ impl Backend {
             settings,
             session,
             plugin: Plugins::new(plugin, agent_runtime.clone()),
-            agent_runtime,
+            agent_runtime: AgentRuntime::new(agent_runtime),
             skill: Arc::new(SkillApi::new(
                 pool.clone(),
                 skills_root,
@@ -261,18 +261,13 @@ impl Backend {
             workflow: Arc::new(WorkflowApi::new(pool.clone(), clock)),
             workflow_run,
             app_events,
-            pool,
+            effect: Effects::new(pool),
         })
     }
 
-    /// Returns one Effect Target selected by opaque id or Workspace plus Agent identity.
-    pub fn get_effect_target_status(
-        &self,
-        request: GetEffectTargetStatusRequest,
-    ) -> Result<GetEffectTargetStatusResponse, BackendError> {
-        EffectService::new(ora_db::SqliteEffectRepository::new(self.pool.clone()))
-            .get_target_status(request)
-            .map_err(|error| BackendError::internal("failed to load Effect Target status", error))
+    /// Shares persisted Effect status without exposing convergence workers.
+    pub fn effects(&self) -> Effects {
+        self.effect.clone()
     }
 
     /// Shares run use cases, including scheduling serialization and terminal session cleanup.
@@ -330,42 +325,10 @@ impl Backend {
         self.app_events.clone()
     }
 
-    // =============================================================================
-    // agentRuntime
-    // =============================================================================
-
-    /// Reports whether each application-scoped CLI runtime is ready, starting, or unavailable.
-    pub fn get_agent_runtime_status(
-        &self,
-        _request: GetAgentRuntimeStatusRequest,
-    ) -> Result<GetAgentRuntimeStatusResponse, BackendError> {
-        Ok(self.agent_runtime.agent_runtime_status())
+    /// Shares readiness and model discovery without exposing supervisor or actor internals.
+    pub fn agent_runtime(&self) -> AgentRuntime {
+        self.agent_runtime.clone()
     }
-
-    /// Lists the models one agent advertises outside any session.
-    pub async fn list_agent_models(
-        &self,
-        request: ListAgentModelsRequest,
-    ) -> Result<ListAgentModelsResponse, BackendError> {
-        self.agent_runtime.agent_models(request).await
-    }
-
-    // =============================================================================
-    // gitIdentity
-    // =============================================================================
-
-    /// Reads the host identity for the sidebar profile: global git config first,
-    /// falling back to the authenticated GitHub CLI account when git has no name set.
-    pub fn read_git_identity(
-        &self,
-        _request: GetGitIdentityRequest,
-    ) -> Result<GitIdentityResponse, BackendError> {
-        Ok(crate::identity::resolve_git_identity())
-    }
-
-    // =============================================================================
-    // workflowRun
-    // =============================================================================
 }
 
 /// Creates one required runtime directory and preserves its exact failing path.
@@ -387,220 +350,190 @@ mod tests {
         ListProjectsRequest, ListSkillsRequest, UpdateAgentRequest, UpdateProjectRequest,
         UpdateSkillRequest,
     };
+    use pretty_assertions::assert_eq;
     use std::fs;
     use tempfile::TempDir;
 
     /// Verifies the shared composition owns storage bootstrap and complete non-Git CRUD flows.
-    #[tokio::test]
-    async fn opens_storage_and_serves_shared_crud_apis() {
-        let temporary = TempDir::new().expect("create temporary backend directory");
-        let database_path = temporary.path().join("data").join("ora.sqlite3");
-        let worktree_root = temporary.path().join("worktrees");
-        let backend = Backend::open(backend_paths(
-            database_path.parent().expect("database has parent"),
-            temporary.path(),
-        ))
-        .expect("open shared backend");
+    #[test]
+    fn opens_storage_and_serves_shared_crud_apis() {
+        ora_logging::with_trace_logging(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime")
+                .block_on(async {
+                    let temporary = TempDir::new().expect("create temporary backend directory");
+                    let database_path = temporary.path().join("data").join("ora.sqlite3");
+                    let worktree_root = temporary.path().join("worktrees");
+                    let backend = Backend::open(backend_paths(
+                        database_path.parent().expect("database has parent"),
+                        temporary.path(),
+                    ))
+                    .expect("open shared backend");
 
-        assert!(database_path.is_file());
-        assert!(worktree_root.is_dir());
+                    assert!(database_path.is_file());
+                    assert!(worktree_root.is_dir());
 
-        let project = backend
-            .projects()
-            .create(CreateProjectRequest {
-                name: "Ora".to_string(),
-                main_workspace_path: temporary
-                    .path()
-                    .join("repository")
-                    .to_string_lossy()
-                    .into_owned(),
-            })
-            .expect("create project")
-            .project;
-        let updated_project = backend
-            .projects()
-            .update(UpdateProjectRequest {
-                project_id: project.id.clone(),
-                name: "Ora Desktop".to_string(),
-            })
-            .expect("update project")
-            .project;
-        assert_eq!(updated_project.name, "Ora Desktop");
-        assert_eq!(
-            backend
-                .projects()
-                .list(ListProjectsRequest {})
-                .expect("list projects")
-                .projects,
-            vec![updated_project.clone()]
-        );
+                    let project = backend
+                        .projects()
+                        .create(CreateProjectRequest {
+                            name: "Ora".to_string(),
+                            main_workspace_path: temporary
+                                .path()
+                                .join("repository")
+                                .to_string_lossy()
+                                .into_owned(),
+                        })
+                        .expect("create project")
+                        .project;
+                    let updated_project = backend
+                        .projects()
+                        .update(UpdateProjectRequest {
+                            project_id: project.id.clone(),
+                            name: "Ora Desktop".to_string(),
+                        })
+                        .expect("update project")
+                        .project;
+                    assert_eq!(updated_project.name, "Ora Desktop");
+                    assert_eq!(
+                        backend
+                            .projects()
+                            .list(ListProjectsRequest {})
+                            .expect("list projects")
+                            .projects,
+                        vec![updated_project.clone()]
+                    );
 
-        let skill = backend
-            .skills()
-            .create(CreateSkillRequest {
-                name: "review".to_string(),
-                description: "Review changes".to_string(),
-                content: None,
-            })
-            .expect("create skill")
-            .skill;
-        let skill = backend
-            .skills()
-            .update(UpdateSkillRequest {
-                skill_id: skill.id,
-                name: "review-code".to_string(),
-                description: "Review implementation changes".to_string(),
-                content: None,
-            })
-            .expect("update skill")
-            .skill;
-        assert_eq!(
-            backend
-                .skills()
-                .list(ListSkillsRequest {})
-                .expect("list skills")
-                .skills,
-            vec![skill.clone()]
-        );
+                    let skill = backend
+                        .skills()
+                        .create(CreateSkillRequest {
+                            name: "review".to_string(),
+                            description: "Review changes".to_string(),
+                            content: None,
+                        })
+                        .expect("create skill")
+                        .skill;
+                    let skill = backend
+                        .skills()
+                        .update(UpdateSkillRequest {
+                            skill_id: skill.id,
+                            name: "review-code".to_string(),
+                            description: "Review implementation changes".to_string(),
+                            content: None,
+                        })
+                        .expect("update skill")
+                        .skill;
+                    assert_eq!(
+                        backend
+                            .skills()
+                            .list(ListSkillsRequest {})
+                            .expect("list skills")
+                            .skills,
+                        vec![skill.clone()]
+                    );
 
-        let agent = backend
-            .agents()
-            .create(CreateAgentRequest {
-                name: "codex".to_string(),
-                description: "Coding agent".to_string(),
-                content: None,
-            })
-            .expect("create agent")
-            .agent;
-        let agent = backend
-            .agents()
-            .update(UpdateAgentRequest {
-                agent_id: agent.id,
-                name: "codex-desktop".to_string(),
-                description: "Desktop coding agent".to_string(),
-                content: None,
-            })
-            .expect("update agent")
-            .agent;
-        assert_eq!(
-            backend
-                .agents()
-                .list(ListAgentsRequest {})
-                .expect("list agents")
-                .agents,
-            vec![agent.clone()]
-        );
+                    let agent = backend
+                        .agents()
+                        .create(CreateAgentRequest {
+                            name: "codex".to_string(),
+                            description: "Coding agent".to_string(),
+                            content: None,
+                        })
+                        .expect("create agent")
+                        .agent;
+                    let agent = backend
+                        .agents()
+                        .update(UpdateAgentRequest {
+                            agent_id: agent.id,
+                            name: "codex-desktop".to_string(),
+                            description: "Desktop coding agent".to_string(),
+                            content: None,
+                        })
+                        .expect("update agent")
+                        .agent;
+                    assert_eq!(
+                        backend
+                            .agents()
+                            .list(ListAgentsRequest {})
+                            .expect("list agents")
+                            .agents,
+                        vec![agent.clone()]
+                    );
 
-        backend
-            .agents()
-            .delete(DeleteAgentRequest { agent_id: agent.id })
-            .expect("delete agent");
-        backend
-            .skills()
-            .delete(DeleteSkillRequest { skill_id: skill.id })
-            .expect("delete skill");
-        backend
-            .projects()
-            .delete(DeleteProjectRequest {
-                project_id: project.id.clone(),
-            })
-            .await
-            .expect("delete project");
+                    backend
+                        .agents()
+                        .delete(DeleteAgentRequest { agent_id: agent.id })
+                        .expect("delete agent");
+                    backend
+                        .skills()
+                        .delete(DeleteSkillRequest { skill_id: skill.id })
+                        .expect("delete skill");
+                    backend
+                        .projects()
+                        .delete(DeleteProjectRequest {
+                            project_id: project.id.clone(),
+                        })
+                        .await
+                        .expect("delete project");
 
-        let error = backend
-            .projects()
-            .get(GetProjectRequest {
-                project_id: project.id,
-            })
-            .expect_err("deleted project should be hidden");
-        assert_eq!(error.classification(), ErrorClassification::NotFound);
-        assert_eq!(error.public_error().code(), "project_not_found");
+                    let error = backend
+                        .projects()
+                        .get(GetProjectRequest {
+                            project_id: project.id,
+                        })
+                        .expect_err("deleted project should be hidden");
+                    assert_eq!(error.classification(), ErrorClassification::NotFound);
+                    assert_eq!(error.public_error().code(), "project_not_found");
+                });
+        });
     }
 
     /// Verifies startup projects installed Skill plugins into the shared Skill catalog.
     #[test]
     fn opens_with_plugin_skills_written_to_the_existing_database_schema() {
-        let temporary = TempDir::new().expect("create temporary backend directory");
-        let app_data_directory = temporary.path().join("app-data");
-        let home_directory = temporary.path().join("ora-home");
-        let package_root = home_directory.join("plugins/installed/official/review-pack/1.0.0");
-        let skill_root = package_root.join("assets/review");
-        fs::create_dir_all(&skill_root).expect("create installed Skill tree");
-        fs::write(
-            package_root.join("orax.toml"),
-            "identifier = \"review-pack\"\nnamespace = \"official\"\nkind = \"skill\"\nversion = \"1.0.0\"\ndescription = \"Review skills\"\n",
-        )
-        .expect("write plugin manifest");
-        fs::write(
-            skill_root.join("SKILL.md"),
-            "---\nname: review\ndescription: Reviews changes\n---\n# Review instructions\n",
-        )
-        .expect("write Skill manifest");
+        ora_logging::with_trace_logging(|| {
+            let temporary = TempDir::new().expect("create temporary backend directory");
+            let app_data_directory = temporary.path().join("app-data");
+            let home_directory = temporary.path().join("ora-home");
+            let package_root = home_directory.join("plugins/installed/official/review-pack/1.0.0");
+            let skill_root = package_root.join("assets/review");
+            fs::create_dir_all(&skill_root).expect("create installed Skill tree");
+            fs::write(
+                package_root.join("orax.toml"),
+                "identifier = \"review-pack\"\nnamespace = \"official\"\nkind = \"skill\"\nversion = \"1.0.0\"\ndescription = \"Review skills\"\n",
+            )
+            .expect("write plugin manifest");
+            fs::write(
+                skill_root.join("SKILL.md"),
+                "---\nname: review\ndescription: Reviews changes\n---\n# Review instructions\n",
+            )
+            .expect("write Skill manifest");
 
-        let backend = Backend::open(backend_paths(&app_data_directory, &home_directory))
-            .expect("open shared backend");
+            let backend = Backend::open(backend_paths(&app_data_directory, &home_directory))
+                .expect("open shared backend");
 
-        assert!(app_data_directory.join("ora.sqlite3").is_file());
-        assert!(home_directory.join("worktrees").is_dir());
+            assert!(app_data_directory.join("ora.sqlite3").is_file());
+            assert!(home_directory.join("worktrees").is_dir());
 
-        let skills = backend
-            .skills()
-            .list(ListSkillsRequest {})
-            .expect("list plugin Skills")
-            .skills;
-        assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].namespace, "official/review-pack");
-        assert_eq!(skills[0].name, "review");
-        assert_eq!(
-            skills[0].source,
-            ora_contracts::SkillSource::Plugin {
-                plugin_id: "official/review-pack".to_string(),
-            }
-        );
-        assert_eq!(
-            skills[0].availability,
-            ora_contracts::SkillAvailability::Available
-        );
-    }
-    /// Verifies an update rewrites only the manifest and preserves other package files.
-    #[test]
-    fn update_preserves_other_package_files() {
-        let temporary = TempDir::new().expect("create temporary backend directory");
-        let app_data_directory = temporary.path().join("app-data");
-        let home_directory = temporary.path().join("ora-home");
-        let skills_root = app_data_directory.join("atoms").join("skills");
-        let backend = Backend::open(backend_paths(&app_data_directory, &home_directory))
-            .expect("open shared backend");
-
-        let skill = backend
-            .skills()
-            .create(CreateSkillRequest {
-                name: "review".to_string(),
-                description: "Reviews changes".to_string(),
-                content: None,
-            })
-            .expect("create skill")
-            .skill;
-        // A user-added package file must survive an ordinary update.
-        fs::create_dir_all(skills_root.join("review")).expect("create package directory");
-        fs::write(skills_root.join("review").join("helper.sh"), "echo hi")
-            .expect("write helper file");
-
-        let updated = backend
-            .skills()
-            .update(UpdateSkillRequest {
-                skill_id: skill.id,
-                name: "review".to_string(),
-                description: "Reviews pull requests".to_string(),
-                content: None,
-            })
-            .expect("update skill")
-            .skill;
-        assert_eq!(updated.description, "Reviews pull requests");
-        assert!(skills_root.join("review").join("helper.sh").is_file());
-        let manifest =
-            fs::read_to_string(skills_root.join("review").join("SKILL.md")).expect("read manifest");
-        assert!(manifest.contains("description: Reviews pull requests"));
-        assert!(!home_directory.join("atoms").exists());
+            let skills = backend
+                .skills()
+                .list(ListSkillsRequest {})
+                .expect("list plugin Skills")
+                .skills;
+            assert_eq!(skills.len(), 1);
+            assert_eq!(skills[0].namespace, "official/review-pack");
+            assert_eq!(skills[0].name, "review");
+            assert_eq!(
+                skills[0].source,
+                ora_contracts::SkillSource::Plugin {
+                    plugin_id: "official/review-pack".to_string(),
+                }
+            );
+            assert_eq!(
+                skills[0].availability,
+                ora_contracts::SkillAvailability::Available
+            );
+        });
     }
 }
