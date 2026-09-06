@@ -37,6 +37,13 @@ share the same run gates. Completion claims fence follow-up prompts until a comm
 failure, and cancellation is revalidated after preparation. Crash recovery and baseline pruning
 live in `workflow/run/recovery.rs`; startup still runs them before accepting commands.
 
+`Backend::sessions()` returns `Sessions`, which owns persisted queries, title edits plus actor
+adoption/invalidation, and session runtime use cases. It receives only `WorkflowSessionTurns`
+from workflow-run composition, not scheduling control or exposed locks. That restricted interface
+owns prompt admission, failed-start restoration, and stream-drop cleanup using the same run gates
+and completion claims. `Backend::app_events()` exposes the shared subscriber source; publication
+remains crate-private. Consumers do not retain the whole Backend to run a session use case.
+
 ## Responsibilities
 
 - `Backend::open` creates required directories, bootstraps and migrates SQLite, reconciles imported

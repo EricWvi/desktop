@@ -1,6 +1,8 @@
 //! Integration coverage for lazy session creation and plugin-owned model discovery.
 
 mod tests {
+    mod lifecycle;
+
     use crate::setup::DesktopTestSetup;
     use agent_client_protocol_schema::v1::{SessionConfigKind, SessionConfigOption};
     use ora_backend::Backend;
@@ -72,7 +74,7 @@ mod tests {
             "discovery must be asked exactly once, against the Workspace's own directory",
         );
         assert_eq!(
-            backend.list_sessions(ListSessionsRequest {})?.sessions,
+            backend.sessions().list(ListSessionsRequest {})?.sessions,
             Vec::new(),
             "listing models must not leave a session behind",
         );
@@ -107,7 +109,7 @@ mod tests {
             .ok_or("the fake agent offers a model other than its default")?
             .id;
 
-        let started = runtime.block_on(backend.start_session(StartSessionRequest {
+        let started = runtime.block_on(backend.sessions().start(StartSessionRequest {
             workspace_id: workspace_id.clone(),
             agent_ref: agent_ref(),
             model: Some(chosen.clone()),
@@ -121,7 +123,8 @@ mod tests {
         );
         assert_eq!(
             backend
-                .list_sessions(ListSessionsRequest {})?
+                .sessions()
+                .list(ListSessionsRequest {})?
                 .sessions
                 .into_iter()
                 .map(|session| session.id)

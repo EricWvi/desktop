@@ -123,7 +123,8 @@ fn concurrent_completions_commit_once_and_leave_the_session_read_only() {
         );
         let error = fixture
             .backend
-            .prompt_session(PromptSessionRequest {
+            .sessions()
+            .prompt(PromptSessionRequest {
                 session_id: "session-1".to_string(),
                 prompt: vec![],
                 record_prompt: None,
@@ -165,6 +166,43 @@ fn prepare_failure_releases_the_claim_for_retry() {
             .complete_node(request)
             .await
             .expect("claim released for retry");
+        assert_eq!(completed.run.status, WorkflowRunStatus::Succeeded);
+    });
+}
+
+/// A prompt rejected by the runtime restores the workflow node before returning the error.
+#[test]
+fn failed_prompt_start_restores_the_awaiting_node_before_returning() {
+    run_test(async {
+        let fixture = Fixture::awaiting();
+        let error = fixture
+            .backend
+            .sessions()
+            .prompt(PromptSessionRequest {
+                session_id: "session-1".to_string(),
+                prompt: Vec::new(),
+                record_prompt: None,
+            })
+            .await
+            .err()
+            .expect("empty prompt is rejected after workflow admission");
+        assert_eq!(
+            error.public_error(),
+            &PublicError::PromptEmpty(EmptyErrorParams {})
+        );
+        assert_eq!(
+            fixture.detail().run.status,
+            WorkflowRunStatus::AwaitingInput
+        );
+        let completed = fixture
+            .runs
+            .complete_node(CompleteWorkflowNodeRequest {
+                run_id: "run-1".to_string(),
+                node_id: "agent".to_string(),
+                requester: None,
+            })
+            .await
+            .expect("the restored awaiting node can be completed immediately");
         assert_eq!(completed.run.status, WorkflowRunStatus::Succeeded);
     });
 }

@@ -144,3 +144,11 @@
 - 6 项公开 interface 测试使用生产 engine/runtime 与真实 SQLite：并发完成恰好一次、取消/完成竞争、history 读取失败后释放 claim 重试、session 清理失败不撤销取消、重开保留 awaiting node 并清理 orphan baseline、重开失败化中断 turn 并恢复 stalled run。没有外部 agent 进程的场景不被当作活跃 actor 取消证据，后续 session 迁移仍须覆盖。
 - 测试共用已有真实数据库 fixture；内部 turn-policy 测试也改为 scoped TRACE 执行，避免共享日志 callsite 污染。
 - 验证：Backend 216 项通过、1 项 ignored；标准 Rust lint、58 项 Tauri、4 项 E2E 与生成漂移检查通过。
+
+### 阶段 4f：session 与 workflow prompt 协调（2026-09-06）
+
+- 13 个 session operation 和 app-event 订阅转发从根 Backend 移除。`Sessions` 直接拥有原查询/改名 handlers，连同 unpublished-session 过滤、title actor adoption 和提交后的通知一起封装，不再叠加私有 `SessionApi` 转发。
+- workflow-run 创建唯一的完成中集合；通过 crate-private `WorkflowSessionTurns` 向 Sessions 提供 prompt 准入与失败/stream-drop 清理能力。根 Backend 不再持有 run locks 或完成中集合，Desktop 只捕获 session handle。
+- 缺少 agent 时的历史回放测试改为通过公开 Sessions 执行；新增真实 SQLite 改名成功/失败通知测试，以及 prompt 启动失败在返回前恢复 awaiting node 的测试。
+- E2E fake ACP 增加显式 held prompt：收到首帧后一直等待真实 ACP cancel，不靠延时制造竞争。新增真实 actor/进程链路验证 stream drop 后 session 可复用、活跃 session 删除后记录与历史清理、workflow 取消后 actor 停止，以及人类 follow-up stream drop 后恢复 awaiting 并可手工完成。
+- 验证：Backend 219 项通过、1 项 ignored；标准 Rust lint、58 项 Tauri、7 项 E2E 与生成漂移检查通过。runtime status、Effect status 和无状态 identity 是阶段 4 余下收口项。

@@ -3245,6 +3245,7 @@ dependencies = [
  "ora-backend",
  "ora-contracts",
  "ora-db",
+ "ora-history",
  "ora-logging",
  "ora-plugin-protocol",
  "pretty_assertions",

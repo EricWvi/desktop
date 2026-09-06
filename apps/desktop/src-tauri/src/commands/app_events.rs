@@ -12,6 +12,6 @@ pub(super) async fn start_watch(
     context: StreamStart,
 ) -> Result<(), CommandError> {
     context
-        .events(async { Ok(state.backend.watch_app_events()) })
+        .events(async { Ok(state.backend.app_events().subscribe()) })
         .await
 }

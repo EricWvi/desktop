@@ -2,7 +2,7 @@
 
 use super::api::WorkflowRunApi;
 use super::engine::ConcreteWorkflowRunControl;
-use super::interactive::CompletingNodeRuns;
+use super::interactive::{CompletingNodeRuns, WorkflowSessionTurns};
 use crate::agent_runtime::AgentRuntimeManager;
 use crate::clock::SystemClock;
 use crate::error::BackendError;
@@ -27,7 +27,6 @@ pub(crate) struct WorkflowRunSetup {
     pub agent_runtime: Arc<AgentRuntimeManager>,
     pub engine: Arc<ConcreteWorkflowRunControl>,
     pub run_locks: Arc<KeyedResourceLocks>,
-    pub completing_node_runs: Arc<CompletingNodeRuns>,
     pub clock: SystemClock,
 }
 
@@ -57,8 +56,17 @@ impl WorkflowRuns {
             agent_runtime: setup.agent_runtime,
             engine: setup.engine,
             run_locks: setup.run_locks,
-            completing_node_runs: setup.completing_node_runs,
+            completing_node_runs: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         }
+    }
+
+    /// Grants Sessions only the admission/cleanup capability sharing this run's coordination.
+    pub(crate) fn session_turns(&self) -> WorkflowSessionTurns {
+        WorkflowSessionTurns::new(
+            self.pool.clone(),
+            self.run_locks.clone(),
+            self.completing_node_runs.clone(),
+        )
     }
 
     /// Starts a workflow run against its frozen snapshot graph.

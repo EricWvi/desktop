@@ -1,12 +1,11 @@
 use crate::agent::AgentApi;
-use crate::agent_runtime::{AgentRuntimeManager, AgentRuntimeSetup, SessionEventStream};
+use crate::agent_runtime::{AgentRuntimeManager, AgentRuntimeSetup};
 use crate::app_event::AppEventHub;
 use crate::clock::SystemClock;
 use crate::error::BackendError;
-use crate::git_cleanup::KeyedResourceLocks;
 use crate::plugin::{PluginApi, Plugins};
 use crate::project::ProjectApi;
-use crate::session::SessionApi;
+use crate::session::Sessions;
 use crate::settings::Settings;
 use crate::skill::SkillApi;
 use crate::task::{TaskApi, TaskSetup};
@@ -83,19 +82,13 @@ pub struct Backend {
     task: Arc<TaskApi>,
     workspace: WorkspaceApi,
     settings: Arc<Settings>,
-    session: Arc<SessionApi>,
+    session: Arc<Sessions>,
     agent_runtime: Arc<AgentRuntimeManager>,
     plugin: Plugins,
     skill: Arc<SkillApi>,
     agent: Arc<AgentApi>,
     workflow: Arc<WorkflowApi>,
     workflow_run: Arc<WorkflowRuns>,
-    /// Serializes scheduling-affecting workflow-run mutations per run across the control entry
-    /// points, the manual completion path, and the session-driver callback.
-    run_locks: Arc<KeyedResourceLocks>,
-    /// Transient set of node runs a manual completion is currently claiming; blocks a concurrent
-    /// prompt against the same node without adding any persisted status.
-    completing_node_runs: Arc<crate::workflow::run::interactive::CompletingNodeRuns>,
     app_events: Arc<AppEventHub>,
 }
 
@@ -211,8 +204,6 @@ impl Backend {
         let effect_reconcile = effect_worker.spawn();
         plugin.set_effect_reconcile(effect_reconcile.clone());
 
-        let completing_node_runs =
-            Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
         let workflow_run = Arc::new(WorkflowRuns::new(WorkflowRunSetup {
             pool: pool.clone(),
             skills_root: skills_root.clone(),
@@ -220,10 +211,16 @@ impl Backend {
             baselines_root,
             agent_runtime: agent_runtime.clone(),
             engine: workflow_run_engine,
-            run_locks: run_locks.clone(),
-            completing_node_runs: completing_node_runs.clone(),
+            run_locks,
             clock,
         }));
+
+        let session = Arc::new(Sessions::new(
+            pool.clone(),
+            agent_runtime.clone(),
+            workflow_run.session_turns(),
+            app_events.publisher(),
+        ));
 
         Ok(Self {
             project: Arc::new(ProjectApi::new(
@@ -251,7 +248,7 @@ impl Backend {
                 settings.clone(),
             ),
             settings,
-            session: Arc::new(SessionApi::new(pool.clone())),
+            session,
             plugin: Plugins::new(plugin, agent_runtime.clone()),
             agent_runtime,
             skill: Arc::new(SkillApi::new(
@@ -263,8 +260,6 @@ impl Backend {
             agent: Arc::new(AgentApi::new(pool.clone(), clock)),
             workflow: Arc::new(WorkflowApi::new(pool.clone(), clock)),
             workflow_run,
-            run_locks,
-            completing_node_runs,
             app_events,
             pool,
         })
@@ -325,168 +320,14 @@ impl Backend {
         self.plugin.clone()
     }
 
-    // =============================================================================
-    // session
-    // =============================================================================
-
-    /// Creates and persists a provider session on first use.
-    pub async fn start_session(
-        &self,
-        request: StartSessionRequest,
-    ) -> Result<StartSessionResponse, BackendError> {
-        self.agent_runtime.start_session(request).await
+    /// Shares session use cases without exposing actor or workflow synchronization internals.
+    pub fn sessions(&self) -> Arc<Sessions> {
+        self.session.clone()
     }
 
-    /// Applies one configuration option to a persisted session.
-    pub async fn set_session_config(
-        &self,
-        request: SetSessionConfigRequest,
-    ) -> Result<SetSessionConfigResponse, BackendError> {
-        self.agent_runtime.set_session_config(request).await
-    }
-
-    /// Gets one session through the shared application composition.
-    pub fn get_session(
-        &self,
-        request: GetSessionRequest,
-    ) -> Result<GetSessionResponse, BackendError> {
-        self.session.get(request).map_err(BackendError::from)
-    }
-    /// Lists sessions through the shared application composition.
-    pub fn list_sessions(
-        &self,
-        request: ListSessionsRequest,
-    ) -> Result<ListSessionsResponse, BackendError> {
-        // Snapshot unpublished ownership before reading SQLite. If a node binding commits between
-        // these reads, this snapshot still excludes the row returned by the earlier database view;
-        // a later request instead sees the committed binding through the repository filter.
-        let unpublished = self.agent_runtime.unpublished_workflow_session_ids()?;
-        let mut response = self.session.list(request).map_err(BackendError::from)?;
-        response
-            .sessions
-            .retain(|session| !unpublished.contains(&session.id));
-        Ok(response)
-    }
-    /// Renames one session, locks agent title acquisition, then notifies subscribers.
-    pub async fn rename_session(
-        &self,
-        request: RenameSessionRequest,
-    ) -> Result<RenameSessionResponse, BackendError> {
-        let session_id = request.session_id.clone();
-        let response = self.session.rename(request).map_err(BackendError::from)?;
-        if let Some(title) = response.session.title.as_deref()
-            && let Ok(parsed) = ora_domain::SessionTitle::parse(title)
-        {
-            // A missing or busy actor must not fail the rename: the row is already updated.
-            let _ = self
-                .agent_runtime
-                .adopt_user_title(&session_id, parsed)
-                .await;
-        }
-        self.app_events
-            .publisher()
-            .try_publish(AppEvent::SessionTitleUpdated { session_id });
-        Ok(response)
-    }
-    /// Loads one session conversation and continues its active turn when present.
-    pub async fn load_session(
-        &self,
-        request: LoadSessionRequest,
-    ) -> Result<SessionEventStream<LoadSessionEvent>, BackendError> {
-        self.agent_runtime.load_session(request).await
-    }
-
-    /// Opens one subscriber to the shared application event stream.
-    pub fn watch_app_events(&self) -> SessionEventStream<AppEvent> {
-        self.app_events.subscribe()
-    }
-
-    /// Streams one structured ACP prompt turn for a running session.
-    ///
-    /// When the session belongs to an awaiting interactive workflow node, the node flips to
-    /// `Running` for the duration of the turn and back to `Pending` when the turn ends or the
-    /// stream is dropped, so the node's awaiting status tracks the agent's generating state.
-    pub async fn prompt_session(
-        &self,
-        request: PromptSessionRequest,
-    ) -> Result<SessionEventStream<PromptSessionEvent>, BackendError> {
-        let node_run_id = crate::workflow::run::interactive::begin_human_turn(
-            &self.pool,
-            &self.run_locks,
-            &self.completing_node_runs,
-            &request.session_id,
-        )
-        .await?;
-        let stream = match self.agent_runtime.prompt_session(request).await {
-            Ok(stream) => stream,
-            Err(error) => {
-                // The turn never started; put the awaiting node back where it was.
-                if let Some(node_run_id) = node_run_id.as_ref() {
-                    let _ =
-                        crate::workflow::run::interactive::end_human_turn(&self.pool, node_run_id)
-                            .await;
-                }
-                return Err(error);
-            }
-        };
-        let Some(node_run_id) = node_run_id else {
-            return Ok(stream);
-        };
-        let pool = self.pool.clone();
-        Ok(stream.attach_cleanup(move || {
-            tokio::spawn(async move {
-                let _ =
-                    crate::workflow::run::interactive::end_human_turn(&pool, &node_run_id).await;
-            });
-        }))
-    }
-
-    /// Delivers one validated permission response to the owning session actor.
-    pub async fn respond_to_session_permission(
-        &self,
-        request: RespondToPermissionRequest,
-    ) -> Result<RespondToPermissionResponse, BackendError> {
-        self.agent_runtime.respond_to_permission(request).await
-    }
-
-    /// Unloads one running session while retaining its provider history and Ora record.
-    pub async fn stop_session(
-        &self,
-        request: StopSessionRequest,
-    ) -> Result<StopSessionResponse, BackendError> {
-        self.agent_runtime.stop_session(request).await
-    }
-
-    /// Cancels one active prompt while keeping its session available for another turn.
-    pub fn cancel_session_prompt(
-        &self,
-        request: CancelSessionPromptRequest,
-    ) -> Result<CancelSessionPromptResponse, BackendError> {
-        self.agent_runtime.cancel_session_prompt(request)
-    }
-
-    /// Moves one existing conversation onto a different agent CLI.
-    pub async fn switch_session_agent(
-        &self,
-        request: SwitchSessionAgentRequest,
-    ) -> Result<SwitchSessionAgentResponse, BackendError> {
-        self.agent_runtime.switch_agent(request).await
-    }
-
-    /// Returns a session whose history writes failed to a writable state.
-    pub async fn resume_session_history(
-        &self,
-        request: ResumeSessionHistoryRequest,
-    ) -> Result<ResumeSessionHistoryResponse, BackendError> {
-        self.agent_runtime.resume_history(request).await
-    }
-
-    /// Stops one session before removing its Ora-owned record and recorded history.
-    pub async fn delete_session(
-        &self,
-        request: DeleteSessionRequest,
-    ) -> Result<DeleteSessionResponse, BackendError> {
-        self.agent_runtime.delete_session(&request.session_id).await
+    /// Shares the application invalidation source without giving consumers its publisher.
+    pub fn app_events(&self) -> Arc<AppEventHub> {
+        self.app_events.clone()
     }
 
     // =============================================================================
