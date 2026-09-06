@@ -12,7 +12,7 @@ import {
   createTestQueryClient,
   renderHookWithClient,
 } from "../../test/hook-harness";
-import { useGraphWorkflowRunLive } from "./use-graph-workflow-runs";
+import { useGraphWorkflowRunLive } from "./mock-workflow-runs";
 
 describe("useGraphWorkflowRunLive", () => {
   it("observes finish events after loading the matching cursor snapshot", async () => {

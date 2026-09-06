@@ -5,7 +5,7 @@ import {
   createMockClientState,
 } from "../../test/mock-client";
 import { renderHookWithClient } from "../../test/hook-harness";
-import { queryKeys } from "./query-keys";
+import { pluginKeys } from "../data/plugins";
 import { useInstalledPlugins } from "./use-installed-plugins";
 
 describe("useInstalledPlugins", () => {
@@ -34,7 +34,7 @@ describe("useInstalledPlugins", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(state.installedPlugins);
-    expect(queryClient.getQueryData(queryKeys.installedPlugins)).toEqual(
+    expect(queryClient.getQueryData(pluginKeys.installedPlugins)).toEqual(
       state.installedPlugins,
     );
   });

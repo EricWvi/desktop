@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   computeInactiveNodes,
+  isTerminalRunStatus,
   parseWorkflowGraph,
   projectNodeStatus,
   projectRunStatus,
@@ -12,15 +13,18 @@ import {
   type WorkflowNodeFileChange,
 } from "@ora/workflow-runtime";
 import { useContractsClient } from "../../contracts-client-context";
-import { isTerminalRunStatus } from "../../features/workflow-run/run-status-style";
 import { useWorkspaceSelectionStore } from "../stores/workspace-selection-store";
 import type { WorkflowRunSummary } from "@ora/contracts";
 import { activeLocale } from "../../i18n/i18n-instance";
 
-const runsByProjectKey = (projectId: string) =>
-  ["workflowRun", "byProject", projectId] as const;
-const runDetailKey = (runId: string) =>
-  ["workflowRun", "detail", runId] as const;
+/** Persisted runs deliberately do not share the mock runtime detail tuple. */
+export const workflowRunKeys = {
+  byProject: (projectId: string) =>
+    ["workflowRun", "byProject", projectId] as const,
+  detail: (runId: string) => ["workflowRun", "detail", runId] as const,
+  projectLists: ["workflowRun", "byProject"] as const,
+  workflowLists: ["workflowRun", "byWorkflow"] as const,
+};
 
 /** True while any run in the list is still pending or executing, so list views can poll. */
 function hasActiveRun(runs: WorkflowRunSummary[] | undefined): boolean {
@@ -39,7 +43,7 @@ export function useWorkflowRunsByProject(
   const enabled =
     projectId != null && projectId !== "" && (options?.enabled ?? true);
   return useQuery({
-    queryKey: runsByProjectKey(projectId ?? ""),
+    queryKey: workflowRunKeys.byProject(projectId ?? ""),
     queryFn: async () =>
       (await client.workflowRun.list({ projectId: projectId! })).runs,
     enabled,
@@ -69,7 +73,7 @@ export function useCreateWorkflowRun() {
     onSuccess: (_result, variables) => {
       if (variables.projectId !== undefined) {
         void queryClient.invalidateQueries({
-          queryKey: runsByProjectKey(variables.projectId),
+          queryKey: workflowRunKeys.byProject(variables.projectId),
         });
       }
     },
@@ -94,12 +98,14 @@ export function useDeleteWorkflowRun() {
     onSuccess: (_result, variables) => {
       if (variables.projectId != null) {
         void queryClient.invalidateQueries({
-          queryKey: runsByProjectKey(variables.projectId),
+          queryKey: workflowRunKeys.byProject(variables.projectId),
         });
       }
       // The run no longer exists; drop its detail cache so nothing can resurrect
       // a stale graph after the selection clear unmounts the run workspace.
-      queryClient.removeQueries({ queryKey: runDetailKey(variables.runId) });
+      queryClient.removeQueries({
+        queryKey: workflowRunKeys.detail(variables.runId),
+      });
       const selection = useWorkspaceSelectionStore.getState().selection;
       if (selection.workflowRunId === variables.runId) {
         useWorkspaceSelectionStore
@@ -118,7 +124,7 @@ export function useStartWorkflowRun() {
     mutationFn: (input: { runId: string }) => client.workflowRun.start(input),
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: runDetailKey(variables.runId),
+        queryKey: workflowRunKeys.detail(variables.runId),
       });
     },
   });
@@ -132,7 +138,7 @@ export function useCancelWorkflowRun() {
     mutationFn: (input: { runId: string }) => client.workflowRun.cancel(input),
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: runDetailKey(variables.runId),
+        queryKey: workflowRunKeys.detail(variables.runId),
       });
     },
   });
@@ -146,7 +152,7 @@ export function useRestartWorkflowRun() {
     mutationFn: (input: { runId: string }) => client.workflowRun.restart(input),
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: runDetailKey(variables.runId),
+        queryKey: workflowRunKeys.detail(variables.runId),
       });
     },
   });
@@ -171,7 +177,7 @@ export function useUpdateWorkflowRunInput() {
       }),
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: runDetailKey(variables.runId),
+        queryKey: workflowRunKeys.detail(variables.runId),
       });
     },
   });
@@ -189,7 +195,7 @@ export function useCompleteWorkflowNode() {
       }),
     onSuccess: (_result, variables) =>
       queryClient.invalidateQueries({
-        queryKey: runDetailKey(variables.runId),
+        queryKey: workflowRunKeys.detail(variables.runId),
       }),
   });
 }
@@ -207,7 +213,7 @@ export function useRenameWorkflowRun() {
     onSuccess: (result, variables) => {
       if (variables.projectId) {
         queryClient.setQueryData<WorkflowRunSummary[]>(
-          runsByProjectKey(variables.projectId),
+          workflowRunKeys.byProject(variables.projectId),
           (current) =>
             current?.map((run) =>
               run.id === variables.runId
@@ -217,7 +223,7 @@ export function useRenameWorkflowRun() {
         );
       }
       queryClient.setQueryData<RealWorkflowRunDetail>(
-        runDetailKey(variables.runId),
+        workflowRunKeys.detail(variables.runId),
         (current) =>
           current === undefined
             ? current
@@ -230,13 +236,13 @@ export function useRenameWorkflowRun() {
               },
       );
       void queryClient.invalidateQueries({
-        queryKey: runDetailKey(variables.runId),
+        queryKey: workflowRunKeys.detail(variables.runId),
       });
       void queryClient.invalidateQueries({
-        queryKey: ["workflowRun", "byProject"],
+        queryKey: workflowRunKeys.projectLists,
       });
       void queryClient.invalidateQueries({
-        queryKey: ["workflowRun", "byWorkflow"],
+        queryKey: workflowRunKeys.workflowLists,
       });
     },
   });
@@ -252,7 +258,7 @@ export function useRenameWorkflowRun() {
 export function useRealWorkflowRun(runId: string | null | undefined) {
   const client = useContractsClient();
   return useQuery({
-    queryKey: runDetailKey(runId ?? ""),
+    queryKey: workflowRunKeys.detail(runId ?? ""),
     queryFn: async (): Promise<RealWorkflowRunDetail> => {
       const detail = await client.workflowRun.get({ runId: runId! });
       const { snapshot } = await client.workflow.getSnapshot({

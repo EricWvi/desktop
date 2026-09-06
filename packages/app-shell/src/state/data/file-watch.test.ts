@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   workspaceWatchReconnectDelay,
   watchWorkspaceContinuously,
-} from "./workspace-watch";
+} from "./file-watch";
 
 const BATCH: WorkspaceFileEventBatch = {
   changes: [{ kind: "modified", path: "src/main.rs" }],

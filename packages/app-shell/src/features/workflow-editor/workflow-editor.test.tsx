@@ -36,7 +36,10 @@ import {
 import { renderHookWithClient } from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
 import { useUiStore } from "../../state/stores/ui-store";
-import { useCreateWorkflow, useDeleteWorkflow } from "./workflow-definitions";
+import {
+  useCreateWorkflow,
+  useDeleteWorkflow,
+} from "../../state/data/workflows";
 import { WorkflowEditor } from "./workflow-editor";
 import { WorkflowEditorList } from "./workflow-editor-list";
 import { useWorkflowEditorStore } from "./workflow-editor-store";

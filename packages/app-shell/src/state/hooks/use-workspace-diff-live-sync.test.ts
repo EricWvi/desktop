@@ -12,7 +12,7 @@ import {
   createMockClient,
   createMockClientState,
 } from "../../test/mock-client";
-import { queryKeys } from "./query-keys";
+import { diffKeys } from "../data/diff";
 import { useWorkspaceDiffLiveSync } from "./use-workspace-diff-live-sync";
 import { AGENT_REF } from "../../test/agent-identity";
 
@@ -117,7 +117,7 @@ describe("useWorkspaceDiffLiveSync", () => {
 
     expect(invalidate).toHaveBeenCalledOnce();
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: queryKeys.workspaceDiffs(SESSION.workspaceId),
+      queryKey: diffKeys.workspaceDiffs(SESSION.workspaceId),
     });
   });
 

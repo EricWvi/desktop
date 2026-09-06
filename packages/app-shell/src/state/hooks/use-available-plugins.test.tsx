@@ -5,7 +5,7 @@ import {
   createMockClientState,
 } from "../../test/mock-client";
 import { renderHookWithClient } from "../../test/hook-harness";
-import { queryKeys } from "./query-keys";
+import { pluginKeys } from "../data/plugins";
 import { useAvailablePlugins } from "./use-available-plugins";
 
 describe("useAvailablePlugins", () => {
@@ -33,7 +33,7 @@ describe("useAvailablePlugins", () => {
       updatedAt: 0n,
       plugins: state.availablePlugins,
     });
-    expect(queryClient.getQueryData(queryKeys.availablePlugins)).toEqual({
+    expect(queryClient.getQueryData(pluginKeys.availablePlugins)).toEqual({
       updatedAt: 0n,
       plugins: state.availablePlugins,
     });

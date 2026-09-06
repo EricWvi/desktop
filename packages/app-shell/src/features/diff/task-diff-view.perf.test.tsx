@@ -8,7 +8,7 @@ import {
   createMockClient,
   createMockClientState,
 } from "../../test/mock-client";
-import { queryKeys } from "../../state/hooks/query-keys";
+import { diffKeys } from "../../state/data/diff";
 import { TaskDiffView } from "./task-diff-view";
 
 /** Gives the row virtualizer a viewport size in jsdom (no layout is performed). */
@@ -64,7 +64,7 @@ function renderDiff(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 0 } },
   });
-  queryClient.setQueryData(queryKeys.workspaceDiff("task-1", "branch"), {
+  queryClient.setQueryData(diffKeys.workspaceDiff("task-1", "branch"), {
     baseCommitId: "base",
     headCommitId: "head",
     patch,

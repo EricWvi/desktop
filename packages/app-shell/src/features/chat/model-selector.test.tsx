@@ -25,7 +25,7 @@ import { usePendingAgentStore } from "../../state/stores/pending-agent-store";
 import { useAgentModelPreferenceStore } from "../../state/stores/agent-model-preference-store";
 import type { AgentStatus } from "@ora/contracts";
 import { ModelSelector } from "./model-selector";
-import { queryKeys } from "../../state/hooks/query-keys";
+import { agentRuntimeKeys } from "../../state/data/agent-runtime";
 import { AGENT_REF } from "../../test/agent-identity";
 
 beforeEach(() => {
@@ -241,14 +241,16 @@ describe("ModelSelector agent availability", () => {
       expect(within(menu).queryByText("Big Pickle")).not.toBeNull(),
     );
     await waitFor(() =>
-      expect(queryClient.getQueryData(queryKeys.agentRuntimeStatus)).toEqual(
-        state.agentRuntimeStatuses,
-      ),
+      expect(
+        queryClient.getQueryData(agentRuntimeKeys.agentRuntimeStatus),
+      ).toEqual(state.agentRuntimeStatuses),
     );
 
     reportOpenCode("unavailable")(state);
     await act(() =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentRuntimeStatus }),
+      queryClient.invalidateQueries({
+        queryKey: agentRuntimeKeys.agentRuntimeStatus,
+      }),
     );
 
     await waitFor(() =>
@@ -271,14 +273,16 @@ describe("ModelSelector agent availability", () => {
     expect(within(picker()).queryByText("OpenCode")).toBeNull();
     expect(within(picker()).queryByText("NGA")).toBeNull();
     await waitFor(() =>
-      expect(queryClient.getQueryData(queryKeys.agentRuntimeStatus)).toEqual(
-        state.agentRuntimeStatuses,
-      ),
+      expect(
+        queryClient.getQueryData(agentRuntimeKeys.agentRuntimeStatus),
+      ).toEqual(state.agentRuntimeStatuses),
     );
 
     reportOpenCode("ready")(state);
     await act(() =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentRuntimeStatus }),
+      queryClient.invalidateQueries({
+        queryKey: agentRuntimeKeys.agentRuntimeStatus,
+      }),
     );
 
     const user = userEvent.setup();
@@ -298,20 +302,22 @@ describe("ModelSelector agent availability", () => {
 
     act(() => useWorkspaceSelectionStore.getState().selectTask("t1", "p1"));
     await waitFor(() =>
-      expect(queryClient.getQueryData(queryKeys.agentRuntimeStatus)).toEqual(
-        state.agentRuntimeStatuses,
-      ),
+      expect(
+        queryClient.getQueryData(agentRuntimeKeys.agentRuntimeStatus),
+      ).toEqual(state.agentRuntimeStatuses),
     );
     expect(discover).not.toHaveBeenCalled();
 
     reportOpenCode("starting")(state);
     await act(() =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentRuntimeStatus }),
+      queryClient.invalidateQueries({
+        queryKey: agentRuntimeKeys.agentRuntimeStatus,
+      }),
     );
     await waitFor(() =>
-      expect(queryClient.getQueryData(queryKeys.agentRuntimeStatus)).toEqual(
-        state.agentRuntimeStatuses,
-      ),
+      expect(
+        queryClient.getQueryData(agentRuntimeKeys.agentRuntimeStatus),
+      ).toEqual(state.agentRuntimeStatuses),
     );
     expect(discover).not.toHaveBeenCalled();
 
@@ -322,7 +328,9 @@ describe("ModelSelector agent availability", () => {
 
     reportOpenCode("ready")(state);
     await act(() =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentRuntimeStatus }),
+      queryClient.invalidateQueries({
+        queryKey: agentRuntimeKeys.agentRuntimeStatus,
+      }),
     );
 
     await waitFor(() => expect(discover).toHaveBeenCalledOnce());

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextWorkflowCopyName } from "./workflow-definitions";
+import { nextWorkflowCopyName } from "./workflows";
 
 describe("nextWorkflowCopyName", () => {
   it("chains localized suffixes until the name is unused", () => {

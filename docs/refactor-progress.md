@@ -4,15 +4,15 @@
 
 ## 进度
 
-| 阶段            | 状态   | 交付                                                |
-| --------------- | ------ | --------------------------------------------------- |
-| 0：基线         | 已盘点 | 本文的登记点、command 与行为验证索引                |
-| 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成   |
-| 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                  |
-| 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试                 |
-| 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除            |
-| 5：前端归属     | 进行中 | feature 翻译资源已迁移；查询与测试 transport 待迁移 |
-| 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`                |
+| 阶段            | 状态   | 交付                                              |
+| --------------- | ------ | ------------------------------------------------- |
+| 0：基线         | 已盘点 | 本文的登记点、command 与行为验证索引              |
+| 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成 |
+| 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                |
+| 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
+| 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除          |
+| 5：前端归属     | 进行中 | 翻译与共享查询归属已迁移；测试 transport 待迁移   |
+| 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`              |
 
 ## 人工登记点
 
@@ -168,3 +168,13 @@
 - 对比 `0e1581f` 的完整字典：所有原有中文 1464 项和英文 1474 项的 key/value 均不变。唯一新增是未被使用的 `chat.selectedFileLines` 中文文案；英文多出的其他原始键来自 9 组合法 plural variants，不做机械复制或删除。
 - 组合校验按逻辑键比较两种语言，检查缺失复数形式和跨 feature 的重复所有权；保留具体 raw keys、fallback、`ora.locale` 和同步初始化语义。
 - 14 项 i18n 定向测试通过；新增语言切换、blocked-storage、独立纯资源加载、重复键与 plural 缺失验证。app-shell lint 和完整 clean-stderr 测试通过：137 个文件、1267 项测试；规则见 `docs/frontend-ownership.md`。
+
+### 阶段 5b：查询、失效规则与订阅归属（2026-09-06）
+
+- 删除中央 `query-keys.ts`，由 12 个数据领域直接拥有 factory；对照 `96f00e9` 执行全部 37 个 factory 的普通、null 和空参数比较，实际 tuple 均保持一致。
+- `state/data/` 收拢定义/draft/version、真实与 memory workflow-run 的查询与缓存更新。共享 runtime context/provider 归 shell 装配，终态判断归 `@ora/workflow-runtime`，数据模块不再依赖 feature 私有实现。
+- workspace/session module 拥有 authoritative response adoption、项目/任务级联缓存清理、列表刷新及 tree placement；UI hook 保留选中项、草稿/composer 和活动状态协调。rename 不主动 refetch，standalone/deferred delete 仍区别处理。
+- 插件、agent availability/models、Skills 的刷新范围通过显式 `plugin-lifecycle` 协调；启动、停止、mutation settled 与外部事件保留各自不同的失效集合和 await 语义。configuration 响应同时更新 detail/list 的规则也由插件数据拥有。
+- Files scope/access、批量失效与 watcher/reconnect 迁到数据归属；Explorer/Search 仍显式组合，不增加通用 view 容器。新增测试证明切换 workspace 和 unmount 会结束对应 stream，缓存保留各自 listing。
+- 原接口测试随实现移动；用真实 QueryClient/Observer 验证项目 main/task session 清理、分工作区 diff/file 隔离、rename 两端、rescan、插件失效矩阵、session gap refetch，以及真实与 mock run key/prefix 分离。
+- `task test` 全量通过：app-shell 141 个文件、1277 项 clean-stderr 测试，workflow-runtime 60 项，以及 Rust workspace、58 项 Tauri 和 7 项 E2E。原 Backend 外部发布产物测试仍有 1 项 ignored。

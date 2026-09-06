@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useWorkflowRuntime } from "../../features/workflow-run/use-workflow-runtime";
+import { useWorkflowRuntime } from "../../workflow-runtime-context";
 import type {
   GraphWorkflowRun,
   HitlRequest,
@@ -10,7 +10,7 @@ import type {
 } from "@ora/workflow-runtime";
 import { normalizeWorkflowDefinition } from "@ora/workflow-runtime";
 import { useWorkspaceSelectionStore } from "../stores/workspace-selection-store";
-import { queryKeys } from "./query-keys";
+import { mockWorkflowKeys } from "./mock-workflows";
 
 /**
  * Keeps react-query run caches in sync with mock-engine mutations
@@ -22,10 +22,10 @@ export function useGraphWorkflowRunLiveSync() {
   useEffect(() => {
     return runtime.runs.watch((run) => {
       const clone = structuredClone(run);
-      queryClient.setQueryData(queryKeys.workflowRun(run.id), clone);
+      queryClient.setQueryData(mockWorkflowKeys.workflowRun(run.id), clone);
       // Patch the project list in place to avoid refetch flicker on every node tick.
       queryClient.setQueryData(
-        queryKeys.workflowRuns(run.projectId),
+        mockWorkflowKeys.workflowRuns(run.projectId),
         (previous: GraphWorkflowRun[] | undefined) => {
           if (previous === undefined) {
             return previous;
@@ -47,7 +47,7 @@ export function useGraphWorkflowRunLiveSync() {
 export function useGraphWorkflowRuns(projectId: string | null | undefined) {
   const runtime = useWorkflowRuntime();
   return useQuery({
-    queryKey: queryKeys.workflowRuns(projectId ?? ""),
+    queryKey: mockWorkflowKeys.workflowRuns(projectId ?? ""),
     queryFn: () => runtime.runs.list(projectId!),
     enabled: projectId != null && projectId !== "",
   });
@@ -57,7 +57,7 @@ export function useGraphWorkflowRuns(projectId: string | null | undefined) {
 export function useGraphWorkflowRun(runId: string | null | undefined) {
   const runtime = useWorkflowRuntime();
   return useQuery({
-    queryKey: queryKeys.workflowRun(runId ?? ""),
+    queryKey: mockWorkflowKeys.workflowRun(runId ?? ""),
     queryFn: () => runtime.runs.get(runId!),
     enabled: runId != null && runId !== "",
   });
@@ -78,10 +78,12 @@ export function useMountWorkflow() {
       runtime.host.mount(projectId, normalizeWorkflowDefinition(definition)),
     onSuccess: (_mount, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflowMounts(variables.projectId),
+        queryKey: mockWorkflowKeys.workflowMounts(variables.projectId),
       });
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflowMountsByDefinition(variables.definition.id),
+        queryKey: mockWorkflowKeys.workflowMountsByDefinition(
+          variables.definition.id,
+        ),
       });
     },
   });
@@ -99,9 +101,9 @@ export function useCreateGraphWorkflowRun() {
     }) => runtime.runs.create(input),
     onSuccess: (run) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflowRuns(run.projectId),
+        queryKey: mockWorkflowKeys.workflowRuns(run.projectId),
       });
-      queryClient.setQueryData(queryKeys.workflowRun(run.id), run);
+      queryClient.setQueryData(mockWorkflowKeys.workflowRun(run.id), run);
     },
   });
 }
@@ -123,11 +125,13 @@ export function useDeleteGraphWorkflowRun() {
     },
     onSuccess: ({ runId, projectId }) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflowRuns(projectId),
+        queryKey: mockWorkflowKeys.workflowRuns(projectId),
       });
-      queryClient.removeQueries({ queryKey: queryKeys.workflowRun(runId) });
       queryClient.removeQueries({
-        queryKey: queryKeys.workflowArtifacts(runId),
+        queryKey: mockWorkflowKeys.workflowRun(runId),
+      });
+      queryClient.removeQueries({
+        queryKey: mockWorkflowKeys.workflowArtifacts(runId),
       });
       const selection = useWorkspaceSelectionStore.getState().selection;
       if (selection.workflowRunId === runId) {
@@ -149,9 +153,9 @@ export function useStartGraphWorkflowRun() {
       return run;
     },
     onSuccess: (run) => {
-      queryClient.setQueryData(queryKeys.workflowRun(run.id), run);
+      queryClient.setQueryData(mockWorkflowKeys.workflowRun(run.id), run);
       queryClient.setQueryData(
-        queryKeys.workflowRuns(run.projectId),
+        mockWorkflowKeys.workflowRuns(run.projectId),
         (previous: GraphWorkflowRun[] | undefined) => {
           if (previous === undefined) {
             return previous;
@@ -173,9 +177,9 @@ export function useCancelGraphWorkflowRun() {
       return run;
     },
     onSuccess: (run) => {
-      queryClient.setQueryData(queryKeys.workflowRun(run.id), run);
+      queryClient.setQueryData(mockWorkflowKeys.workflowRun(run.id), run);
       queryClient.setQueryData(
-        queryKeys.workflowRuns(run.projectId),
+        mockWorkflowKeys.workflowRuns(run.projectId),
         (previous: GraphWorkflowRun[] | undefined) => {
           if (previous === undefined) {
             return previous;
@@ -205,9 +209,9 @@ export function useRerunGraphWorkflowRun() {
     },
     onSuccess: (run) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflowRuns(run.projectId),
+        queryKey: mockWorkflowKeys.workflowRuns(run.projectId),
       });
-      queryClient.setQueryData(queryKeys.workflowRun(run.id), run);
+      queryClient.setQueryData(mockWorkflowKeys.workflowRun(run.id), run);
     },
   });
 }
@@ -221,9 +225,9 @@ export function useRenameGraphWorkflowRun() {
       runtime.runs.rename(runId, name),
     onSuccess: (run) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflowRuns(run.projectId),
+        queryKey: mockWorkflowKeys.workflowRuns(run.projectId),
       });
-      queryClient.setQueryData(queryKeys.workflowRun(run.id), run);
+      queryClient.setQueryData(mockWorkflowKeys.workflowRun(run.id), run);
     },
   });
 }
@@ -250,9 +254,9 @@ export function useUpdateGraphWorkflowRunSnapshotNode() {
     }) => runtime.runs.updateSnapshotNode(runId, nodeId, patch),
     onSuccess: (run) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflowRuns(run.projectId),
+        queryKey: mockWorkflowKeys.workflowRuns(run.projectId),
       });
-      queryClient.setQueryData(queryKeys.workflowRun(run.id), run);
+      queryClient.setQueryData(mockWorkflowKeys.workflowRun(run.id), run);
     },
   });
 }
@@ -272,7 +276,7 @@ export function useSubmitGraphWorkflowHitl() {
       payload: Record<string, unknown>;
     }) => runtime.runs.submitHitl(runId, requestId, payload),
     onSuccess: async (run) => {
-      queryClient.setQueryData(queryKeys.workflowRun(run.id), run);
+      queryClient.setQueryData(mockWorkflowKeys.workflowRun(run.id), run);
       // Resync the conversation projection from the live snapshot so a missed
       // stream upsert cannot leave the node session looking unchanged after HITL.
       const snapshot = await runtime.runs.getLiveSnapshot(run.id);
@@ -280,7 +284,7 @@ export function useSubmitGraphWorkflowHitl() {
         return;
       }
       queryClient.setQueryData(
-        queryKeys.workflowArtifacts(run.id),
+        mockWorkflowKeys.workflowArtifacts(run.id),
         withConversationIndex(snapshot),
       );
     },
@@ -311,7 +315,7 @@ export function useGraphWorkflowRunLive(
   }, [handlers]);
 
   const query = useQuery<LiveSnapshotIndexed | null>({
-    queryKey: queryKeys.workflowArtifacts(runId ?? ""),
+    queryKey: mockWorkflowKeys.workflowArtifacts(runId ?? ""),
     queryFn: async () => {
       const snapshot = await runtime.runs.getLiveSnapshot(runId!);
       if (snapshot === null) {
@@ -337,7 +341,7 @@ export function useGraphWorkflowRunLive(
     return runtime.runs.subscribe(
       runId,
       (event) => {
-        const cacheKey = queryKeys.workflowArtifacts(runId);
+        const cacheKey = mockWorkflowKeys.workflowArtifacts(runId);
         if (event.type === "artifact_added") {
           const artifact = structuredClone(event.artifact);
           queryClient.setQueryData(

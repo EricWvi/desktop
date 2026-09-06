@@ -2,7 +2,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { WorkflowRuntime } from "@ora/workflow-runtime";
 import { createMemoryWorkflowRuntime } from "@ora/workflow-runtime/memory";
-import { WorkflowRuntimeContext } from "./use-workflow-runtime";
+import { WorkflowRuntimeContext } from "./workflow-runtime-context";
 
 interface WorkflowRuntimeProviderProps {
   children: ReactNode;

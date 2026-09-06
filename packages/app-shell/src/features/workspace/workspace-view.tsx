@@ -19,7 +19,8 @@ import { useSkills } from "../../state/hooks/use-skills";
 import { useAgents } from "../../state/hooks/use-agents";
 import { useWorkspaces } from "../../state/hooks/use-workspaces";
 import { useWorkspaceCwd } from "../../state/hooks/use-workspace-cwd";
-import { queryKeys } from "../../state/hooks/query-keys";
+import { sessionKeys } from "../../state/data/sessions";
+import { invalidateWorkspaceDiffs } from "../../state/data/diff";
 import { useContractsClient } from "../../contracts-client-context";
 import { useUiStore } from "../../state/stores/ui-store";
 import {
@@ -308,7 +309,7 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
               usePendingAgentStore.getState().clearPendingSwitch(session.id);
               usePendingAgentStore.getState().clearPendingModel(modelKey);
               queryClient.setQueryData<Session[]>(
-                queryKeys.sessions,
+                sessionKeys.sessions,
                 (current) => upsertById(current, response.session),
               );
               // Recorded against the session being moved, so
@@ -331,9 +332,7 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
         // lifecycle snapshot after every finite prompt without polling idle sessions.
         await Promise.all([
           sessionsQuery.refetch(),
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.workspaceDiffs(session.workspaceId),
-          }),
+          invalidateWorkspaceDiffs(queryClient, session.workspaceId),
         ]);
       }
       return;
@@ -445,7 +444,7 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
     const projectId = project.id;
     const taskId = task?.id ?? null;
     try {
-      queryClient.setQueryData<Session[]>(queryKeys.sessions, (current) =>
+      queryClient.setQueryData<Session[]>(sessionKeys.sessions, (current) =>
         upsertById(current, started.session),
       );
       chatStore.getState().setConfigOptions(sessionId, started.configOptions);
@@ -475,8 +474,9 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
         images,
         prepare: async () => {
           try {
-            queryClient.setQueryData<Session[]>(queryKeys.sessions, (current) =>
-              upsertById(current, started.session),
+            queryClient.setQueryData<Session[]>(
+              sessionKeys.sessions,
+              (current) => upsertById(current, started.session),
             );
           } finally {
             // Even a cache update failure must not leave a muted row pointing at
@@ -512,9 +512,7 @@ export function WorkspaceView({ userName }: WorkspaceViewProps) {
       endDraftSend();
       await Promise.all([
         sessionsQuery.refetch(),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.workspaceDiffs(workspaceId),
-        }),
+        invalidateWorkspaceDiffs(queryClient, workspaceId),
       ]);
     }
   };

@@ -1,3 +1,5 @@
+import { QueryClient } from "@tanstack/react-query";
+import { mockWorkflowKeys } from "./mock-workflows";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderHookWithClient } from "../../test/hook-harness";
@@ -9,11 +11,12 @@ import {
 import { useWorkspaceSelectionStore } from "../stores/workspace-selection-store";
 import {
   buildDisplayRun,
+  workflowRunKeys,
   useDeleteWorkflowRun,
   useRealWorkflowRun,
   useRenameWorkflowRun,
   useWorkflowRunsByProject,
-} from "./use-workflow-runs";
+} from "./workflow-runs";
 
 beforeEach(() => {
   useWorkspaceSelectionStore.getState().clearSelection();
@@ -516,4 +519,28 @@ describe("persisted run hooks", () => {
       "run-other",
     );
   });
+});
+
+it("keeps persisted and memory-runtime run identities and list prefixes separate", async () => {
+  const client = new QueryClient();
+  const persisted = workflowRunKeys.detail("run-1");
+  const memory = mockWorkflowKeys.workflowRun("run-1");
+  expect(persisted).toEqual(["workflowRun", "detail", "run-1"]);
+  expect(memory).toEqual(["workflowRun", "run-1"]);
+  client.setQueryData(persisted, { source: "persisted" });
+  client.setQueryData(memory, { source: "memory" });
+  client.setQueryData(workflowRunKeys.byProject("p1"), []);
+  client.setQueryData(mockWorkflowKeys.workflowRuns("p1"), []);
+  await client.invalidateQueries({ queryKey: workflowRunKeys.projectLists });
+  expect(
+    [
+      persisted,
+      memory,
+      workflowRunKeys.byProject("p1"),
+      mockWorkflowKeys.workflowRuns("p1"),
+    ].map((key) => client.getQueryState(key)?.isInvalidated),
+  ).toEqual([false, false, true, false]);
+  client.removeQueries({ queryKey: persisted });
+  expect(client.getQueryData(memory)).toEqual({ source: "memory" });
+  client.clear();
 });

@@ -23,3 +23,55 @@ Adding or removing a feature changes its resource entry and the explicit composi
 existing copy changes only its owner. `resources.test.ts` exercises data-only composition,
 ownership collisions, language parity, and plural validation; `i18n-instance.test.ts` covers
 synchronous availability, language switching, plurals, and blocked storage.
+
+## Query and invalidation ownership
+
+`state/data/` owns cache identity and shared data rules. The central `state/hooks/query-keys.ts`
+has been removed. Consumers import the relevant owner directly; there is no replacement global
+barrel or key registry. The existing 37 factories retain their exact tuples, including historical
+spelling, prefix structure, task ids in `workspace-files`, and nullable model-selector arguments.
+
+| Owner                                                                   | Responsibility                                                                                           |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `workspace.ts`, `sessions.ts`                                           | Shared lists, authoritative response adoption, aggregate-deletion scrubbing, and session tree placement  |
+| `workflows.ts`, `workflow-runs.ts`                                      | Definition/draft/version queries and persisted run queries, mutations, and projections                   |
+| `mock-workflows.ts`, `mock-workflow-runs.ts`, `mock-workflow-mounts.ts` | Memory-runtime identities, subscriptions, and mutations; separate from persisted run caches              |
+| `files.ts`, `file-watch.ts`, `diff.ts`                                  | Scoped file access, file-event invalidation/reconnection, and workspace diff invalidation                |
+| `plugins.ts`, `agent-runtime.ts`, `plugin-lifecycle.ts`                 | Catalog/configuration caches, per-agent model prefixes, and explicit cross-domain lifecycle coordination |
+| `agents.ts`, `skills.ts`, `settings.ts`, `identity.ts`, `effects.ts`    | Definition, preference, identity, and effect cache identities owned by those data domains                |
+
+UI hooks still own selection, draft/composer cleanup, mutation activity, and view-specific actions.
+They apply authoritative cache results through the data interface before coordinating UI state.
+Project deletion includes main-workspace sessions and task sessions even when the workspace-list
+cache has not loaded the task workspace. List renames patch responses and invalidate with
+`refetchType: "none"`; standalone deletes refresh active lists, while parent cascades may defer
+child refreshes. This distinction must not be replaced with a blanket invalidation.
+
+Plugin refresh scopes are deliberately different:
+
+| Trigger                      | Invalidated queries                                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| Agent activation             | Runtime availability and that agent's model queries in every workspace                        |
+| Agent stop/removal           | Runtime availability, **not** model discovery against the stopped runtime                     |
+| Settled plugin mutation      | Installed and available plugins                                                               |
+| External plugin-status event | Installed plugins, runtime availability, and Skills; not available plugins or model discovery |
+| Agent-model event            | Only that agent's model-query prefix                                                          |
+
+The application event hook owns reconnect/abort state, but delegates those cache rules. A ready
+event or a disconnect explicitly **refetches** sessions to close missed-event gaps; a title event
+invalidates them. Promise-returning mutation callbacks still await refresh completion, while event
+consumption does not block on invalidation.
+
+Persisted detail keys remain `['workflowRun', 'detail', runId]`; the memory runtime keeps
+`['workflowRun', runId]`. Neither list invalidation nor detail removal may merge those spaces.
+The runtime provider and its injected context belong to shell composition, not workflow-run UI.
+Terminal-status classification lives in `@ora/workflow-runtime`; data does not import UI chrome.
+
+Files retains the explicit Explorer/Search product composition. Its data interface owns the
+task-worktree/project-checkout choice, keys, and refresh scope. Rename events invalidate both
+paths and parent directories plus searches; rescan invalidates the whole selected scope, never a
+neighboring checkout. Changing scope aborts the old watcher and unmount aborts the current watcher.
+
+Data tests use real QueryClient caches/observers to verify exact invalidation and refetch behavior.
+The Files scope-switch test awaits rendered listings and actual stream finalization, and the
+existing mutation and event tests continue to exercise UI coordination and reconnect behavior.

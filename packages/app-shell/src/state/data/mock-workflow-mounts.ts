@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { useWorkflowRuntime } from "../../features/workflow-run/use-workflow-runtime";
-import { queryKeys } from "./query-keys";
+import { useWorkflowRuntime } from "../../workflow-runtime-context";
+import { mockWorkflowKeys } from "./mock-workflows";
 
 /** Lists workflow definitions mounted on a project (D1: react-query list). */
 export function useWorkflowMounts(projectId: string | null | undefined) {
   const runtime = useWorkflowRuntime();
   return useQuery({
-    queryKey: queryKeys.workflowMounts(projectId ?? ""),
+    queryKey: mockWorkflowKeys.workflowMounts(projectId ?? ""),
     queryFn: () => runtime.host.listMounts(projectId!),
     enabled: projectId != null && projectId !== "",
   });
@@ -18,7 +18,7 @@ export function useWorkflowMountsByDefinition(
 ) {
   const runtime = useWorkflowRuntime();
   return useQuery({
-    queryKey: queryKeys.workflowMountsByDefinition(definitionId ?? ""),
+    queryKey: mockWorkflowKeys.workflowMountsByDefinition(definitionId ?? ""),
     queryFn: () => runtime.host.listMountsByDefinition(definitionId!),
     enabled: definitionId != null && definitionId !== "",
   });

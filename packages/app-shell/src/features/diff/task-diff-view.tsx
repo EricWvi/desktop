@@ -41,7 +41,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useContractsClient } from "../../contracts-client-context";
 import { localizeContractError } from "../../i18n/contract-error";
-import { queryKeys } from "../../state/hooks/query-keys";
+import { invalidateWorkspaceDiffs } from "../../state/data/diff";
 import { useWorkspaceDiff } from "../../state/hooks/use-workspace-diff";
 import {
   countChanges,
@@ -530,9 +530,7 @@ export function TaskDiffView({
       // A baseline-less workspace has no fixed "committed" comparison to show;
       // its remaining uncommitted changes are still the most useful view.
       setScope(hasBaseline ? "committed" : "unstaged");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.workspaceDiffs(workspaceId),
-      });
+      await invalidateWorkspaceDiffs(queryClient, workspaceId);
     },
   });
   const pushBranch = useMutation({

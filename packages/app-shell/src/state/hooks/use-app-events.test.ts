@@ -9,7 +9,9 @@ import {
   createTestQueryClient,
   renderHookWithClient,
 } from "../../test/hook-harness";
-import { queryKeys } from "./query-keys";
+import { sessionKeys } from "../data/sessions";
+import { pluginKeys } from "../data/plugins";
+import { agentRuntimeKeys } from "../data/agent-runtime";
 import { useAppEvents } from "./use-app-events";
 
 describe("useAppEvents", () => {
@@ -41,8 +43,8 @@ describe("useAppEvents", () => {
     );
 
     await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(refetch).toHaveBeenCalledWith({ queryKey: queryKeys.sessions });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.sessions });
+    expect(refetch).toHaveBeenCalledWith({ queryKey: sessionKeys.sessions });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: sessionKeys.sessions });
 
     unmount();
   });
@@ -76,11 +78,11 @@ describe("useAppEvents", () => {
     await waitFor(() => expect(result.current.ready).toBe(true));
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({
-        queryKey: queryKeys.installedPlugins,
+        queryKey: pluginKeys.installedPlugins,
       }),
     );
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: queryKeys.agentRuntimeStatus,
+      queryKey: agentRuntimeKeys.agentRuntimeStatus,
     });
 
     unmount();

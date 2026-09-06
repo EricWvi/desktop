@@ -4,7 +4,6 @@ import type {
   WorkspaceFileChange,
   WorkspaceSearchKind,
 } from "@ora/contracts";
-import { queryKeys } from "../../state/hooks/query-keys";
 
 /** Selects task worktree APIs when a task exists; otherwise the project checkout. */
 export type FilesScope =
@@ -23,8 +22,8 @@ export function resolveFilesScope(
 /** Builds the react-query key for one file preview in the active Files scope. */
 export function fileQueryKey(scope: FilesScope, path: string) {
   return scope.kind === "task"
-    ? queryKeys.workspaceFile(scope.taskId, path)
-    : queryKeys.projectFile(scope.projectId, path);
+    ? fileKeys.workspaceFile(scope.taskId, path)
+    : fileKeys.projectFile(scope.projectId, path);
 }
 
 /** Builds the react-query key for one search/filter query in the active Files scope. */
@@ -34,22 +33,22 @@ export function searchQueryKey(
   query: string,
 ) {
   return scope.kind === "task"
-    ? queryKeys.workspaceSearch(scope.taskId, kind, query)
-    : queryKeys.projectSearch(scope.projectId, kind, query);
+    ? fileKeys.workspaceSearch(scope.taskId, kind, query)
+    : fileKeys.projectSearch(scope.projectId, kind, query);
 }
 
 /** Prefix that invalidates every directory/file/search query for one Files scope. */
 export function filesScopeQueryKey(scope: FilesScope) {
   return scope.kind === "task"
-    ? queryKeys.workspaceFiles(scope.taskId)
-    : queryKeys.projectFiles(scope.projectId);
+    ? fileKeys.workspaceFiles(scope.taskId)
+    : fileKeys.projectFiles(scope.projectId);
 }
 
 /** Directory listing key for one expanded path in the active Files scope. */
 export function directoryQueryKey(scope: FilesScope, path: string) {
   return scope.kind === "task"
-    ? queryKeys.workspaceDirectory(scope.taskId, path)
-    : queryKeys.projectDirectory(scope.projectId, path);
+    ? fileKeys.workspaceDirectory(scope.taskId, path)
+    : fileKeys.projectDirectory(scope.projectId, path);
 }
 
 /** Thin client adapter so list/search/read/watch share one scope branch. */
@@ -162,4 +161,30 @@ export async function invalidateScopedFileQueries(
 export function parentPath(path: string): string {
   const separator = path.lastIndexOf("/");
   return separator <= 0 ? "" : path.slice(0, separator);
+}
+
+/** Cache identity owned by files data; consumers never repeat its tuples. */
+export const fileKeys = {
+  workspaceFiles: (taskId: string) => ["workspace-files", taskId] as const,
+  workspaceDirectory: (taskId: string, path: string) =>
+    ["workspace-files", taskId, "directory", path] as const,
+  workspaceFile: (taskId: string, path: string) =>
+    ["workspace-files", taskId, "file", path] as const,
+  workspaceSearch: (taskId: string, kind: string, query: string) =>
+    ["workspace-files", taskId, "search", kind, query] as const,
+  projectFiles: (projectId: string) => ["project-files", projectId] as const,
+  projectDirectory: (projectId: string, path: string) =>
+    ["project-files", projectId, "directory", path] as const,
+  projectFile: (projectId: string, path: string) =>
+    ["project-files", projectId, "file", path] as const,
+  projectSearch: (projectId: string, kind: string, query: string) =>
+    ["project-files", projectId, "search", kind, query] as const,
+};
+
+/** Refreshes directory, file, and search projections for exactly one Files scope. */
+export function invalidateFilesScope(
+  queryClient: QueryClient,
+  scope: FilesScope,
+) {
+  return queryClient.invalidateQueries({ queryKey: filesScopeQueryKey(scope) });
 }

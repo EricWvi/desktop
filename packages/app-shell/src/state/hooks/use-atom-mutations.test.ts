@@ -15,7 +15,8 @@ import {
   createMockClientState,
 } from "../../test/mock-client";
 import { renderHookWithClient } from "../../test/hook-harness";
-import { queryKeys } from "./query-keys";
+import { agentKeys } from "../data/agents";
+import { skillKeys } from "../data/skills";
 import type { Agent, Skill } from "@ora/contracts";
 
 const AGENT_A: Agent = {
@@ -76,9 +77,9 @@ describe("useCreateAgent", () => {
 
     expect(state.agents).toHaveLength(1);
     expect(state.agents[0]!.name).toBe("New Agent");
-    await agents.queryClient.refetchQueries({ queryKey: queryKeys.agents });
+    await agents.queryClient.refetchQueries({ queryKey: agentKeys.agents });
     expect(
-      agents.queryClient.getQueryData<Agent[]>(queryKeys.agents),
+      agents.queryClient.getQueryData<Agent[]>(agentKeys.agents),
     ).toHaveLength(1);
   });
 });
@@ -154,9 +155,9 @@ describe("useCreateSkill", () => {
 
     expect(state.skills).toHaveLength(1);
     expect(state.skills[0]!.name).toBe("New Skill");
-    await skills.queryClient.refetchQueries({ queryKey: queryKeys.skills });
+    await skills.queryClient.refetchQueries({ queryKey: skillKeys.skills });
     expect(
-      skills.queryClient.getQueryData<Skill[]>(queryKeys.skills),
+      skills.queryClient.getQueryData<Skill[]>(skillKeys.skills),
     ).toHaveLength(1);
   });
 });

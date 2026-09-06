@@ -10,7 +10,7 @@ import {
   renderHookWithClient,
 } from "../../test/hook-harness";
 import { usePluginOperationStore } from "../stores/plugin-operation-store";
-import { queryKeys } from "./query-keys";
+import { agentRuntimeKeys } from "../data/agent-runtime";
 import { usePluginMutations } from "./use-plugin-mutations";
 
 const AGENT_REF = "ora-space.opencode";
@@ -61,13 +61,16 @@ describe("usePluginMutations", () => {
       },
     };
     const queryClient = createTestQueryClient();
-    const queryKey = queryKeys.agentModels(AGENT_REF, TARGET.workspaceId);
+    const queryKey = agentRuntimeKeys.agentModels(
+      AGENT_REF,
+      TARGET.workspaceId,
+    );
     const loadModels = vi.fn(async () => ({ catalog: "current" }));
 
     const { result } = renderHookWithClient(
       () => ({
         runtime: useQuery({
-          queryKey: queryKeys.agentRuntimeStatus,
+          queryKey: agentRuntimeKeys.agentRuntimeStatus,
           queryFn: () =>
             client.agentRuntime
               .getStatus({})

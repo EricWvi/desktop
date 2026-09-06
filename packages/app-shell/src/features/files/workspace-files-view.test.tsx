@@ -15,7 +15,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { ContractsClientContext } from "../../contracts-client-context";
 import { PlatformProvider } from "../../platform";
-import { queryKeys } from "../../state/hooks/query-keys";
+import { workspaceKeys } from "../../state/data/workspace";
 import {
   createMockClient,
   createMockClientState,
@@ -760,7 +760,7 @@ describe("WorkspaceFilesView project scope", () => {
     // A failed project list never yields a checkout root, so the absolute path
     // must stay deferred rather than flow unstripped to readProjectFile.
     await waitFor(() => {
-      expect(queryClient.getQueryState(queryKeys.workspaces)?.status).toBe(
+      expect(queryClient.getQueryState(workspaceKeys.workspaces)?.status).toBe(
         "error",
       );
     });

@@ -11,7 +11,8 @@ import {
 import { useWorkspaceSelectionStore } from "../stores/workspace-selection-store";
 import { useDraftSessionsStore } from "../stores/draft-sessions-store";
 import { useComposerInputStore } from "../stores/composer-input-store";
-import { queryKeys } from "./query-keys";
+import { sessionKeys } from "../data/sessions";
+import { workspaceKeys } from "../data/workspace";
 import {
   useCreateTask,
   useDeleteProject,
@@ -42,7 +43,7 @@ describe("useRenameSession", () => {
     ];
     const client = createMockClient(state);
     const queryClient = createTestQueryClient();
-    queryClient.setQueryData(queryKeys.sessions, state.sessions);
+    queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const { result } = renderHookWithClient(
       () => useRenameSession(),
       client,
@@ -54,11 +55,11 @@ describe("useRenameSession", () => {
     });
 
     expect(state.sessions[0]?.title).toBe("New title");
-    expect(queryClient.getQueryData(queryKeys.sessions)).toEqual([
+    expect(queryClient.getQueryData(sessionKeys.sessions)).toEqual([
       expect.objectContaining({ id: "s1", title: "New title" }),
     ]);
     // Patch-only: do not force an active list refetch that rebuilds every row.
-    expect(queryClient.isFetching({ queryKey: queryKeys.sessions })).toBe(0);
+    expect(queryClient.isFetching({ queryKey: sessionKeys.sessions })).toBe(0);
   });
 });
 
@@ -85,7 +86,7 @@ describe("delete mutations clear parked composer state", () => {
     ];
     const client = createMockClient(state);
     const queryClient = createTestQueryClient();
-    queryClient.setQueryData(queryKeys.sessions, state.sessions);
+    queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const { result } = renderHookWithClient(
       () => useDeleteSession(),
       client,
@@ -94,10 +95,10 @@ describe("delete mutations clear parked composer state", () => {
     await act(async () => {
       await result.current.mutateAsync({ sessionId: "s1", listSync: "defer" });
     });
-    expect(queryClient.getQueryData(queryKeys.sessions)).toEqual([
+    expect(queryClient.getQueryData(sessionKeys.sessions)).toEqual([
       expect.objectContaining({ id: "s2" }),
     ]);
-    expect(queryClient.isFetching({ queryKey: queryKeys.sessions })).toBe(0);
+    expect(queryClient.isFetching({ queryKey: sessionKeys.sessions })).toBe(0);
   });
 
   it("clears composer input and bound drafts when a session is deleted", async () => {
@@ -114,7 +115,7 @@ describe("delete mutations clear parked composer state", () => {
     ];
     const client = createMockClient(state);
     const queryClient = createTestQueryClient();
-    queryClient.setQueryData(queryKeys.sessions, state.sessions);
+    queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     useComposerInputStore.getState().setInput("s1", {
       text: "parked",
       images: [],
@@ -152,7 +153,7 @@ describe("delete mutations clear parked composer state", () => {
     ];
     const client = createMockClient(state);
     const queryClient = createTestQueryClient();
-    queryClient.setQueryData(queryKeys.sessions, state.sessions);
+    queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const draftId = useDraftSessionsStore
       .getState()
       .ensureEmptyDraft({ projectId: "p1", taskId: "t2" });
@@ -200,8 +201,8 @@ describe("delete mutations clear parked composer state", () => {
     ];
     const client = createMockClient(state);
     const queryClient = createTestQueryClient();
-    queryClient.setQueryData(queryKeys.tasks, state.tasks);
-    queryClient.setQueryData(queryKeys.sessions, state.sessions);
+    queryClient.setQueryData(workspaceKeys.tasks, state.tasks);
+    queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     useComposerInputStore.getState().setInput("s1", {
       text: "parked",
       images: [],
@@ -252,9 +253,9 @@ describe("delete mutations clear parked composer state", () => {
     ];
     const client = createMockClient(state);
     const queryClient = createTestQueryClient();
-    queryClient.setQueryData(queryKeys.projects, state.projects);
-    queryClient.setQueryData(queryKeys.tasks, state.tasks);
-    queryClient.setQueryData(queryKeys.sessions, state.sessions);
+    queryClient.setQueryData(workspaceKeys.projects, state.projects);
+    queryClient.setQueryData(workspaceKeys.tasks, state.tasks);
+    queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     useComposerInputStore.getState().setInput("s1", {
       text: "parked",
       images: [],
@@ -314,7 +315,7 @@ describe("useCreateTask", () => {
     const state = createMockClientState();
     const client = createMockClient(state);
     const queryClient = createTestQueryClient();
-    const projectBranchesKey = queryKeys.projectBranches("p1");
+    const projectBranchesKey = workspaceKeys.projectBranches("p1");
     queryClient.setQueryData(projectBranchesKey, []);
     const { result } = renderHookWithClient(
       () => useCreateTask(),
