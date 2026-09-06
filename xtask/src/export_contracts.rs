@@ -194,7 +194,7 @@ fn render_endpoints_module(endpoints: &[FrontendEndpoint]) -> String {
         source.push_str(endpoint.response_type);
         source.push_str("\",\n");
         source.push_str("    responseMode: \"");
-        source.push_str(match endpoint.response_mode() {
+        source.push_str(match endpoint.response_mode {
             FrontendResponseMode::Unary => "unary",
             FrontendResponseMode::Stream => "stream",
         });

@@ -9,7 +9,7 @@ The `xtask` crate declares every frontend-facing IPC operation as a `FrontendEnd
 - `operation_name` — the flat wire-level identifier (`createTask`)
 - `namespace` and `member_name` — where the operation sits on the generated client (`client.task.create`)
 - `request_type` and `response_type` — the TypeScript DTO names
-- `response_mode()` — whether the operation is `unary` or `stream`
+- `response_mode` — the explicitly declared `Unary` or `Stream` mode; it is never inferred from an operation's name
 
 The manifest contains no transport-specific route, query, or serialization metadata.
 
