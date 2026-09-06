@@ -43,6 +43,12 @@ tasks:
       - cargo xtask export-contracts
       - deno task --filter @ora/contracts generate:error-schema
 
+  check:contracts:
+    desc: Verify all generated contracts without changing the working tree
+    cmds:
+      - cargo xtask check-contracts
+      - deno run -A scripts/check-contract-schema.ts
+
   build:
     desc: Build all Rust workspace packages
     cmds:
@@ -177,7 +183,7 @@ tasks:
   test:frontend:
     desc: Run all frontend TypeScript package test suites
     cmds:
-      - task: export-contracts
+      - task: check:contracts
       - task: lint:frontend
       - deno task test:tooling
       - deno task --filter @ora/desktop test

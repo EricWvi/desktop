@@ -7,7 +7,7 @@
 | 阶段            | 状态   | 交付                                              |
 | --------------- | ------ | ------------------------------------------------- |
 | 0：基线         | 已盘点 | 本文的登记点、command 与行为验证索引              |
-| 1：contracts    | 待实施 | 显式响应模式、生成 client/DTO exports、确定性生成 |
+| 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成 |
 | 2：Desktop      | 待实施 | 领域命令、Desktop binding、权限和 stream 接线     |
 | 3：Backend 试点 | 待实施 | settings 窄 interface                             |
 | 4：Backend 迁移 | 待实施 | 领域操作、生命周期协调和启动装配                  |
@@ -70,3 +70,12 @@
 ## 检查记录
 
 后续每阶段记录实际运行结果。跨范围实现阶段最终运行完整 `task test`，Desktop 变化另及早运行 `task test:tauri`。最终包含增删演练后的证据与剩余手写接点说明。
+
+### 阶段 1（2026-09-06）
+
+- `cargo test -p xtask`：17 项通过，包括未知 stream 增删、重复声明拒绝、生成清单漂移和手写文件冲突保护。
+- `cargo clippy -p xtask --all-targets -- -D warnings`：通过。
+- contracts lint 与 9 项测试通过；新增遍历全部 110 个 operation 的实际调用验证，覆盖 DTO、响应模式、返回值及选项。stream AbortSignal 传递有单独直接断言。
+- `task export-contracts` 后执行 `task check:contracts`：通过。检查在临时目录生成，能够识别未跟踪的新增/失效产物，不修复工作树。
+- `task test`：完整通过，包括 frontend、Rust workspace、Tauri 与 4 项 Desktop E2E。测试入口现在检查生成产物，而不是先覆盖产物再验证。
+- 已删除手写 client 成员表、类型名到文件名映射和中央 stream 模式推断。`client-runtime.ts` 只保留映射类型及通用调用逻辑；DTO 与静态 factory 由生成器输出。

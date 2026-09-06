@@ -67,6 +67,7 @@ jobs:
             crates:
               - *shared
               - 'crates/**'
+              - 'xtask/**'
             tauri:
               - *shared
               - 'crates/**'
@@ -89,7 +90,7 @@ jobs:
         with:
           deno-version-file: .deno-version
           cache: true
-      # test:frontend regenerates TS contracts via `cargo xtask export-contracts`
+      # test:frontend verifies Rust-owned contract generation without modifying the checkout
       # and also runs the Desktop frontend tests.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

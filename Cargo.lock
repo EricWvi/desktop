@@ -7252,6 +7252,7 @@ dependencies = [
  "ora-contracts",
  "ora-db",
  "ora-plugin-protocol",
+ "ora-utils",
  "pretty_assertions",
  "serde_json",
  "tempfile",

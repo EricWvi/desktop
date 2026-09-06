@@ -11,6 +11,7 @@ The public application surface is split across `ora-domain`, `ora-contracts`, `o
 - `ora-contracts` keeps Rust field names idiomatic while serializing JSON payloads in `camelCase` for adapter and frontend consumption.
 - ACP v1 wire types are owned by the official `agent-client-protocol-schema` crate in Rust and `@agentclientprotocol/sdk` package in TypeScript. `ora-contracts` may embed those types in Ora application DTOs, but does not duplicate the ACP schema.
 - The `xtask` exporter owns the generation-only frontend endpoint catalog: operation names, client namespaces, request and response types, and unary-versus-stream response mode.
+- The same catalog generates the static client wiring; DTO exports come from ts-rs output rather than a second hand-written type-to-file map. Runtime execution and transport mechanisms remain hand-written.
 - `ora-contracts` exports TypeScript DTOs into `packages/contracts/src` so frontend packages consume the contract surface from `@ora/contracts`. See [Frontend Contract SDK](frontend-contract-sdk.md).
 - `ora-application` owns use-case handlers, `ApplicationError`, the repository/clock/identity/provisioning ports those handlers depend on, and domain-to-contract mapping.
 - `ora-db` implements those ports on SQLite and owns schema reconciliation. See [Database Repositories](database-repositories.md).
