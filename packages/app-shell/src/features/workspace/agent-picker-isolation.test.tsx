@@ -11,10 +11,31 @@ import {
   createTestQueryClient,
 } from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../test/memory/workspaces";
+import {
+  createSessionMemory,
+  sessionHandlers,
+} from "../../test/memory/sessions";
+import {
+  createAgentRuntimeMemory,
+  agentRuntimeHandlers,
+} from "../../test/memory/agent-runtime";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import { createAgentMemory, agentHandlers } from "../../test/memory/agents";
+import { createSkillMemory, skillHandlers } from "../../test/memory/skills";
+import {
+  createWorkflowMemory,
+  workflowHandlers,
+} from "../../test/memory/workflows";
+import {
+  createWorkflowRunMemory,
+  workflowRunHandlers,
+} from "../../test/memory/workflow-runs";
+import "../../i18n/i18n-instance";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import { useDraftSessionsStore } from "../../state/stores/draft-sessions-store";
 import {
@@ -25,6 +46,36 @@ import { usePendingAgentStore } from "../../state/stores/pending-agent-store";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 import { WorkspaceView } from "./workspace-view";
 import { AGENT_REF } from "../../test/agent-identity";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createSessionMemory(),
+    ...createAgentRuntimeMemory(),
+    ...createPluginMemory(),
+    ...createAgentMemory(),
+    ...createSkillMemory(),
+    ...createWorkflowMemory(),
+    ...createWorkflowRunMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...sessionHandlers(state),
+    ...agentRuntimeHandlers(state),
+    ...pluginHandlers(state),
+    ...agentHandlers(state),
+    ...skillHandlers(state),
+    ...workflowHandlers(state),
+    ...workflowRunHandlers(state),
+  });
+}
 
 const USER = { name: "Eric", email: "eric@example.com" };
 const PROJECT: Project = { id: "p1", name: "Ora Desktop" };
@@ -52,10 +103,10 @@ beforeEach(() => {
 
 /** Renders the sidebar and the workspace view together, as AppShell composes them. */
 function renderWorkspace() {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.projects = [PROJECT];
   state.tasks = [TASK1, TASK2];
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   const chatStore = createChatStore(client.session);
   const Wrapper = createHookWrapper(client, createTestQueryClient(), chatStore);
   render(

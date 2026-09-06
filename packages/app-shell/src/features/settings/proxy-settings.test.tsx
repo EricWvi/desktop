@@ -6,11 +6,26 @@ import type { ContractsClient } from "@ora/contracts";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { appI18n } from "../../i18n/i18n-instance";
 import { ContractsClientContext } from "../../contracts-client-context";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createSettingsMemory,
+  settingsHandlers,
+} from "../../test/memory/settings";
 import { ProxySettings } from "./proxy-settings";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createSettingsMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...settingsHandlers(state),
+  });
+}
 
 void appI18n;
 
@@ -31,8 +46,8 @@ function renderProxy(client: ContractsClient) {
 }
 
 it("saves proxy settings through the backend", async () => {
-  const state = createMockClientState();
-  const client = createMockClient(state);
+  const state = createFixtureState();
+  const client = createFixtureClient(state);
   const user = userEvent.setup();
 
   renderProxy(client);
@@ -52,14 +67,14 @@ it("saves proxy settings through the backend", async () => {
 });
 
 it("clears saved proxy settings through the backend", async () => {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.proxySettings = {
     host: "127.0.0.1",
     port: 7890,
     username: null,
     password: null,
   };
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   const user = userEvent.setup();
 
   renderProxy(client);
@@ -70,8 +85,8 @@ it("clears saved proxy settings through the backend", async () => {
 });
 
 it("checks the current form proxy against a URL", async () => {
-  const state = createMockClientState();
-  const client = createMockClient(state);
+  const state = createFixtureState();
+  const client = createFixtureClient(state);
   const check = vi.spyOn(client.proxy, "check");
   const user = userEvent.setup();
 

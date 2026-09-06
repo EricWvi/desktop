@@ -8,13 +8,26 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import "../../i18n/i18n-instance";
 import { createSurfaceTestPlatform } from "../../test/surface-test-platform";
 import { useSurfaceStore } from "../../state/stores/surface-store";
 import { SurfaceLauncher } from "./surface-launcher";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createPluginMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...pluginHandlers(state),
+  });
+}
 
 function webviewPlugin(
   id: string,
@@ -41,9 +54,9 @@ function webviewPlugin(
 }
 
 function renderLauncher(plugins: InstalledPlugin[], embedded: boolean) {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.installedPlugins = plugins;
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   const Wrapper = createHookWrapper(
     client,
     createTestQueryClient(),

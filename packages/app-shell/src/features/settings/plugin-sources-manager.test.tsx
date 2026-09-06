@@ -12,11 +12,23 @@ import type { ContractsClient } from "@ora/contracts";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { appI18n } from "../../i18n/i18n-instance";
 import { ContractsClientContext } from "../../contracts-client-context";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import { PluginSourcesManager } from "./plugin-sources-manager";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createPluginMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...pluginHandlers(state),
+  });
+}
 
 // Keep this test worker responsible for initializing the instance used by useTranslation.
 void appI18n;
@@ -38,7 +50,7 @@ function renderManager(client: ContractsClient, onBack = vi.fn()) {
 }
 
 it("renders configured marketplace sources", async () => {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.marketplaceSources.push({
     url: "https://github.com/ora-space/marketplace",
     branch: "main",
@@ -46,7 +58,7 @@ it("renders configured marketplace sources", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
 
   renderManager(client);
 
@@ -56,8 +68,8 @@ it("renders configured marketplace sources", async () => {
 });
 
 it("adds a marketplace source through the backend", async () => {
-  const state = createMockClientState();
-  const client = createMockClient(state);
+  const state = createFixtureState();
+  const client = createFixtureClient(state);
   const user = userEvent.setup();
 
   renderManager(client);
@@ -82,7 +94,7 @@ it("adds a marketplace source through the backend", async () => {
 });
 
 it("removes a marketplace source through the backend", async () => {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.marketplaceSources.push({
     url: "https://github.com/ora-space/marketplace",
     branch: "main",
@@ -90,7 +102,7 @@ it("removes a marketplace source through the backend", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   const deleteSource = vi.spyOn(client.plugin, "deleteSource");
 
   renderManager(client);
@@ -110,7 +122,7 @@ it("removes a marketplace source through the backend", async () => {
 });
 
 it("edits a marketplace source URL and branch", async () => {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.marketplaceSources.push({
     url: "https://github.com/ora-space/marketplace",
     branch: "main",
@@ -118,7 +130,7 @@ it("edits a marketplace source URL and branch", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   const user = userEvent.setup();
 
   renderManager(client);
@@ -147,7 +159,7 @@ it("edits a marketplace source URL and branch", async () => {
 });
 
 it("configures S3 SigV4 retrieval without returning credentials", async () => {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.marketplaceSources.push({
     url: "https://github.com/ora-space/marketplace",
     branch: "main",
@@ -155,7 +167,7 @@ it("configures S3 SigV4 retrieval without returning credentials", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   const updateSource = vi.spyOn(client.plugin, "updateSource");
   const user = userEvent.setup();
 
@@ -211,7 +223,7 @@ it("configures S3 SigV4 retrieval without returning credentials", async () => {
 });
 
 it("disables a marketplace source without removing it", async () => {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.marketplaceSources.push({
     url: "https://github.com/ora-space/marketplace",
     branch: "main",
@@ -219,7 +231,7 @@ it("disables a marketplace source without removing it", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   const user = userEvent.setup();
 
   renderManager(client);

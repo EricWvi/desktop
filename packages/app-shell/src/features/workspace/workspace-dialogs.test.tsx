@@ -15,15 +15,45 @@ import {
   type ContractsClient,
   type Session,
 } from "@ora/contracts";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../test/memory/workspaces";
+import {
+  createSessionMemory,
+  sessionHandlers,
+} from "../../test/memory/sessions";
+import {
+  createWorkflowRunMemory,
+  workflowRunHandlers,
+} from "../../test/memory/workflow-runs";
+import "../../i18n/i18n-instance";
 import { useUiStore } from "../../state/stores/ui-store";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import { useDraftSessionsStore } from "../../state/stores/draft-sessions-store";
 import { WorkspaceDialogs } from "./workspace-dialogs";
 import { AGENT_REF } from "../../test/agent-identity";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createSessionMemory(),
+    ...createWorkflowRunMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...sessionHandlers(state),
+    ...workflowRunHandlers(state),
+  });
+}
 
 beforeEach(() => {
   useUiStore.getState().setDialog(null);
@@ -38,8 +68,8 @@ describe("WorkspaceDialogs project creation", () => {
     ["/workspace/ora/", "ora"],
   ])("derives the project name from %s", async (rootPath, expectedName) => {
     const user = userEvent.setup();
-    const state = createMockClientState();
-    const client = createMockClient(state);
+    const state = createFixtureState();
+    const client = createFixtureClient(state);
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -98,8 +128,8 @@ describe("WorkspaceDialogs project creation", () => {
 describe("WorkspaceDialogs task creation", () => {
   it("creates only worktree tasks and does not offer a workspace-mode selector", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
-    const baseClient = createMockClient(state);
+    const state = createFixtureState();
+    const baseClient = createFixtureClient(state);
     let submittedBaseBranch: string | undefined;
     let branchesLoaded = false;
     const client: ContractsClient = {
@@ -174,8 +204,8 @@ describe("WorkspaceDialogs task creation", () => {
 
   it("shows a spinner on the create button while worktree provisioning is in flight", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
-    const baseClient = createMockClient(state);
+    const state = createFixtureState();
+    const baseClient = createFixtureClient(state);
     let releaseCreate: () => void = () => {};
     const createGate = new Promise<void>((resolve) => {
       releaseCreate = resolve;
@@ -245,8 +275,8 @@ describe("WorkspaceDialogs task creation", () => {
 
   it("explains that worktree mode requires a Git repository", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
-    const baseClient = createMockClient(state);
+    const state = createFixtureState();
+    const baseClient = createFixtureClient(state);
     const client: ContractsClient = {
       ...baseClient,
       task: {
@@ -302,8 +332,8 @@ describe("WorkspaceDialogs task creation", () => {
 describe("WorkspaceDialogs workflow run creation", () => {
   it("creates the run in the Workspace selected by the sidebar row", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
-    const baseClient = createMockClient(state);
+    const state = createFixtureState();
+    const baseClient = createFixtureClient(state);
     let submittedWorkspaceId: string | undefined;
     const client: ContractsClient = {
       ...baseClient,
@@ -356,7 +386,7 @@ describe("WorkspaceDialogs workflow run creation", () => {
 describe("WorkspaceDialogs project deletion", () => {
   it("deletes every descendant session before deleting the project", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
     state.sessions = [
       {
@@ -377,7 +407,7 @@ describe("WorkspaceDialogs project deletion", () => {
       },
     ];
     const calls: string[] = [];
-    const baseClient = createMockClient(state);
+    const baseClient = createFixtureClient(state);
     const client: ContractsClient = {
       ...baseClient,
       project: {
@@ -435,7 +465,7 @@ describe("WorkspaceDialogs task deletion", () => {
     const description =
       "该任务的会话记录、Git 工作树及其 ora/* 分支将被删除。未提交的修改和仅存在于该分支的提交将永久丢失，此操作无法撤销。";
     const user = userEvent.setup();
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.tasks = [
       {
         id: "t1",
@@ -453,7 +483,7 @@ describe("WorkspaceDialogs task deletion", () => {
       historyState: { type: "writable" },
     }));
     const calls: string[] = [];
-    const baseClient = createMockClient(state);
+    const baseClient = createFixtureClient(state);
     const client: ContractsClient = {
       ...baseClient,
       task: {
@@ -511,8 +541,8 @@ describe("WorkspaceDialogs task deletion", () => {
   it("uses the standard resource-in-use error for worktree tasks", async () => {
     const expectedError = /无法删除，请先停止正在运行的会话|Unable to delete/;
     const user = userEvent.setup();
-    const state = createMockClientState();
-    const baseClient = createMockClient(state);
+    const state = createFixtureState();
+    const baseClient = createFixtureClient(state);
     const client: ContractsClient = {
       ...baseClient,
       task: {

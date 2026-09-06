@@ -8,10 +8,8 @@ import {
 } from "@ora/chat";
 import type { Session } from "@ora/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import "../../i18n/i18n-instance";
 import { diffKeys } from "../data/diff";
 import { useWorkspaceDiffLiveSync } from "./use-workspace-diff-live-sync";
 import { AGENT_REF } from "../../test/agent-identity";
@@ -79,7 +77,7 @@ function conversation(
 
 /** Creates an isolated chat store whose state tests can advance directly. */
 function makeChatStore(): ChatStore {
-  return createChatStore(createMockClient(createMockClientState()).session);
+  return createChatStore(createTestClient({}).session);
 }
 
 /** Provides the query cache observed by the live-sync hook. */

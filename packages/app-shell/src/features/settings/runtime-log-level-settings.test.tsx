@@ -11,11 +11,26 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createSettingsMemory,
+  settingsHandlers,
+} from "../../test/memory/settings";
 import { RuntimeLogLevelSettings } from "./runtime-log-level-settings";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createSettingsMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...settingsHandlers(state),
+  });
+}
 
 describe("RuntimeLogLevelSettings", () => {
   beforeEach(async () => {
@@ -23,7 +38,7 @@ describe("RuntimeLogLevelSettings", () => {
   });
 
   it("locks the selector while the initial authoritative state is loading", () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.runtimeLogLevel.get = vi.fn(
       () => new Promise<RuntimeLogLevelStateResponse>(() => undefined),
     );
@@ -38,8 +53,8 @@ describe("RuntimeLogLevelSettings", () => {
     "applies a successful update through the %s contracts client",
     async () => {
       const user = userEvent.setup();
-      const state = createMockClientState();
-      const client = createMockClient(state);
+      const state = createFixtureState();
+      const client = createFixtureClient(state);
       const setLevel = vi.spyOn(client.runtimeLogLevel, "set");
       renderSettings(client);
 
@@ -58,14 +73,14 @@ describe("RuntimeLogLevelSettings", () => {
   );
 
   it("displays an effective startup override as the selected level without exposing its source", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.runtimeLogLevel = {
       configuredLevel: "info",
       effectiveLevel: "trace",
       startupOverride: "trace",
     };
 
-    renderSettings(createMockClient(state));
+    renderSettings(createFixtureClient(state));
 
     const selector = await screen.findByRole("combobox", { name: "Log level" });
     await waitFor(() =>
@@ -77,7 +92,7 @@ describe("RuntimeLogLevelSettings", () => {
 
   it("prevents duplicate submissions while an update is pending", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     let resolveUpdate:
       ((value: RuntimeLogLevelStateResponse) => void) | undefined;
     client.runtimeLogLevel.set = vi.fn(
@@ -107,7 +122,7 @@ describe("RuntimeLogLevelSettings", () => {
 
   it("retains the last authoritative selection after an update fails", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.runtimeLogLevel.set = vi
       .fn()
       .mockRejectedValue(new Error("persistence failed"));

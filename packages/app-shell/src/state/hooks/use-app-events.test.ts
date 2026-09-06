@@ -1,10 +1,8 @@
 import { waitFor } from "@testing-library/react";
 import type { AppEvent } from "@ora/contracts";
 import { describe, expect, it, vi } from "vitest";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import "../../i18n/i18n-instance";
 import {
   createTestQueryClient,
   renderHookWithClient,
@@ -16,7 +14,7 @@ import { useAppEvents } from "./use-app-events";
 
 describe("useAppEvents", () => {
   it("refetches after Ready and invalidates sessions for title events", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.appEvents.watch = async function* (
       _request,
       options,
@@ -50,7 +48,7 @@ describe("useAppEvents", () => {
   });
 
   it("invalidates the plugin snapshot and agent detection for lifecycle events", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.appEvents.watch = async function* (
       _request,
       options,

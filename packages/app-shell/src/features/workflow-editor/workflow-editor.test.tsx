@@ -28,11 +28,22 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-  type MockClientState,
-} from "../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../test/memory/workspaces";
+import {
+  createAgentRuntimeMemory,
+  agentRuntimeHandlers,
+} from "../../test/memory/agent-runtime";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import { createAgentMemory, agentHandlers } from "../../test/memory/agents";
+import { createSkillMemory, skillHandlers } from "../../test/memory/skills";
+import {
+  createWorkflowMemory,
+  workflowHandlers,
+} from "../../test/memory/workflows";
 import { renderHookWithClient } from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
 import { useUiStore } from "../../state/stores/ui-store";
@@ -45,8 +56,34 @@ import { WorkflowEditorList } from "./workflow-editor-list";
 import { useWorkflowEditorStore } from "./workflow-editor-store";
 import { AGENT_REF } from "../../test/agent-identity";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createAgentRuntimeMemory(),
+    ...createPluginMemory(),
+    ...createAgentMemory(),
+    ...createSkillMemory(),
+    ...createWorkflowMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...agentRuntimeHandlers(state),
+    ...pluginHandlers(state),
+    ...agentHandlers(state),
+    ...skillHandlers(state),
+    ...workflowHandlers(state),
+  });
+}
+
 /** Seeds the mock client with the demo workflows and their published versions. */
-function seedDemoWorkflows(state: MockClientState): void {
+function seedDemoWorkflows(state: FixtureState): void {
   const locale =
     appI18n.resolvedLanguage === "en-US"
       ? ("en-US" as const)
@@ -120,8 +157,8 @@ function seedDemoWorkflows(state: MockClientState): void {
 /** Shell providers required by the workspace workflow editor (runtime + react-query). */
 function renderEditor(
   ui?: ReactElement,
-  state: MockClientState = createMockClientState(),
-  patchClient?: (client: ReturnType<typeof createMockClient>) => void,
+  state: FixtureState = createFixtureState(),
+  patchClient?: (client: ReturnType<typeof createFixtureClient>) => void,
   seedLibrary = true,
 ): RenderResult {
   if (seedLibrary) {
@@ -237,7 +274,7 @@ function renderEditor(
       ],
     },
   ];
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   patchClient?.(client);
   const Wrapper = createHookWrapper(
     client,
@@ -1054,7 +1091,7 @@ describe("WorkflowEditor", () => {
 
   it("keeps a manually switched Agent CLI when that CLI reports no models", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.agents = [
       {
         id: "Architect",
@@ -1316,7 +1353,7 @@ describe("WorkflowEditor", () => {
 
   it("keeps the create dialog open when creating a workflow fails", async () => {
     const user = userEvent.setup();
-    renderEditor(undefined, createMockClientState(), (client) => {
+    renderEditor(undefined, createFixtureState(), (client) => {
       client.workflow.create = async () => {
         throw new Error("disk full");
       };
@@ -1373,7 +1410,7 @@ describe("WorkflowEditor", () => {
 
   it("copies the current draft, opens the copy, and chains the localized suffix", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
+    const state = createFixtureState();
     renderEditor(undefined, state);
 
     await screen.findByDisplayValue("代码审查工作流");
@@ -1409,7 +1446,7 @@ describe("WorkflowEditor", () => {
   });
 
   it("auto-saves draft edits after the debounce window", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     renderEditor(<WorkflowEditor />, state);
     const nameInput = await screen.findByLabelText("工作流名称");
     const openId = state.workflows[0]?.workflow.id;
@@ -1551,7 +1588,7 @@ describe("WorkflowEditor", () => {
   it("keeps the editor open and reports when leaving cannot flush the draft", async () => {
     const user = userEvent.setup();
     useUiStore.setState({ sidebarCollapsed: true, workflowEditorOpen: true });
-    renderEditor(undefined, createMockClientState(), (client) => {
+    renderEditor(undefined, createFixtureState(), (client) => {
       client.workflow.updateDraft = async () => {
         throw new Error("disk full");
       };
@@ -1565,7 +1602,7 @@ describe("WorkflowEditor", () => {
   });
 
   it("shows the empty-library action only after the library loads with no workflows", async () => {
-    renderEditor(undefined, createMockClientState(), undefined, false);
+    renderEditor(undefined, createFixtureState(), undefined, false);
 
     expect(screen.queryByText("还没有工作流")).not.toBeInTheDocument();
     expect(await screen.findByText("还没有工作流")).toBeInTheDocument();
@@ -1574,7 +1611,7 @@ describe("WorkflowEditor", () => {
 
   it("shows a retryable error when the workflow library fails to load", async () => {
     const user = userEvent.setup();
-    renderEditor(undefined, createMockClientState(), (client) => {
+    renderEditor(undefined, createFixtureState(), (client) => {
       const list = client.workflow.list;
       let failed = false;
       client.workflow.list = async (request) => {
@@ -1596,7 +1633,7 @@ describe("WorkflowEditor", () => {
   });
 
   it("shows a retryable error when the selected draft fails to load", async () => {
-    renderEditor(undefined, createMockClientState(), (client) => {
+    renderEditor(undefined, createFixtureState(), (client) => {
       client.workflow.get = async () => {
         throw new Error("unavailable");
       };
@@ -1617,9 +1654,9 @@ describe("WorkflowEditor", () => {
 
 describe("useCreateWorkflow", () => {
   it("prepends the created workflow onto the library cache synchronously", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     seedDemoWorkflows(state);
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const { result, queryClient } = renderHookWithClient(
       () => useCreateWorkflow(),
       client,
@@ -1648,9 +1685,9 @@ describe("useCreateWorkflow", () => {
 
 describe("useDeleteWorkflow", () => {
   it("removes the deleted workflow from the library cache synchronously", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     seedDemoWorkflows(state);
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const { result, queryClient } = renderHookWithClient(
       () => useDeleteWorkflow(),
       client,

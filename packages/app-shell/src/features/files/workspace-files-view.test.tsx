@@ -16,16 +16,34 @@ import { AppI18nProvider } from "../../i18n/i18n";
 import { ContractsClientContext } from "../../contracts-client-context";
 import { PlatformProvider } from "../../platform";
 import { workspaceKeys } from "../../state/data/workspace";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../test/memory/workspaces";
+import { emptyFilesHandlers } from "../../test/memory/files";
+import "../../i18n/i18n-instance";
 import { createStubPlatform } from "../../test/stub-platform";
 import { WorkspaceFilesView } from "./workspace-files-view";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createWorkspaceMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...emptyFilesHandlers(),
+  });
+}
+
 /** Renders Files with a chat-driven path that the workspace cannot resolve. */
 function renderMissingFile() {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   client.fileSystem.readWorkspaceFile = async () => {
     throw new RemoteContractError(
       {
@@ -75,7 +93,7 @@ describe("WorkspaceFilesView missing files", () => {
 
 /** Renders Files with a readable chat-driven path and an optional line target. */
 function renderRequestedFile(path: string, line?: number, endLine?: number) {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   const readWorkspaceFile = vi.fn(async (request: { path: string }) => ({
     path: request.path,
     content: 'fn main() {\n    println!("hi");\n}\n',
@@ -174,7 +192,7 @@ describe("WorkspaceFilesView file requests", () => {
   });
 
   it("refetches on a new chat request so a deleted file is not shown from cache", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     let missing = false;
     client.fileSystem.readWorkspaceFile = async (request: { path: string }) => {
       if (missing) {
@@ -242,7 +260,7 @@ describe("WorkspaceFilesView file requests", () => {
 
 describe("WorkspaceFilesView directory requests", () => {
   it("expands and selects an absolute directory without reading it as a file", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     const readWorkspaceFile = vi.fn(client.fileSystem.readWorkspaceFile);
     client.fileSystem.readWorkspaceFile = readWorkspaceFile;
     client.fileSystem.listWorkspaceDirectory = vi.fn(async (request) => ({
@@ -289,7 +307,7 @@ describe("WorkspaceFilesView directory requests", () => {
 
 describe("WorkspaceFilesView artifact requests", () => {
   it("resolves unknown entries through the parent directory before navigating", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     const readWorkspaceFile = vi.fn(async (request: { path: string }) => ({
       path: request.path,
       content: "#!/bin/sh\n",
@@ -368,7 +386,7 @@ describe("WorkspaceFilesView artifact requests", () => {
   });
 
   it("does not let an older artifact lookup overwrite a newer file request", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     let resolveDirectory!: (value: {
       path: string;
       entries: Array<{
@@ -437,7 +455,7 @@ describe("WorkspaceFilesView artifact requests", () => {
   });
 
   it("shows a localized missing message when the parent has no matching entry", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.fileSystem.listWorkspaceDirectory = vi.fn(async () => ({
       path: "",
       entries: [],
@@ -465,7 +483,7 @@ describe("WorkspaceFilesView artifact requests", () => {
   });
 
   it("shows the parent directory query error instead of staying in loading", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.fileSystem.listWorkspaceDirectory = vi.fn(async () => {
       throw new RemoteContractError(
         {
@@ -504,7 +522,7 @@ describe("WorkspaceFilesView artifact requests", () => {
 
 describe("WorkspaceFilesView project scope", () => {
   it("reads from the project checkout when no task is selected", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     const readProjectFile = vi.fn(async (request: { path: string }) => ({
       path: request.path,
       content: "# Project\n",
@@ -546,7 +564,7 @@ describe("WorkspaceFilesView project scope", () => {
   });
 
   it("resolves an unknown project artifact without calling task APIs", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     const listProjectDirectory = vi.fn(async () => ({
       path: "",
       entries: [
@@ -599,7 +617,7 @@ describe("WorkspaceFilesView project scope", () => {
   });
 
   it("opens a project watch stream when no task is selected", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     const watchProject = vi.fn(() =>
       (async function* () {
         yield* [];
@@ -636,7 +654,7 @@ describe("WorkspaceFilesView project scope", () => {
   });
 
   it("waits for the project root before stripping an absolute file request", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     let resolveWorkspaces!: (value: {
       workspaces: Array<{
         id: string;
@@ -716,7 +734,7 @@ describe("WorkspaceFilesView project scope", () => {
   });
 
   it("defers an absolute file request when the project list query errors", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     const readProjectFile = vi.fn(async (request: { path: string }) => ({
       path: request.path,
       content: "fn main() {}\n",

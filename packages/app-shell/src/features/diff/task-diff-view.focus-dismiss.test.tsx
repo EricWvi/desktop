@@ -4,10 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { ContractsClientContext } from "../../contracts-client-context";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import "../../i18n/i18n-instance";
 import { diffKeys } from "../../state/data/diff";
 import { TaskDiffView } from "./task-diff-view";
 
@@ -40,7 +38,7 @@ describe("TaskDiffView focus jump dismiss", () => {
   it("clears the jump highlight when clicking a non-cited line in focus mode", async () => {
     mockViewportSize(600);
     const patch = bigFilePatch();
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.workspace.getDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",

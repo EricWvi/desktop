@@ -1,15 +1,28 @@
 import { act, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import "../../i18n/i18n-instance";
 import { renderHookWithClient } from "../../test/hook-harness";
 import { useUpdatePlugin } from "./use-update-plugin";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createPluginMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...pluginHandlers(state),
+  });
+}
+
 describe("useUpdatePlugin", () => {
   it("updates an installed plugin and refreshes the installed surface", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.availablePlugins.push({
       id: "official/weather",
       name: "weather",
@@ -38,7 +51,7 @@ describe("useUpdatePlugin", () => {
       configuration: { state: "not_declared" },
       runtime: "stopped",
     });
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const { result } = renderHookWithClient(
       () => useUpdatePlugin("official/weather"),
       client,

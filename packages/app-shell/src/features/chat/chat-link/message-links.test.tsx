@@ -6,10 +6,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { ContractsClientContext } from "../../../contracts-client-context";
 import { AppI18nProvider } from "../../../i18n/i18n";
+import { createTestClient } from "../../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../../test/memory/workspaces";
+import "../../../i18n/i18n-instance";
 import { createStubPlatform } from "../../../test/stub-platform";
 import { TaskChangesNavigationProvider } from "../../diff/task-changes-navigation";
 import type { FileNavigationLocation } from "../../diff/task-changes-navigation-context";
@@ -21,6 +23,20 @@ import {
   collectSessionArtifactIndex,
   type SessionArtifactIndex,
 } from "./artifact-index";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createWorkspaceMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+  });
+}
 
 const index: SessionArtifactIndex = {
   edited: ["src/main.rs"],
@@ -377,7 +393,7 @@ async function renderMessageList(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const mockClient = createMockClient(createMockClientState());
+  const mockClient = createFixtureClient(createFixtureState());
   if (options.workspaceRoot) {
     mockClient.task.getWorkspace = vi.fn(async () => ({
       workspace: { rootPath: options.workspaceRoot!, branchName: "main" },

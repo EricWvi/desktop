@@ -24,10 +24,20 @@ import { appI18n } from "../../i18n/i18n-instance";
 import { ContractsClientContext } from "../../contracts-client-context";
 import { ChatStoreContext } from "../../chat-store-context";
 import { createChatStore } from "@ora/chat";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../test/memory/workspaces";
+import {
+  createSessionMemory,
+  sessionHandlers,
+} from "../../test/memory/sessions";
+import {
+  createAgentRuntimeMemory,
+  agentRuntimeHandlers,
+} from "../../test/memory/agent-runtime";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import { ChatView } from "./chat-view";
 import { Composer } from "./composer";
 import { ConversationNavigator } from "./conversation-navigator";
@@ -47,6 +57,28 @@ import {
   resetComposerSendAdoptionsForTests,
 } from "../../state/session-drafts";
 import { FILE_MENTION_DEBOUNCE_MS } from "./use-composer-file-mentions";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createSessionMemory(),
+    ...createAgentRuntimeMemory(),
+    ...createPluginMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...sessionHandlers(state),
+    ...agentRuntimeHandlers(state),
+    ...pluginHandlers(state),
+  });
+}
 
 void appI18n;
 
@@ -95,7 +127,7 @@ function createTestQueryClient() {
 
 /** Renders chat components wrapped in all providers required by the app shell. */
 function renderWithI18n(element: ReactNode) {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   const queryClient = createTestQueryClient();
   const chatStore = createChatStore(client.session);
   // A wrapper (rather than a one-off wrapped element) so `rerender` re-applies
@@ -1454,7 +1486,7 @@ describe("Composer", () => {
 
   it("mentions a workspace file with @ and inserts a path chip", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.fileSystem.searchWorkspace = async ({ query }) => {
       const paths = ["src/app.ts", "src/lib/util.ts", "README.md"].filter(
         (path) => path.toLowerCase().includes(query.toLowerCase()),
@@ -1537,7 +1569,7 @@ describe("Composer", () => {
 
   it("mentions a project file with @ when no task is selected yet", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.fileSystem.listProjectDirectory = async () => ({
       path: "",
       entries: [
@@ -1589,7 +1621,7 @@ describe("Composer", () => {
 
   it("mentions a workspace folder with @ and inserts a path chip", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.fileSystem.listWorkspaceDirectory = async () => ({
       path: "",
       entries: [
@@ -1646,7 +1678,7 @@ describe("Composer", () => {
 
   it("keeps root file hits during debounce but disables selection until search settles", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.fileSystem.listWorkspaceDirectory = async () => ({
       path: "",
       entries: [
@@ -1725,7 +1757,7 @@ describe("Composer", () => {
 
   it("shows an error when workspace file search fails", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.fileSystem.searchWorkspace = async () => {
       throw new Error("search failed");
     };
@@ -1761,7 +1793,7 @@ describe("Composer", () => {
 
   it("keeps typing after an @ file chip inserted mid-prompt", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.fileSystem.searchWorkspace = async () => ({
       results: [{ kind: "file", path: "src/mid.ts" }],
       truncated: false,

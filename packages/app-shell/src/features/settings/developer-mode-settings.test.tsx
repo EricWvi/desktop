@@ -9,11 +9,26 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createSettingsMemory,
+  settingsHandlers,
+} from "../../test/memory/settings";
 import { DeveloperModeSettings } from "./developer-mode-settings";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createSettingsMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...settingsHandlers(state),
+  });
+}
 
 describe("DeveloperModeSettings", () => {
   beforeEach(async () => {
@@ -21,7 +36,7 @@ describe("DeveloperModeSettings", () => {
   });
 
   it("keeps the switch disabled while the authoritative value is loading", () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.developerMode.get = vi.fn(
       () => new Promise<DeveloperModeResponse>(() => undefined),
     );
@@ -40,8 +55,8 @@ describe("DeveloperModeSettings", () => {
     "persists a successful update through the %s contracts client",
     async () => {
       const user = userEvent.setup();
-      const state = createMockClientState();
-      const client = createMockClient(state);
+      const state = createFixtureState();
+      const client = createFixtureClient(state);
       const setDeveloperMode = vi.spyOn(client.developerMode, "set");
       renderSettings(client);
 
@@ -61,7 +76,7 @@ describe("DeveloperModeSettings", () => {
 
   it("retains the last authoritative value and prevents duplicate pending submissions", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     let rejectUpdate: ((reason: Error) => void) | undefined;
     client.developerMode.set = vi.fn(
       () =>
@@ -91,7 +106,7 @@ describe("DeveloperModeSettings", () => {
 
   it("keeps developer mode unavailable after a read failure and supports retry", async () => {
     const user = userEvent.setup();
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.developerMode.get = vi
       .fn()
       .mockRejectedValueOnce(new Error("read failed"))

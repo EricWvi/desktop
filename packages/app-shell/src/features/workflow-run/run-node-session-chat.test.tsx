@@ -11,11 +11,52 @@ import {
   createTestQueryClient,
   createHookWrapper,
 } from "../../test/hook-harness";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../test/memory/workspaces";
+import {
+  createSessionMemory,
+  sessionHandlers,
+} from "../../test/memory/sessions";
+import {
+  createAgentRuntimeMemory,
+  agentRuntimeHandlers,
+} from "../../test/memory/agent-runtime";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import { createAgentMemory, agentHandlers } from "../../test/memory/agents";
+import {
+  createWorkflowRunMemory,
+  workflowRunHandlers,
+} from "../../test/memory/workflow-runs";
 import { RunNodeSessionChat } from "./run-node-session-chat";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createSessionMemory(),
+    ...createAgentRuntimeMemory(),
+    ...createPluginMemory(),
+    ...createAgentMemory(),
+    ...createWorkflowRunMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...sessionHandlers(state),
+    ...agentRuntimeHandlers(state),
+    ...pluginHandlers(state),
+    ...agentHandlers(state),
+    ...workflowRunHandlers(state),
+  });
+}
 
 const sessionId = "session-1";
 const runId = "run-1";
@@ -51,7 +92,7 @@ function renderDock(
   onNodeCompleted?: (nodeId: string) => void,
   configOptions: acp.SessionConfigOption[] = [],
 ) {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   const chatStore = createChatStore(client.session);
   chatStore.setState({
     conversations: {
@@ -75,7 +116,7 @@ function renderDock(
 
 /** Renders the same session surface without granting node interaction controls. */
 function renderReadOnlyDock() {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   const loadSpy = vi.spyOn(client.session, "load");
   const chatStore = createChatStore(client.session);
   render(
@@ -189,7 +230,7 @@ describe("RunNodeSessionChat", () => {
   });
 
   it("keeps replaying an empty running session until its automatic prompt appears", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     const loadSpy = vi.spyOn(client.session, "load");
     const chatStore = createChatStore(client.session);
     chatStore.setState({
@@ -221,7 +262,7 @@ describe("RunNodeSessionChat", () => {
   });
 
   it("reveals a running node session as soon as its first turn is available", () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     const chatStore = createChatStore(client.session);
     chatStore.setState({
       conversations: { [sessionId]: seededConversation(false) },

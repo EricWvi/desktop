@@ -11,12 +11,29 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
+import { createTestClient } from "../../test/contracts-transport";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createSettingsMemory,
+  settingsHandlers,
+} from "../../test/memory/settings";
 import { createStubPlatform } from "../../test/stub-platform";
 import { SettingsDialog } from "./settings-dialog";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createPluginMemory(), ...createSettingsMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...pluginHandlers(state),
+    ...settingsHandlers(state),
+  });
+}
 
 describe("SettingsDialog developer options", () => {
   beforeEach(async () => {
@@ -25,7 +42,7 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("keeps Developer options reachable and reveals log level in place after enabling developer mode", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     renderDialog(client);
 
     expect(
@@ -51,7 +68,7 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("keeps Developer options reachable and hides log level when the initial read fails", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     client.developerMode.get = vi
       .fn()
       .mockRejectedValue(new Error("read failed"));
@@ -79,14 +96,14 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("shows the switch and authoritative effective log level together when enabled", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.developerMode = { enabled: true };
     state.runtimeLogLevel = {
       configuredLevel: "info",
       effectiveLevel: "trace",
       startupOverride: "trace",
     };
-    renderDialog(createMockClient(state));
+    renderDialog(createFixtureClient(state));
 
     const developerNavigation = await screen.findByRole("button", {
       name: "Developer options",
@@ -102,9 +119,9 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("stays on Developer options and hides log level after developer mode is disabled", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.developerMode = { enabled: true };
-    renderDialog(createMockClient(state));
+    renderDialog(createFixtureClient(state));
 
     await userEvent.click(
       await screen.findByRole("button", { name: "Developer options" }),
@@ -133,7 +150,7 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("protects unsaved plugin configuration when switching settings categories", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.installedPlugins.push({
       id: "official/weather",
       namespace: "official",
@@ -176,7 +193,7 @@ describe("SettingsDialog developer options", () => {
       summary: { state: "available", completeness: "incomplete" },
     });
     const user = userEvent.setup();
-    renderDialog(createMockClient(state));
+    renderDialog(createFixtureClient(state));
 
     await user.click(screen.getByRole("button", { name: "Plugins" }));
     await user.click(
@@ -207,7 +224,7 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("opens on the requested settings category when deep-linked", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     renderDialog(client);
 
     // Deep-linking writes directly to the Zustand UI store; wrap it in act so

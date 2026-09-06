@@ -14,12 +14,27 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import { createAgentMemory, agentHandlers } from "../../test/memory/agents";
+import "../../i18n/i18n-instance";
 import { RunTheaterActCard } from "./run-theater-act-card";
 import { AGENT_REF } from "../../test/agent-identity";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createPluginMemory(), ...createAgentMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...pluginHandlers(state),
+    ...agentHandlers(state),
+  });
+}
 
 const NODE_DATA: WorkflowNodeData = {
   kind: "agent",
@@ -90,7 +105,7 @@ function loadedConversation(): SessionConversation {
 
 /** Builds application providers around a loaded ordinary session. */
 function createSessionWrapper() {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   const chatStore = createChatStore(client.session);
   chatStore.setState({
     conversations: { "session-1": loadedConversation() },

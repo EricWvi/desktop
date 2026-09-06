@@ -10,10 +10,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { ContractsClientContext } from "../../contracts-client-context";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import "../../i18n/i18n-instance";
 import { TaskDiffView } from "./task-diff-view";
 import { DIFF_FILE_SCROLL_INSET_PX } from "./task-diff-scroll";
 
@@ -47,7 +45,7 @@ function renderRequestedDiff(fileRequest?: {
   requestId?: number;
   line?: number;
 }) {
-  const client = createMockClient(createMockClientState());
+  const client = createTestClient({});
   client.workspace.getDiff = async () => ({
     baseCommitId: "base",
     headCommitId: "head",
@@ -313,7 +311,7 @@ describe("TaskDiffView file requests", () => {
       "+}",
       "",
     ].join("\n");
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.workspace.getDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
@@ -371,7 +369,7 @@ describe("TaskDiffView file requests", () => {
       "+}",
       "",
     ].join("\n");
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.workspace.getDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
@@ -426,7 +424,7 @@ describe("TaskDiffView file requests", () => {
       "+added",
       "",
     ].join("\n");
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.workspace.getDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
@@ -491,7 +489,7 @@ describe("TaskDiffView file requests", () => {
       "+}",
       "",
     ].join("\n");
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.workspace.getDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
@@ -557,7 +555,7 @@ describe("TaskDiffView file requests", () => {
 
 describe("TaskDiffView collapsed context", () => {
   it("expands a collapsed unchanged block without crashing", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     const longContextPatch = [
       "diff --git a/src/example.ts b/src/example.ts",
       "index 1111111..2222222 100644",

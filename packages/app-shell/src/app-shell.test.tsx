@@ -3,7 +3,8 @@ import { createChatStore } from "@ora/chat";
 import type { AppEvent } from "@ora/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppEventGate } from "./state/app-event-gate";
-import { createMockClient, createMockClientState } from "./test/mock-client";
+import { createTestClient } from "./test/contracts-transport";
+import "./i18n/i18n-instance";
 import { createHookWrapper, createTestQueryClient } from "./test/hook-harness";
 
 afterEach(() => {
@@ -23,7 +24,7 @@ function waitForAbort(signal: AbortSignal | undefined): Promise<void> {
 
 describe("AppEventGate reconnect behavior", () => {
   it("refetches and backs off after a stream ends, then resets after Ready", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     let attempts = 0;
     client.appEvents.watch = async function* (
       _request,

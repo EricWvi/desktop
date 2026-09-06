@@ -3,11 +3,17 @@ import { mockWorkflowKeys } from "./mock-workflows";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderHookWithClient } from "../../test/hook-harness";
+import { createTestClient } from "../../test/contracts-transport";
+import { createWorkspaceMemory } from "../../test/memory/workspaces";
 import {
-  createMockClient,
-  createMockClientState,
-  type MockClientState,
-} from "../../test/mock-client";
+  createWorkflowMemory,
+  workflowHandlers,
+} from "../../test/memory/workflows";
+import {
+  createWorkflowRunMemory,
+  workflowRunHandlers,
+} from "../../test/memory/workflow-runs";
+import "../../i18n/i18n-instance";
 import { useWorkspaceSelectionStore } from "../stores/workspace-selection-store";
 import {
   buildDisplayRun,
@@ -18,13 +24,32 @@ import {
   useWorkflowRunsByProject,
 } from "./workflow-runs";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createWorkflowMemory(),
+    ...createWorkflowRunMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workflowHandlers(state),
+    ...workflowRunHandlers(state),
+  });
+}
+
 beforeEach(() => {
   useWorkspaceSelectionStore.getState().clearSelection();
 });
 
 /** Seeds one persisted run and its run-task for hook tests. */
-function seededState(): MockClientState {
-  const state = createMockClientState();
+function seededState(): FixtureState {
+  const state = createFixtureState();
   state.workflowRuns = [
     {
       id: "run-1",
@@ -430,7 +455,7 @@ describe("useRealWorkflowRun", () => {
         ],
       },
     ];
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const { result } = renderHookWithClient(
       () => useRealWorkflowRun("run-1"),
       client,
@@ -445,7 +470,7 @@ describe("useRealWorkflowRun", () => {
 describe("persisted run hooks", () => {
   it("lists the persisted runs of a project", async () => {
     const state = seededState();
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const { result } = renderHookWithClient(
       () => useWorkflowRunsByProject("p1"),
       client,
@@ -468,7 +493,7 @@ describe("persisted run hooks", () => {
 
   it("renames a run through its workspace-owned name", async () => {
     const state = seededState();
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const { result } = renderHookWithClient(
       () => useRenameWorkflowRun(),
       client,
@@ -479,7 +504,7 @@ describe("persisted run hooks", () => {
 
   it("deletes a run and refreshes its project list", async () => {
     const state = seededState();
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const { result } = renderHookWithClient(
       () => useDeleteWorkflowRun(),
       client,
@@ -490,7 +515,7 @@ describe("persisted run hooks", () => {
 
   it("retires the selection when the deleted run is the one open in the workspace", async () => {
     const state = seededState();
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     useWorkspaceSelectionStore.getState().selectWorkflowRun("run-1", "p1");
     const { result } = renderHookWithClient(
       () => useDeleteWorkflowRun(),
@@ -508,7 +533,7 @@ describe("persisted run hooks", () => {
 
   it("keeps the selection when a different run is deleted", async () => {
     const state = seededState();
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     useWorkspaceSelectionStore.getState().selectWorkflowRun("run-other", "p1");
     const { result } = renderHookWithClient(
       () => useDeleteWorkflowRun(),

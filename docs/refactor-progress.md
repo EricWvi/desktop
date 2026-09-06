@@ -192,3 +192,11 @@
 - workspace 查询、Agent/Skill mutation、installed/available plugin 查询测试已分别显式选择需要的领域 adapter。原 workspace 错误测试的 `unknown` 双重强转和 client monkey patch 改为类型化的单 operation handler。
 - 新增经生产 client 的 workspace adapter CRUD/隔离测试，确认选择 workspace 不会隐式配置 session 或 app-event stream。app-shell lint 和完整 clean-stderr 测试通过：143 个文件、1285 项测试。
 - 阶段 5c 仍未完成：其余测试的全领域组合器调用及 client override 需要迁移，最终删除 `test/mock-client.ts`，不能把当前过渡形态当作完成。
+
+### 阶段 5c-3：删除全领域测试组合器（2026-09-06）
+
+- 用既有测试的实际 operation 调用（只记录名称，不记录 DTO）核对剩余 45 个文件的依赖，逐文件改为明确的数据状态与 adapter 组合。临时审计代码已随旧文件移除，不纳入生产或长期测试机制。
+- 13 个文件不需要任何默认 operation，直接从 `createTestClient({})` 开始；不保留无意义的空状态 factory。其余 fixture 只初始化本场景需要的领域记录，类型由本地构造推导，不再共享完整 `MockClientState`。
+- 删除 `test/mock-client.ts` 及其全部调用/导入。删除的是已迁移的临时组合器，无持久化数据变化；历史提交仍可恢复。
+- 渲染测试直接引入本文件需要的 i18n 实例模块，避免依赖 worker 内其他文件的先后顺序。app-shell lint 和 143 个文件、1285 项 clean-stderr 测试通过。
+- 阶段 5c 的剩余工作是把旧的 client 直接替换改到 typed handler seam，随后运行全量验收；不将“删除了中央文件”单独当作阶段完成。

@@ -6,14 +6,32 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createAgentRuntimeMemory,
+  agentRuntimeHandlers,
+} from "../../test/memory/agent-runtime";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import "../../i18n/i18n-instance";
 import { useAgentRuntimeStatus } from "../../state/hooks/use-agent-runtime-status";
 import { useInstalledPlugins } from "../../state/hooks/use-installed-plugins";
 import { SessionAgentBanner } from "./session-agent-banner";
 import { AGENT_REF, officialAgentRef } from "../../test/agent-identity";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createAgentRuntimeMemory(), ...createPluginMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...agentRuntimeHandlers(state),
+    ...pluginHandlers(state),
+  });
+}
 
 /**
  * The runtime half of an installed package.
@@ -76,9 +94,9 @@ function SettleProbe() {
 
 /** Renders the banner over a mock backend seeded with the given packages. */
 function renderBanner(plugins: InstalledPlugin[], bound: Session) {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.installedPlugins = plugins;
-  const backend = createMockClient(state);
+  const backend = createFixtureClient(state);
   const client: ContractsClient = {
     ...backend,
     plugin: {

@@ -10,11 +10,21 @@ import {
 } from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
 import { createChatStore } from "@ora/chat";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-  type MockClientState,
-} from "../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../test/memory/workspaces";
+import {
+  createSessionMemory,
+  sessionHandlers,
+} from "../../test/memory/sessions";
+import {
+  createAgentRuntimeMemory,
+  agentRuntimeHandlers,
+} from "../../test/memory/agent-runtime";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import "../../i18n/i18n-instance";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import { useUiStore } from "../../state/stores/ui-store";
 import {
@@ -28,6 +38,28 @@ import { ModelSelector } from "./model-selector";
 import { agentRuntimeKeys } from "../../state/data/agent-runtime";
 import { AGENT_REF } from "../../test/agent-identity";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createSessionMemory(),
+    ...createAgentRuntimeMemory(),
+    ...createPluginMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...sessionHandlers(state),
+    ...agentRuntimeHandlers(state),
+    ...pluginHandlers(state),
+  });
+}
+
 beforeEach(() => {
   useWorkspaceSelectionStore.getState().clearSelection();
   useSettingsStore.setState({
@@ -39,7 +71,7 @@ beforeEach(() => {
 
 /** Replaces what the runtime reports about OpenCode, leaving every other agent detected. */
 function reportOpenCode(status: AgentStatus) {
-  return (state: MockClientState) => {
+  return (state: FixtureState) => {
     state.agentRuntimeStatuses = state.agentRuntimeStatuses.map((candidate) =>
       candidate.agentRef === AGENT_REF.opencode
         ? { ...candidate, status }
@@ -48,10 +80,8 @@ function reportOpenCode(status: AgentStatus) {
   };
 }
 
-function renderModelSelector(
-  seed: (state: MockClientState) => void = () => {},
-) {
-  const state = createMockClientState();
+function renderModelSelector(seed: (state: FixtureState) => void = () => {}) {
+  const state = createFixtureState();
   state.tasks = [
     {
       id: "t1",
@@ -73,7 +103,7 @@ function renderModelSelector(
     lifecycle: "active" as const,
   }));
   seed(state);
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   const discover = vi.spyOn(client.agentRuntime, "listModels");
   const chatStore = createChatStore(client.session);
   const queryClient = createTestQueryClient();
@@ -459,7 +489,7 @@ async function pickModel(
 }
 
 /** A second agent whose catalog shares no model with OpenCode's. */
-function claudeModels(state: MockClientState) {
+function claudeModels(state: FixtureState) {
   state.agentModelsByCli = {
     [AGENT_REF.claude]: [
       {

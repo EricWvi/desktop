@@ -9,14 +9,40 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
+import { createTestClient } from "../../test/contracts-transport";
+import { createWorkspaceMemory } from "../../test/memory/workspaces";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createWorkflowMemory,
+  workflowHandlers,
+} from "../../test/memory/workflows";
+import {
+  createWorkflowRunMemory,
+  workflowRunHandlers,
+} from "../../test/memory/workflow-runs";
+import "../../i18n/i18n-instance";
 import { createStubPlatform } from "../../test/stub-platform";
 import { useLocationActionsStore } from "../../state/stores/location-actions-store";
 import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
 import { WorkflowRunWorkspace } from "./workflow-run-workspace";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createWorkflowMemory(),
+    ...createWorkflowRunMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workflowHandlers(state),
+    ...workflowRunHandlers(state),
+  });
+}
 
 vi.mock("../diff/task-diff-view", () => ({
   TaskDiffView: ({ toolbar }: { toolbar?: ReactNode }) => (
@@ -74,7 +100,7 @@ const GRAPH_WITH_START_INPUT = JSON.stringify({
 
 /** Seeds project + workflow + Workspace-owned run so the workspace can load its actions. */
 function seedRun(graph = GRAPH) {
-  const state = createMockClientState();
+  const state = createFixtureState();
   state.projects = [{ id: "p1", name: "Demo" }];
   state.workflows = [
     {
@@ -138,7 +164,7 @@ describe("WorkflowRunWorkspace", () => {
 
   it("exposes the run Files panel for the Workspace-owned review surface", async () => {
     const state = seedRun();
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const runtime = createMemoryWorkflowRuntime();
     const Wrapper = createHookWrapper(
       client,
@@ -177,7 +203,7 @@ describe("WorkflowRunWorkspace", () => {
 
   it("opens the deployed Start input form before execution", async () => {
     const state = seedRun(GRAPH_WITH_START_INPUT);
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const runtime = createMemoryWorkflowRuntime();
     const Wrapper = createHookWrapper(
       client,
@@ -210,7 +236,7 @@ describe("WorkflowRunWorkspace", () => {
   it("reopens the Start input form when running a terminal run again", async () => {
     const state = seedRun(GRAPH_WITH_START_INPUT);
     state.workflowRuns[0].status = "cancelled";
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const runtime = createMemoryWorkflowRuntime();
     const Wrapper = createHookWrapper(
       client,
@@ -249,7 +275,7 @@ describe("WorkflowRunWorkspace", () => {
 
   it("exposes Desktop open-location actions against the run-task worktree", async () => {
     const state = seedRun();
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const runtime = createMemoryWorkflowRuntime();
     const Wrapper = createHookWrapper(
       client,
@@ -303,7 +329,7 @@ describe("WorkflowRunWorkspace", () => {
     const state = seedRun();
     // "Run again" is only offered on terminal runs.
     state.workflowRuns[0].status = "cancelled";
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const runtime = createMemoryWorkflowRuntime();
     const Wrapper = createHookWrapper(
       client,

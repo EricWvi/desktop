@@ -8,10 +8,9 @@ import { PlatformProvider } from "../../platform";
 import { createChatStore } from "@ora/chat";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { appI18n } from "../../i18n/i18n-instance";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import { createAgentMemory, agentHandlers } from "../../test/memory/agents";
+import { createSkillMemory, skillHandlers } from "../../test/memory/skills";
 import {
   createHookWrapper,
   createTestQueryClient,
@@ -23,11 +22,26 @@ import {
   SkillsSettings,
 } from "./atoms-settings";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createAgentMemory(), ...createSkillMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...agentHandlers(state),
+    ...skillHandlers(state),
+  });
+}
+
 function renderSettings(
   kind: "agent" | "skill",
-  configure?: (client: ReturnType<typeof createMockClient>) => void,
+  configure?: (client: ReturnType<typeof createFixtureClient>) => void,
 ) {
-  const state = createMockClientState();
+  const state = createFixtureState();
   if (kind === "agent") {
     state.agents = [
       {
@@ -49,7 +63,7 @@ function renderSettings(
       },
     ];
   }
-  const client = createMockClient(state);
+  const client = createFixtureClient(state);
   client.agent.get = async ({ agentId }) => ({
     agent: {
       ...state.agents.find((agent) => agent.id === agentId)!,
@@ -307,7 +321,7 @@ describe("atom settings content", () => {
 
   it("offers delete or re-upload when a skill package is unavailable", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.skills = [
       {
         id: "skill-1",
@@ -318,7 +332,7 @@ describe("atom settings content", () => {
         availability: "unavailable",
       },
     ];
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     client.skill.get = async ({ skillId }) => ({
       skill: {
         ...state.skills.find((skill) => skill.id === skillId)!,
@@ -728,7 +742,7 @@ function renderSkillImportDialog(
   session: SkillImportSession,
   extras?: { restoreName?: string },
 ) {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   client.skillImport.get = async () => ({ session });
   const Wrapper = createHookWrapper(
     client,
@@ -754,7 +768,7 @@ function renderSkillImportDialog(
 
 /** Keeps restoreName in React state so successful restore can drop the name constraint. */
 function renderRestoreImportDialog(session: SkillImportSession) {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   client.skillImport.get = async () => ({ session });
   const Wrapper = createHookWrapper(
     client,

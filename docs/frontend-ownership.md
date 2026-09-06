@@ -98,7 +98,12 @@ const client = createTestClient(workspaceHandlers(state));
 ```
 
 The Files scope-switch test instead registers exactly four individual handlers. Project/task,
-Agent/Skill, and plugin-list hook tests now select their adapters explicitly. The old
-`test/mock-client.ts` contains only a transitional all-domain composer for remaining callers; it
-has no hand-maintained client methods or state-field declarations. It is not a supported pattern
-for new tests and will be removed once the remaining test fixtures migrate in stage 5c.
+Agent/Skill, and plugin-list hook tests select their adapters explicitly. Other test surfaces
+compose their needed domains in local fixture constructors. Thirteen test files need no default
+operations at all and start with `createTestClient({})`. The old `test/mock-client.ts` all-domain
+composer has been deleted, including its combined state type. New feature fixtures change their
+local composition and data-owner adapters, not a global mock-client registry.
+
+Existing direct client-method overrides are being migrated to the handler seam as the remaining
+stage 5c work. New tests should supply their custom behavior as typed operation handlers instead
+of replacing generated client methods.

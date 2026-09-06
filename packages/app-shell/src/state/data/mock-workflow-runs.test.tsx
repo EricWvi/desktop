@@ -4,10 +4,8 @@ import { createChatStore } from "@ora/chat";
 import { createMockWorkflow } from "@ora/workflow-mock";
 import { normalizeWorkflowDefinition } from "@ora/workflow-runtime";
 import { createMemoryWorkflowRuntime } from "@ora/workflow-runtime/memory";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import "../../i18n/i18n-instance";
 import {
   createTestQueryClient,
   renderHookWithClient,
@@ -24,7 +22,7 @@ describe("useGraphWorkflowRunLive", () => {
       definitionId: definition.id,
     });
     const onRunFinished = vi.fn();
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     const queryClient = createTestQueryClient();
     const chatStore = createChatStore(client.session);
     const { result, unmount } = renderHookWithClient(

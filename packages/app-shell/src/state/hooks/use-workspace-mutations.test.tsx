@@ -1,9 +1,15 @@
 import { act } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../test/memory/workspaces";
+import {
+  createSessionMemory,
+  sessionHandlers,
+} from "../../test/memory/sessions";
+import "../../i18n/i18n-instance";
 import {
   createTestQueryClient,
   renderHookWithClient,
@@ -22,6 +28,21 @@ import {
 } from "./use-workspace-mutations";
 import { AGENT_REF } from "../../test/agent-identity";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createWorkspaceMemory(), ...createSessionMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...sessionHandlers(state),
+  });
+}
+
 beforeEach(() => {
   useDraftSessionsStore.getState().clear();
   useComposerInputStore.getState().reset();
@@ -30,7 +51,7 @@ beforeEach(() => {
 
 describe("useRenameSession", () => {
   it("persists the new title onto the mock session", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.sessions = [
       {
         id: "s1",
@@ -41,7 +62,7 @@ describe("useRenameSession", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const { result } = renderHookWithClient(
@@ -65,7 +86,7 @@ describe("useRenameSession", () => {
 
 describe("delete mutations clear parked composer state", () => {
   it("optimistically removes a session from the list cache", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.sessions = [
       {
         id: "s1",
@@ -84,7 +105,7 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const { result } = renderHookWithClient(
@@ -102,7 +123,7 @@ describe("delete mutations clear parked composer state", () => {
   });
 
   it("clears composer input and bound drafts when a session is deleted", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.sessions = [
       {
         id: "s1",
@@ -113,7 +134,7 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     useComposerInputStore.getState().setInput("s1", {
@@ -140,7 +161,7 @@ describe("delete mutations clear parked composer state", () => {
   });
 
   it("scrubs returnTo pointing at a deleted session", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.sessions = [
       {
         id: "s1",
@@ -151,7 +172,7 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const draftId = useDraftSessionsStore
@@ -180,7 +201,7 @@ describe("delete mutations clear parked composer state", () => {
   });
 
   it("clears drafts and session parks when a task is deleted", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.tasks = [
       {
         id: "t1",
@@ -199,7 +220,7 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(workspaceKeys.tasks, state.tasks);
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
@@ -231,7 +252,7 @@ describe("delete mutations clear parked composer state", () => {
   });
 
   it("clears project drafts and related session parks when a project is deleted", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
     state.tasks = [
       {
@@ -251,7 +272,7 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(workspaceKeys.projects, state.projects);
     queryClient.setQueryData(workspaceKeys.tasks, state.tasks);
@@ -286,8 +307,8 @@ describe("delete mutations clear parked composer state", () => {
 
 describe("useCreateTask", () => {
   it("creates a worktree task and selects its workspace draft", async () => {
-    const state = createMockClientState();
-    const client = createMockClient(state);
+    const state = createFixtureState();
+    const client = createFixtureClient(state);
     const { result } = renderHookWithClient(
       () => useCreateTask(),
       client,
@@ -312,8 +333,8 @@ describe("useCreateTask", () => {
   });
 
   it("invalidates project branches after creating a worktree", async () => {
-    const state = createMockClientState();
-    const client = createMockClient(state);
+    const state = createFixtureState();
+    const client = createFixtureClient(state);
     const queryClient = createTestQueryClient();
     const projectBranchesKey = workspaceKeys.projectBranches("p1");
     queryClient.setQueryData(projectBranchesKey, []);

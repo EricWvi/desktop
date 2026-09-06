@@ -7,10 +7,8 @@ import {
   type GraphWorkflowRun,
 } from "@ora/workflow-runtime";
 import { createMemoryWorkflowRuntime } from "@ora/workflow-runtime/memory";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import "../../i18n/i18n-instance";
 import {
   createHookWrapper,
   createTestQueryClient,
@@ -63,7 +61,7 @@ function waitingRun(id: string, requestId: string): GraphWorkflowRun {
 
 describe("useTheaterHitl", () => {
   it("resets drafts then re-engages HITL when switching to another waiting run", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     const runtime = createMemoryWorkflowRuntime();
     const wrapper = createHookWrapper(
       client,
@@ -112,7 +110,7 @@ describe("useTheaterHitl", () => {
   });
 
   it("collapses HITL when browsing away from the waiting act", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     const runtime = createMemoryWorkflowRuntime();
     const wrapper = createHookWrapper(
       client,
@@ -151,7 +149,7 @@ describe("useTheaterHitl", () => {
   });
 
   it("keeps HITL collapsed on first discovery when the stage is on another act", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     const runtime = createMemoryWorkflowRuntime();
     const wrapper = createHookWrapper(
       client,
@@ -182,7 +180,7 @@ describe("useTheaterHitl", () => {
   });
 
   it("expands HITL on first discovery when the stage is already on the waiting act", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     const runtime = createMemoryWorkflowRuntime();
     const wrapper = createHookWrapper(
       client,

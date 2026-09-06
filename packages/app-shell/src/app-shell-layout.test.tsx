@@ -10,17 +10,62 @@ import {
 } from "@ora/workflow-runtime";
 import { AppShell } from "./app-shell";
 import { appI18n } from "./i18n/i18n-instance";
+import { createTestClient } from "./test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-  type MockClientState,
-} from "./test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "./test/memory/workspaces";
+import { createSessionMemory, sessionHandlers } from "./test/memory/sessions";
+import {
+  createAgentRuntimeMemory,
+  agentRuntimeHandlers,
+} from "./test/memory/agent-runtime";
+import { createPluginMemory, pluginHandlers } from "./test/memory/plugins";
+import { createAgentMemory, agentHandlers } from "./test/memory/agents";
+import { createSkillMemory, skillHandlers } from "./test/memory/skills";
+import { createSettingsMemory, settingsHandlers } from "./test/memory/settings";
+import {
+  createWorkflowMemory,
+  workflowHandlers,
+} from "./test/memory/workflows";
+import { appEventHandlers } from "./test/memory/app-events";
 import { createStubPlatform } from "./test/stub-platform";
 import { useUiStore } from "./state/stores/ui-store";
 import { useWorkflowEditorStore } from "./features/workflow-editor/workflow-editor-store";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return {
+    ...createWorkspaceMemory(),
+    ...createSessionMemory(),
+    ...createAgentRuntimeMemory(),
+    ...createPluginMemory(),
+    ...createAgentMemory(),
+    ...createSkillMemory(),
+    ...createSettingsMemory(),
+    ...createWorkflowMemory(),
+  };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...sessionHandlers(state),
+    ...agentRuntimeHandlers(state),
+    ...pluginHandlers(state),
+    ...agentHandlers(state),
+    ...skillHandlers(state),
+    ...settingsHandlers(state),
+    ...workflowHandlers(state),
+    ...appEventHandlers(),
+  });
+}
+
 /** Puts one named draft in the mock library so the editor can hydrate a title field. */
-function seedNamedDraft(state: MockClientState, name: string): void {
+function seedNamedDraft(state: FixtureState, name: string): void {
   const workflow = createMockWorkflows("zh-CN")[0];
   if (workflow === undefined) {
     throw new Error("expected a demo workflow fixture");
@@ -83,10 +128,10 @@ beforeEach(async () => {
 describe("AppShell sidebar collapse", () => {
   it("keeps in-memory workflow draft edits when the sidebar collapses", async () => {
     const user = userEvent.setup();
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Demo" }];
     seedNamedDraft(state, "代码审查工作流");
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
 
     render(
       <AppShell

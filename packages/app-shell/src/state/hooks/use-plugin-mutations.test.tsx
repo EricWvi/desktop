@@ -1,10 +1,13 @@
 import { act, waitFor } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestClient } from "../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+  createAgentRuntimeMemory,
+  agentRuntimeHandlers,
+} from "../../test/memory/agent-runtime";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import "../../i18n/i18n-instance";
 import {
   createTestQueryClient,
   renderHookWithClient,
@@ -12,6 +15,21 @@ import {
 import { usePluginOperationStore } from "../stores/plugin-operation-store";
 import { agentRuntimeKeys } from "../data/agent-runtime";
 import { usePluginMutations } from "./use-plugin-mutations";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createAgentRuntimeMemory(), ...createPluginMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...agentRuntimeHandlers(state),
+    ...pluginHandlers(state),
+  });
+}
 
 const AGENT_REF = "ora-space.opencode";
 const PLUGIN_ID = `official/${AGENT_REF}`;
@@ -25,7 +43,7 @@ afterEach(() => {
 
 describe("usePluginMutations", () => {
   it("invalidates agent state and clears models after uninstall", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.installedPlugins = [
       {
         id: PLUGIN_ID,
@@ -44,7 +62,7 @@ describe("usePluginMutations", () => {
         runtime: "running",
       },
     ];
-    const baseClient = createMockClient(state);
+    const baseClient = createFixtureClient(state);
     const client = {
       ...baseClient,
       plugin: {
@@ -104,7 +122,7 @@ describe("usePluginMutations", () => {
   });
 
   it("keeps uninstall pending across unmount and rejects a duplicate operation", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     let resolveUninstall:
       | ((
           response: Awaited<ReturnType<typeof client.plugin.uninstall>>,

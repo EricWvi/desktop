@@ -14,10 +14,13 @@ import { describe, expect, it, vi } from "vitest";
 import { PlatformProvider, type PlatformAdapter } from "../../../platform";
 import { AppI18nProvider } from "../../../i18n/i18n";
 import { ContractsClientContext } from "../../../contracts-client-context";
+import { createTestClient } from "../../../test/contracts-transport";
 import {
-  createMockClient,
-  createMockClientState,
-} from "../../../test/mock-client";
+  createWorkspaceMemory,
+  workspaceHandlers,
+} from "../../../test/memory/workspaces";
+import { emptyFilesHandlers } from "../../../test/memory/files";
+import "../../../i18n/i18n-instance";
 import { createStubPlatform } from "../../../test/stub-platform";
 import { TaskChangesNavigationProvider } from "../../diff/task-changes-navigation";
 import type { FileNavigationLocation } from "../../diff/task-changes-navigation-context";
@@ -26,6 +29,21 @@ import { MessageList } from "../message-list";
 import type { SessionArtifactIndex } from "./artifact-index";
 import { ChatFileLink } from "./chat-file-link";
 import { ChatLinkContext } from "./context";
+
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createWorkspaceMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...workspaceHandlers(state),
+    ...emptyFilesHandlers(),
+  });
+}
 
 const index: SessionArtifactIndex = {
   edited: ["src/main.rs"],
@@ -170,7 +188,7 @@ async function renderMessageList(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const mockClient = createMockClient(createMockClientState());
+  const mockClient = createFixtureClient(createFixtureState());
   if (options.workspaceRoot) {
     mockClient.task.getWorkspace = vi.fn(async () => ({
       workspace: { rootPath: options.workspaceRoot!, branchName: "main" },
@@ -217,7 +235,7 @@ async function renderMessageList(
 
 /** Renders Files after a chat click whose workspace read fails (deleted / missing). */
 function renderMissingFilesPreview(path: string) {
-  const client = createMockClient(createMockClientState());
+  const client = createFixtureClient(createFixtureState());
   client.fileSystem.readWorkspaceFile = async () => {
     throw new RemoteContractError(
       {

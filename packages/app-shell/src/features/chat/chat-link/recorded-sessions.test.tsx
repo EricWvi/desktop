@@ -9,10 +9,7 @@ import { ContractsClientContext } from "../../../contracts-client-context";
 import { AppI18nProvider } from "../../../i18n/i18n";
 import { appI18n } from "../../../i18n/i18n-instance";
 import { PlatformProvider } from "../../../platform";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../../test/mock-client";
+import { createTestClient } from "../../../test/contracts-transport";
 import { createStubPlatform } from "../../../test/stub-platform";
 import { TaskChangesNavigationProvider } from "../../diff/task-changes-navigation";
 import { MessageList } from "../message-list";
@@ -113,7 +110,7 @@ async function recordedTurns(records: RecordedLine[]): Promise<ChatTurn[]> {
       ? { type: "turn_ended", stopReason: record.stop_reason }
       : { type: "session_update", update: record.update },
   );
-  const client = createMockClient(createMockClientState()).session;
+  const client = createTestClient({}).session;
   const conversation = await loadSessionConversation(
     {
       ...client,
@@ -139,7 +136,7 @@ async function renderRecordedSession(recorded: RecordedCase) {
   const openWorkspaceFile = vi.fn();
   const openWorkspaceDirectory = vi.fn();
   const openWorkspaceArtifact = vi.fn();
-  const mockClient = createMockClient(createMockClientState());
+  const mockClient = createTestClient({});
   mockClient.task.getWorkspace = vi.fn(async () => ({
     workspace: { rootPath: recorded.workspaceRoot, branchName: "main" },
   }));

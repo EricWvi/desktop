@@ -3,10 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ContractsClientContext } from "../../contracts-client-context";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import "../../i18n/i18n-instance";
 import {
   MAX_COMPOSER_FILE_ACTIONS,
   takeComposerFilePaths,
@@ -18,7 +16,7 @@ import {
   useComposerFileMentions,
 } from "./use-composer-file-mentions";
 
-function createWrapper(client: ReturnType<typeof createMockClient>) {
+function createWrapper(client: ReturnType<typeof createTestClient>) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: 0 },
@@ -75,7 +73,7 @@ describe("fileMention status helpers", () => {
 
 describe("useComposerFileMentions", () => {
   it("keeps prior hits during debounce with selection locked, without a spinner", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.fileSystem.listWorkspaceDirectory = async () => ({
       path: "",
       entries: [
@@ -132,7 +130,7 @@ describe("useComposerFileMentions", () => {
   });
 
   it("includes root directories ahead of files", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.fileSystem.listWorkspaceDirectory = async () => ({
       path: "",
       entries: [
@@ -175,7 +173,7 @@ describe("useComposerFileMentions", () => {
   });
 
   it("searches the project checkout when no task is selected", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     const listProject = vi.fn(async () => ({
       path: "",
       entries: [
@@ -218,7 +216,7 @@ describe("useComposerFileMentions", () => {
   });
 
   it("prefers the task worktree over the project checkout", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.fileSystem.listWorkspaceDirectory = async () => ({
       path: "",
       entries: [
@@ -266,7 +264,7 @@ describe("useComposerFileMentions", () => {
   });
 
   it("caps search hits at the menu limit even when the API returns more", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.fileSystem.searchWorkspace = async () => ({
       results: Array.from({ length: 40 }, (_, index) => ({
         kind: "file" as const,
@@ -297,7 +295,7 @@ describe("useComposerFileMentions", () => {
   });
 
   it("reports error instead of an empty hit list when search fails", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     client.fileSystem.searchWorkspace = async () => {
       throw new Error("search failed");
     };
@@ -323,7 +321,7 @@ describe("useComposerFileMentions", () => {
   });
 
   it("asks for a project when none is selected", () => {
-    const client = createMockClient(createMockClientState());
+    const client = createTestClient({});
     const { result } = renderHook(
       () =>
         useComposerFileMentions({

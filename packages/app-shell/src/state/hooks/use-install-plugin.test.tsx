@@ -1,9 +1,8 @@
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
+import "../../i18n/i18n-instance";
 import {
   createTestQueryClient,
   renderHookWithClient,
@@ -11,13 +10,27 @@ import {
 import { usePluginOperationStore } from "../stores/plugin-operation-store";
 import { useInstallPlugin } from "./use-install-plugin";
 
+/** State for this test surface; no unrelated domain fixtures are initialized. */
+function createFixtureState() {
+  return { ...createPluginMemory() };
+}
+
+type FixtureState = ReturnType<typeof createFixtureState>;
+
+/** Explicit domain composition for the behaviors exercised by this test file. */
+function createFixtureClient(state: FixtureState) {
+  return createTestClient({
+    ...pluginHandlers(state),
+  });
+}
+
 afterEach(() => {
   act(() => usePluginOperationStore.setState({ activities: {} }));
 });
 
 describe("useInstallPlugin", () => {
   it("installs a marketplace plugin and refreshes the installed surface", async () => {
-    const state = createMockClientState();
+    const state = createFixtureState();
     state.availablePlugins.push({
       id: "official/weather",
       name: "weather",
@@ -30,7 +43,7 @@ describe("useInstallPlugin", () => {
       logo: null,
       compatibility: "compatible",
     });
-    const client = createMockClient(state);
+    const client = createFixtureClient(state);
     const { result } = renderHookWithClient(
       () => useInstallPlugin("official/weather"),
       client,
@@ -51,7 +64,7 @@ describe("useInstallPlugin", () => {
   });
 
   it("keeps an install pending across unmount and rejects a duplicate start", async () => {
-    const client = createMockClient(createMockClientState());
+    const client = createFixtureClient(createFixtureState());
     let resolveInstall:
       | ((response: Awaited<ReturnType<typeof client.plugin.install>>) => void)
       | undefined;
