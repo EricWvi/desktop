@@ -2,7 +2,7 @@ use crate::agent::AgentApi;
 use crate::agent_runtime::{AgentRuntimeManager, AgentRuntimeSetup, SessionEventStream};
 use crate::app_event::AppEventHub;
 use crate::clock::SystemClock;
-use crate::error::{BackendError, ErrorClassification};
+use crate::error::BackendError;
 use crate::git_cleanup::KeyedResourceLocks;
 use crate::plugin::PluginApi;
 use crate::plugin_gateway::PluginGateway;
@@ -17,10 +17,9 @@ use crate::workflow::run::WorkflowRunApi;
 use crate::workflow::run::{
     ConcreteWorkflowRunControl, ConcreteWorkflowRunEngine, build_workflow_run_engine,
 };
-use crate::workspace_diff::WorkspaceDiffApi;
+use crate::workspace::WorkspaceApi;
 use ora_application::{ApplicationError, Clock, EffectService, WorkflowRunEngineRepository};
 use ora_contracts::*;
-use ora_contracts::{EmptyErrorParams, PublicError};
 use ora_db::SqliteWorkflowRunEngineRepository;
 use ora_db::{DatabaseBootstrapper, DatabaseLocation, RepositoryPool, default_migration_catalog};
 use ora_logging::{ora_error, ora_warn};
@@ -85,10 +84,9 @@ pub enum BackendBootstrapError {
 #[derive(Clone)]
 pub struct Backend {
     pool: RepositoryPool,
-    worktree_root: Arc<RwLock<PathBuf>>,
     project: Arc<ProjectApi>,
     task: Arc<TaskApi>,
-    workspace_diff: Arc<WorkspaceDiffApi>,
+    workspace: WorkspaceApi,
     settings: Arc<Settings>,
     session: Arc<SessionApi>,
     agent_runtime: Arc<AgentRuntimeManager>,
@@ -107,7 +105,6 @@ pub struct Backend {
     sessions_root: PathBuf,
     baselines_root: PathBuf,
     app_events: Arc<AppEventHub>,
-    relative_path_base: PathBuf,
 }
 
 impl Backend {
@@ -240,11 +237,13 @@ impl Backend {
                 effect_reconcile: effect_reconcile.clone(),
                 git_cleanup: git_cleanup.clone(),
             })),
-            workspace_diff: Arc::new(WorkspaceDiffApi::new(
+            workspace: WorkspaceApi::new(
                 pool.clone(),
                 git_cleanup,
-                relative_path_base.clone(),
-            )),
+                relative_path_base,
+                worktree_root,
+                settings.clone(),
+            ),
             settings,
             session: Arc::new(SessionApi::new(pool.clone())),
             agent_runtime,
@@ -265,8 +264,6 @@ impl Backend {
             baselines_root,
             app_events,
             pool,
-            worktree_root,
-            relative_path_base,
         })
     }
 
@@ -737,154 +734,9 @@ impl Backend {
         self.task.clone()
     }
 
-    /// Returns the worktree root row, preserving absence for first-run migration.
-    pub fn persisted_worktree_root(&self) -> Result<Option<PathBuf>, BackendError> {
-        self.settings.worktree_root()
-    }
-
-    /// Returns the active root used for new task worktrees.
-    pub fn worktree_root(&self) -> Result<PathBuf, BackendError> {
-        self.worktree_root
-            .read()
-            .map(|root| root.clone())
-            .map_err(|_poisoned| {
-                BackendError::new(
-                    ErrorClassification::Internal,
-                    PublicError::InternalError(EmptyErrorParams {}),
-                    "worktree root configuration is unavailable",
-                )
-            })
-    }
-
-    /// Validates and persists the root before publishing it to future task creations.
-    pub fn set_worktree_root(&self, worktree_root: PathBuf) -> Result<(), BackendError> {
-        if !worktree_root.is_absolute() {
-            return Err(BackendError::new(
-                ErrorClassification::InvalidRequest,
-                PublicError::WorktreeRootNotAbsolute(EmptyErrorParams {}),
-                "worktree root must be an absolute path",
-            ));
-        }
-        if !worktree_root.is_dir() {
-            return Err(BackendError::new(
-                ErrorClassification::InvalidRequest,
-                PublicError::WorktreeRootNotDirectory(EmptyErrorParams {}),
-                "worktree root must be an existing directory",
-            ));
-        }
-        self.settings.set_worktree_root(&worktree_root)?;
-        let mut configured_root = self.worktree_root.write().map_err(|_poisoned| {
-            BackendError::new(
-                ErrorClassification::Internal,
-                PublicError::InternalError(EmptyErrorParams {}),
-                "worktree root configuration is unavailable",
-            )
-        })?;
-        *configured_root = worktree_root;
-        Ok(())
-    }
-
-    /// Resolves the on-disk git worktree directory that backs one task.
-    ///
-    /// Reuses the same live resolution the agent runtime performs before spawning a
-    /// provider, so the path always matches where the session actually runs. Fails
-    /// when the task has no active worktree on disk.
-    pub fn resolve_task_cwd(&self, task_id: &str) -> Result<PathBuf, BackendError> {
-        crate::task::resolve_task_cwd(
-            &self.pool,
-            &ora_domain::TaskId::new(task_id),
-            &self.relative_path_base,
-        )
-    }
-
-    /// Resolves the project checkout root used before a task exists (draft chat).
-    ///
-    /// Resolves the local directory backing one Workspace for host integrations.
-    pub fn resolve_workspace_cwd(&self, workspace_id: &str) -> Result<PathBuf, BackendError> {
-        crate::task::resolve_workspace_cwd(
-            &self.pool,
-            &ora_domain::WorkspaceId::new(workspace_id),
-            &self.relative_path_base,
-        )
-    }
-
-    /// Resolves the main Workspace directory for an ordinary project chat.
-    pub fn resolve_project_cwd(&self, project_id: &str) -> Result<PathBuf, BackendError> {
-        crate::task::resolve_project_cwd(
-            &self.pool,
-            &ora_domain::ProjectId::new(project_id),
-            &self.relative_path_base,
-        )
-    }
-
-    // =============================================================================
-    // project
-    // =============================================================================
-
-    /// Lists visible workspaces directly from their Workspace-owned persistence boundary.
-    pub fn list_workspaces(
-        &self,
-        _request: ListWorkspacesRequest,
-    ) -> Result<ListWorkspacesResponse, BackendError> {
-        let workspaces = ora_db::SqliteWorkspaceRepository::new(self.pool.clone())
-            .list_all_workspaces()
-            .map_err(|error| BackendError::internal("failed to list workspaces", error))?;
-        Ok(ListWorkspacesResponse {
-            workspaces: workspaces
-                .into_iter()
-                .map(|workspace| Workspace {
-                    id: workspace.id.to_string(),
-                    project_id: workspace.project_id.to_string(),
-                    kind: match workspace.kind {
-                        ora_domain::WorkspaceKind::Main => WorkspaceKind::Main,
-                        ora_domain::WorkspaceKind::Isolated => WorkspaceKind::Isolated,
-                    },
-                    lifecycle: match workspace.lifecycle {
-                        ora_domain::WorkspaceLifecycle::Provisioning => {
-                            WorkspaceLifecycle::Provisioning
-                        }
-                        ora_domain::WorkspaceLifecycle::Active => WorkspaceLifecycle::Active,
-                        ora_domain::WorkspaceLifecycle::Unavailable => {
-                            WorkspaceLifecycle::Unavailable
-                        }
-                        ora_domain::WorkspaceLifecycle::Retiring => WorkspaceLifecycle::Retiring,
-                        ora_domain::WorkspaceLifecycle::Deleted => WorkspaceLifecycle::Deleted,
-                    },
-                })
-                .collect(),
-        })
-    }
-
-    // =============================================================================
-    // task
-    // =============================================================================
-
-    // =============================================================================
-    // workspaceDiff
-    // =============================================================================
-    /// Returns the current Git snapshot for one workspace checkout — a task's isolated worktree
-    /// or a project's main checkout alike.
-    pub fn get_workspace_diff(
-        &self,
-        request: GetWorkspaceDiffRequest,
-    ) -> Result<GetWorkspaceDiffResponse, BackendError> {
-        self.workspace_diff.get_diff(request)
-    }
-
-    /// Commits every current change in one workspace checkout.
-    pub fn commit_workspace_changes(
-        &self,
-        request: CommitWorkspaceChangesRequest,
-    ) -> Result<CommitWorkspaceChangesResponse, BackendError> {
-        self.workspace_diff.commit_changes(request)
-    }
-
-    /// Pushes one workspace checkout's branch, verified when it has a recorded `Worktree` row.
-    pub fn push_workspace_branch(
-        &self,
-        request: PushWorkspaceBranchRequest,
-    ) -> Result<PushWorkspaceBranchResponse, BackendError> {
-        self.workspace_diff.push_branch(request)
+    /// Shares workspace lookup, path configuration, and Git review with the existing use leases.
+    pub fn workspaces(&self) -> WorkspaceApi {
+        self.workspace.clone()
     }
 
     // =============================================================================

@@ -29,7 +29,7 @@ mod test_backend;
 #[cfg(test)]
 mod test_clock;
 mod workflow;
-mod workspace_diff;
+mod workspace;
 
 pub use agent::AgentApi;
 pub use agent_runtime::SessionEventStream;
@@ -44,6 +44,7 @@ pub use skill::SkillApi;
 pub use skill_reconciliation::SkillStorageReconciliationError;
 pub use task::TaskApi;
 pub use workflow::WorkflowApi;
+pub use workspace::WorkspaceApi;
 
 #[cfg(test)]
 mod local_agent_package_tests;

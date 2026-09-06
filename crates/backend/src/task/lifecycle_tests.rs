@@ -194,6 +194,7 @@ fn deletes_existing_task_after_worktree_root_changes() {
         let replacement_root = temporary.path().join("replacement-worktrees");
         fs::create_dir_all(&replacement_root).expect("create replacement worktree root");
         backend
+            .workspaces()
             .set_worktree_root(replacement_root)
             .expect("replace worktree creation root");
         backend

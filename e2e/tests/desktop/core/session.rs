@@ -158,7 +158,8 @@ mod tests {
     /// Resolves the main Workspace the project checkout created.
     fn main_workspace_id(backend: &Backend) -> Result<String, Box<dyn std::error::Error>> {
         Ok(backend
-            .list_workspaces(ListWorkspacesRequest {})?
+            .workspaces()
+            .list(ListWorkspacesRequest {})?
             .workspaces
             .into_iter()
             .find(|workspace| workspace.kind == WorkspaceKind::Main)

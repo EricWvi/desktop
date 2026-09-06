@@ -2,7 +2,7 @@
 
 use super::run_backend;
 use crate::{error::CommandError, state::DesktopState};
-use ora_backend::{Backend, BackendError};
+use ora_backend::{BackendError, WorkspaceApi};
 use ora_contracts::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ backend_command!(
     list_workspaces,
     ListWorkspacesRequest,
     ListWorkspacesResponse,
-    list_workspaces,
+    workspaces.list,
     "Lists workspaces through the shared Backend."
 );
 
@@ -20,21 +20,21 @@ backend_command!(
     get_workspace_diff,
     GetWorkspaceDiffRequest,
     GetWorkspaceDiffResponse,
-    get_workspace_diff,
+    workspaces.get_diff,
     "Reads one workspace diff through the shared Backend."
 );
 backend_command!(
     commit_workspace_changes,
     CommitWorkspaceChangesRequest,
     CommitWorkspaceChangesResponse,
-    commit_workspace_changes,
+    workspaces.commit_changes,
     "Commits one workspace checkout through the shared Backend."
 );
 backend_command!(
     push_workspace_branch,
     PushWorkspaceBranchRequest,
     PushWorkspaceBranchResponse,
-    push_workspace_branch,
+    workspaces.push_branch,
     "Pushes one workspace checkout's branch through the shared Backend."
 );
 
@@ -112,15 +112,16 @@ pub async fn resolve_task_cwd(
 ) -> Result<ResolveTaskCwdResponse, CommandError> {
     run_backend(
         "resolve_task_cwd",
-        state.backend.clone(),
+        state.backend.workspaces(),
         request,
         resolve_task_cwd_backend,
     )
     .await
 }
 
+/// Renders the authoritative task location in the native platform's expected path spelling.
 fn resolve_task_cwd_backend(
-    backend: &Backend,
+    backend: &WorkspaceApi,
     request: ResolveTaskCwdRequest,
 ) -> Result<ResolveTaskCwdResponse, BackendError> {
     backend
@@ -138,7 +139,7 @@ pub async fn resolve_workspace_cwd(
 ) -> Result<ResolveWorkspaceCwdResponse, CommandError> {
     run_backend(
         "resolve_workspace_cwd",
-        state.backend.clone(),
+        state.backend.workspaces(),
         request,
         resolve_workspace_cwd_backend,
     )
@@ -147,7 +148,7 @@ pub async fn resolve_workspace_cwd(
 
 /// Resolves a Workspace's local directory through the composed backend.
 fn resolve_workspace_cwd_backend(
-    backend: &Backend,
+    backend: &WorkspaceApi,
     request: ResolveWorkspaceCwdRequest,
 ) -> Result<ResolveWorkspaceCwdResponse, BackendError> {
     backend
@@ -165,15 +166,16 @@ pub async fn get_worktree_root(
 ) -> Result<GetWorktreeRootResponse, CommandError> {
     run_backend(
         "get_worktree_root",
-        state.backend.clone(),
+        state.backend.workspaces(),
         request,
         get_worktree_root_backend,
     )
     .await
 }
 
+/// Keeps native response formatting outside the workspace configuration interface.
 fn get_worktree_root_backend(
-    backend: &Backend,
+    backend: &WorkspaceApi,
     _request: GetWorktreeRootRequest,
 ) -> Result<GetWorktreeRootResponse, BackendError> {
     backend.worktree_root().map(|root| GetWorktreeRootResponse {
@@ -189,15 +191,16 @@ pub async fn set_worktree_root(
 ) -> Result<SetWorktreeRootResponse, CommandError> {
     run_backend(
         "set_worktree_root",
-        state.backend.clone(),
+        state.backend.workspaces(),
         request,
         set_worktree_root_backend,
     )
     .await
 }
 
+/// Publishes the selected path only after the workspace module accepts and persists it.
 fn set_worktree_root_backend(
-    backend: &Backend,
+    backend: &WorkspaceApi,
     request: SetWorktreeRootRequest,
 ) -> Result<SetWorktreeRootResponse, BackendError> {
     let worktree_root = PathBuf::from(request.worktree_root);

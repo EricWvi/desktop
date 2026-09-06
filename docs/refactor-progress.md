@@ -121,3 +121,10 @@
 - 旧 worktree-root 变更后删除测试移至 `task/lifecycle_tests.rs`，两项生命周期测试均在 scoped TRACE 下执行。新增真实 SQLite/Git 验证：Running session 同时阻止 task/project 删除且保留完整对象；停止后 task 删除连带隐藏 session，已有 worktree use lease 保证物理目录不被提前移除。
 - workspace 查询、Git 操作及配置归属尚待下一组迁移；本组不改变磁盘布局和 Git cleanup 的恢复/退出语义。
 - 验证：Backend 210 项通过、1 项原有测试 ignored；标准 Rust lint、58 项 Tauri、4 项 E2E 与生成漂移检查通过。
+
+### 阶段 4c：workspace（2026-09-06）
+
+- `WorkspaceDiffApi` 扩展为所属 module 的 `WorkspaceApi`，整合查询、live cwd、worktree-root 配置和 Git review；移除 10 个根入口，其中无调用者的 persisted-root 原始行查询不再公开。
+- Desktop workspace/files 命令只注入 cloneable workspace handle；泛用文件浏览、搜索和 watcher 创建仍在 Desktop/`ora-fs`，没有迁移到 Backend。
+- handle clone 共享原来的 root `RwLock`、SQLite pool 和 cleanup use leases，不新建锁/worker。`workspace.rs` 生产部分约 330 行；既有 main-checkout、task worktree 和 diff/commit/push 测试随 module 移动。
+- 验证：Backend 210 项通过、1 项原有测试 ignored；标准 Rust lint、58 项 Tauri、4 项 E2E 和生成漂移检查通过。

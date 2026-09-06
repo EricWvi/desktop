@@ -18,6 +18,12 @@ construction receives one named, crate-private `TaskSetup`, retaining the same p
 used by cleanup. Workspace Git operations keep their shared use leases. Backend does not expose
 its repository pool.
 
+`Backend::workspaces()` is a cloneable handle for visible workspace queries, authoritative local
+path resolution, worktree-root configuration, and Git diff/commit/push. Clones share the original
+root lock and cleanup use-lease registry. Raw persisted-root absence remains an internal bootstrap
+concern, not a public use case. Native file browsing/search/watch implementations stay in Desktop
+and `ora-fs`; they inject only this workspace handle alongside their file reader.
+
 ## Responsibilities
 
 - `Backend::open` creates required directories, bootstraps and migrates SQLite, reconciles imported
@@ -37,7 +43,7 @@ its repository pool.
   operation. Async preference calls dispatch SQLite work to the blocking pool. Internal synchronous
   proxy reads also serve plugin retrieval policy. The settings tests open only SQLite and exercise
   persistence/reopening and injected storage faults through this interface.
-- `WorkspaceDiffApi` composes the workspace-diff handlers with SQLite and Gitlancer, keyed by `WorkspaceId` for either an isolated task worktree or a project's main checkout. It resolves the workspace's live cwd and, when a `Worktree` row is recorded for it, uses the persisted creation commit as the stable diff baseline; a workspace with no such row has no baseline (only the `Unstaged`/`Staged` scopes apply) and its writes go through unverified.
+- `WorkspaceApi` composes the workspace-diff handlers with SQLite and Gitlancer, keyed by `WorkspaceId` for either an isolated task worktree or a project's main checkout. It resolves the workspace's live cwd and, when a `Worktree` row is recorded for it, uses the persisted creation commit as the stable diff baseline; a workspace with no such row has no baseline (only the `Unstaged`/`Staged` scopes apply) and its writes go through unverified.
 - Tauri remains a transport-only adapter.
 - Workspace diff reads, commits, and pushes preserve the same public error projection as the rest of the backend. Git and SQLite sources remain internal diagnostics and are rendered once by the adapter-owned request lifecycle.
 - Session creation, loading, structured ACP prompting, permissions, stopping, deletion, and model discovery delegate to the agent runtime. Creation also returns the provider's setup-time available-command catalog. Every `session/new` and `session/load` shares one Session MCP Snapshot; see [Session MCP](../../docs/session-mcp.md).

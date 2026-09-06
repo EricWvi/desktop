@@ -3,7 +3,7 @@
 use super::{run_async_backend, run_backend};
 use crate::workspace_files::{WorkspaceFileApi, workspace_file_backend_error};
 use crate::{error::CommandError, state::DesktopState};
-use ora_backend::{Backend, BackendError};
+use ora_backend::{BackendError, WorkspaceApi};
 use ora_contracts::*;
 use std::path::Path;
 use tauri::State;
@@ -14,7 +14,7 @@ pub(super) async fn start_workspace_watch(
     request: WatchWorkspaceRequest,
     context: super::stream::StreamStart,
 ) -> Result<(), CommandError> {
-    let backend = state.backend.clone();
+    let backend = state.backend.workspaces();
     let files = state.workspace_files.clone();
     context
         .watch(async move {
@@ -36,7 +36,7 @@ pub(super) async fn start_project_watch(
     request: WatchProjectRequest,
     context: super::stream::StreamStart,
 ) -> Result<(), CommandError> {
-    let backend = state.backend.clone();
+    let backend = state.backend.workspaces();
     let files = state.workspace_files.clone();
     context
         .watch(async move {
@@ -60,7 +60,7 @@ pub async fn list_workspace_directory(
 ) -> Result<ListWorkspaceDirectoryResponse, CommandError> {
     run_backend(
         "list_workspace_directory",
-        (state.backend.clone(), state.workspace_files.clone()),
+        (state.backend.workspaces(), state.workspace_files.clone()),
         request,
         |(backend, files), request| list_workspace_directory_backend(backend, files, request),
     )
@@ -75,7 +75,7 @@ pub async fn read_workspace_file(
 ) -> Result<ReadWorkspaceFileResponse, CommandError> {
     run_backend(
         "read_workspace_file",
-        (state.backend.clone(), state.workspace_files.clone()),
+        (state.backend.workspaces(), state.workspace_files.clone()),
         request,
         |(backend, files), request| read_workspace_file_backend(backend, files, request),
     )
@@ -88,7 +88,7 @@ pub async fn search_workspace(
     state: State<'_, DesktopState>,
     request: SearchWorkspaceRequest,
 ) -> Result<SearchWorkspaceResponse, CommandError> {
-    let backend = state.backend.clone();
+    let backend = state.backend.workspaces();
     let workspace_files = state.workspace_files.clone();
     let task_id = request.task_id;
     let query = request.query;
@@ -109,7 +109,7 @@ pub async fn search_workspace(
 
 /// Resolves a task workspace and lists the requested relative directory.
 fn list_workspace_directory_backend(
-    backend: &Backend,
+    backend: &WorkspaceApi,
     workspace_files: &WorkspaceFileApi,
     request: ListWorkspaceDirectoryRequest,
 ) -> Result<ListWorkspaceDirectoryResponse, BackendError> {
@@ -126,7 +126,7 @@ fn list_workspace_directory_backend(
 
 /// Resolves a task workspace and reads the requested relative file.
 fn read_workspace_file_backend(
-    backend: &Backend,
+    backend: &WorkspaceApi,
     workspace_files: &WorkspaceFileApi,
     request: ReadWorkspaceFileRequest,
 ) -> Result<ReadWorkspaceFileResponse, BackendError> {
@@ -144,7 +144,7 @@ pub async fn list_project_directory(
 ) -> Result<ListWorkspaceDirectoryResponse, CommandError> {
     run_backend(
         "list_project_directory",
-        (state.backend.clone(), state.workspace_files.clone()),
+        (state.backend.workspaces(), state.workspace_files.clone()),
         request,
         |(backend, files), request| list_project_directory_backend(backend, files, request),
     )
@@ -159,7 +159,7 @@ pub async fn read_project_file(
 ) -> Result<ReadWorkspaceFileResponse, CommandError> {
     run_backend(
         "read_project_file",
-        (state.backend.clone(), state.workspace_files.clone()),
+        (state.backend.workspaces(), state.workspace_files.clone()),
         request,
         |(backend, files), request| read_project_file_backend(backend, files, request),
     )
@@ -172,7 +172,7 @@ pub async fn search_project(
     state: State<'_, DesktopState>,
     request: SearchProjectRequest,
 ) -> Result<SearchWorkspaceResponse, CommandError> {
-    let backend = state.backend.clone();
+    let backend = state.backend.workspaces();
     let workspace_files = state.workspace_files.clone();
     let project_id = request.project_id;
     let query = request.query;
@@ -194,7 +194,7 @@ pub async fn search_project(
 
 /// Resolves a project checkout and lists the requested relative directory.
 fn list_project_directory_backend(
-    backend: &Backend,
+    backend: &WorkspaceApi,
     workspace_files: &WorkspaceFileApi,
     request: ListProjectDirectoryRequest,
 ) -> Result<ListWorkspaceDirectoryResponse, BackendError> {
@@ -211,7 +211,7 @@ fn list_project_directory_backend(
 
 /// Resolves a project checkout and reads the requested relative file.
 fn read_project_file_backend(
-    backend: &Backend,
+    backend: &WorkspaceApi,
     workspace_files: &WorkspaceFileApi,
     request: ReadProjectFileRequest,
 ) -> Result<ReadWorkspaceFileResponse, BackendError> {
