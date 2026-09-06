@@ -1,57 +1,47 @@
 //! Desktop task operations.
 
-use crate::{error::CommandError, state::DesktopState};
 use ora_contracts::*;
-use tauri::State;
 
 backend_command!(
     create_task,
     CreateTaskRequest,
     CreateTaskResponse,
-    create_task,
+    tasks.create,
     "Creates one task through the shared Backend."
 );
 backend_command!(
     get_task,
     GetTaskRequest,
     GetTaskResponse,
-    get_task,
+    tasks.get,
     "Gets one task through the shared Backend."
 );
 backend_command!(
     list_tasks,
     ListTasksRequest,
     ListTasksResponse,
-    list_tasks,
+    tasks.list,
     "Lists tasks through the shared Backend."
 );
 backend_command!(
     update_task,
     UpdateTaskRequest,
     UpdateTaskResponse,
-    update_task,
+    tasks.update,
     "Updates one task through the shared Backend."
 );
-/// Deletes one task through the shared Backend.
-///
-/// Not a `backend_command!` because deleting also returns the warm provider
-/// session the Task owned, which is asynchronous.
-#[tauri::command]
-pub async fn delete_task(
-    state: State<'_, DesktopState>,
-    request: DeleteTaskRequest,
-) -> Result<DeleteTaskResponse, CommandError> {
-    state
-        .backend
-        .delete_task(request)
-        .await
-        .map_err(CommandError::from)
-}
+async_backend_command!(
+    delete_task,
+    DeleteTaskRequest,
+    DeleteTaskResponse,
+    tasks.delete,
+    "Commits the aggregate cascade and schedules its durable Git cleanup."
+);
 
 backend_command!(
     get_task_workspace,
     GetTaskWorkspaceRequest,
     GetTaskWorkspaceResponse,
-    get_task_workspace,
+    tasks.workspace,
     "Returns the authoritative task root and optional linked-worktree branch."
 );

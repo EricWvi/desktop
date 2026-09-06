@@ -40,6 +40,11 @@ domain handle for blocking execution. Their command declarations name the owning
 use case; neither the command executor nor root Backend gains a new forwarding method for each
 operation. Prompted and automatic surface download imports both use the Skill interface.
 
+Project and task commands use the same domain-handle path. Their aggregate deletes now enter the
+shared async request executor as well: successful deletes and failures both complete the correlated
+request once. Blocking cascades and post-commit cleanup notification are owned by their Backend
+domain module, not sequenced by Desktop.
+
 The frontend injects `createTauriTransport()` into `createContractsClient`. The transport maps contract operation names to Tauri commands and forwards the original request DTO unchanged. Backend failures use the direct `{ code, params, requestId }` payload without a public message or outer envelope. Local Tauri invocation failures never invent a request id.
 
 Task workspace lookup is part of that shared contract surface. `get_task_workspace` returns the authoritative task root with an optional branch. `watchAppEvents` uses the same channel framing, cancellation, and exactly-once completion lifecycle as other Desktop streams.

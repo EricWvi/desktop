@@ -10,6 +10,14 @@ own their Effect wakeups, and definition use cases cannot accidentally start wor
 Desktop command execution captures only the relevant handle; surface download actions also use
 the Skill interface without retaining the entire Backend.
 
+`Backend::projects()` and `tasks()` own their complete aggregate use cases. Deletion holds the
+same transactional active-session/workflow checks, registers durable Git cleanup, removes the
+recorded histories, and only then wakes cleanup. The async deletion receiver shares the existing
+handle into the blocking repository task; callers never issue these steps separately. Task
+construction receives one named, crate-private `TaskSetup`, retaining the same provisioning gates
+used by cleanup. Workspace Git operations keep their shared use leases. Backend does not expose
+its repository pool.
+
 ## Responsibilities
 
 - `Backend::open` creates required directories, bootstraps and migrates SQLite, reconciles imported

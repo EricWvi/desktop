@@ -242,7 +242,8 @@ mod tests {
         let backend = open_backend(&temporary);
         let project_id = create_project(&backend, &repository_root);
         let task = backend
-            .create_task(CreateTaskRequest {
+            .tasks()
+            .create(CreateTaskRequest {
                 project_id,
                 title: "Isolated task".to_string(),
                 base_branch: Some("main".to_string()),
@@ -385,7 +386,8 @@ mod tests {
     /// Persists a project pointing at the initialized repository fixture.
     fn create_project(backend: &Backend, repository_root: &Path) -> String {
         backend
-            .create_project(CreateProjectRequest {
+            .projects()
+            .create(CreateProjectRequest {
                 name: "Ora".to_string(),
                 main_workspace_path: repository_root.to_string_lossy().into_owned(),
             })

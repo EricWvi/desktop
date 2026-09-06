@@ -1,56 +1,46 @@
 //! Desktop project operations.
 
-use crate::{error::CommandError, state::DesktopState};
 use ora_contracts::*;
-use tauri::State;
 
 backend_command!(
     create_project,
     CreateProjectRequest,
     CreateProjectResponse,
-    create_project,
+    projects.create,
     "Creates one project through the shared Backend."
 );
 backend_command!(
     get_project,
     GetProjectRequest,
     GetProjectResponse,
-    get_project,
+    projects.get,
     "Gets one project through the shared Backend."
 );
 backend_command!(
     list_projects,
     ListProjectsRequest,
     ListProjectsResponse,
-    list_projects,
+    projects.list,
     "Lists projects through the shared Backend."
 );
 backend_command!(
     list_project_branches,
     ListProjectBranchesRequest,
     ListProjectBranchesResponse,
-    list_project_branches,
+    projects.list_branches,
     "Lists local branches for one project through the shared Backend."
 );
 backend_command!(
     update_project,
     UpdateProjectRequest,
     UpdateProjectResponse,
-    update_project,
+    projects.update,
     "Updates one project through the shared Backend."
 );
-/// Deletes one project through the shared Backend.
-///
-/// Not a `backend_command!` because deleting also returns the warm provider
-/// sessions the project owned, which is asynchronous.
-#[tauri::command]
-pub async fn delete_project(
-    state: State<'_, DesktopState>,
-    request: DeleteProjectRequest,
-) -> Result<DeleteProjectResponse, CommandError> {
-    state
-        .backend
-        .delete_project(request)
-        .await
-        .map_err(CommandError::from)
-}
+async_backend_command!(
+    delete_project,
+    DeleteProjectRequest,
+    DeleteProjectResponse,
+    projects.delete,
+    "Commits the aggregate cascade and schedules its durable Git cleanup."
+);

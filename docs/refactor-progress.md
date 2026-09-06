@@ -112,3 +112,12 @@
 - 新增仅用 SQLite 的 agent CRUD/错误投影、workflow definition/draft 重开测试；既有 Skill 存储互斥和真实导入/Effect E2E 继续承担原验证义务。
 - 此处只是阶段 4 的第一组。旧 command 宏分支暂时只服务尚未迁移的其他领域，最终阶段 4 收拢时删除；不把拆出这些普通用例等同于完成生命周期协调迁移。
 - 验证：Backend 209 项通过、1 项原有测试保持 ignored；`task lint:crates`、`task test:tauri`（58 项）、`task test:e2e`（4 项）和 `task check:contracts` 通过。阶段 4 完成时再运行全量检查。
+
+### 阶段 4b：project/task 聚合用例（2026-09-06）
+
+- 再移除 12 个根 operation 转发，以 `projects()` / `tasks()` 交付完整用例。SQLite 级联、活跃后代检查、历史清理、阻塞线程派发和提交后的 Git cleanup 唤醒由所属领域拥有，Desktop 不再了解这些步骤。
+- 新的 crate-private `TaskSetup` 显式注入原有 provisioning gates 与 cleanup handle，未新建锁或改变共享关系；根 Backend 不再保留只为转发而持有的 cleanup handle，删除无调用者的公开 repository pool 入口。
+- project/task 两个 Desktop 删除命令原先绕过通用 lifecycle，现使用相同的 async executor，成功及失败都有相关联的完成记录。
+- 旧 worktree-root 变更后删除测试移至 `task/lifecycle_tests.rs`，两项生命周期测试均在 scoped TRACE 下执行。新增真实 SQLite/Git 验证：Running session 同时阻止 task/project 删除且保留完整对象；停止后 task 删除连带隐藏 session，已有 worktree use lease 保证物理目录不被提前移除。
+- workspace 查询、Git 操作及配置归属尚待下一组迁移；本组不改变磁盘布局和 Git cleanup 的恢复/退出语义。
+- 验证：Backend 210 项通过、1 项原有测试 ignored；标准 Rust lint、58 项 Tauri、4 项 E2E 与生成漂移检查通过。

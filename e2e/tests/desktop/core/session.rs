@@ -50,7 +50,7 @@ mod tests {
         let backend = open_ready_backend(&setup)?;
         let workspace = setup.root().join("workspace");
         fs::create_dir_all(&workspace)?;
-        backend.create_project(CreateProjectRequest {
+        backend.projects().create(CreateProjectRequest {
             name: "Session E2E".to_string(),
             main_workspace_path: workspace.to_string_lossy().into_owned(),
         })?;
@@ -90,7 +90,7 @@ mod tests {
         let backend = open_ready_backend(&setup)?;
         let workspace = setup.root().join("workspace");
         fs::create_dir_all(&workspace)?;
-        backend.create_project(CreateProjectRequest {
+        backend.projects().create(CreateProjectRequest {
             name: "Session E2E".to_string(),
             main_workspace_path: workspace.to_string_lossy().into_owned(),
         })?;

@@ -25,6 +25,8 @@ mod skill_reconciliation;
 mod source_boundary;
 mod task;
 #[cfg(test)]
+mod test_backend;
+#[cfg(test)]
 mod test_clock;
 mod workflow;
 mod workspace_diff;
@@ -35,10 +37,12 @@ pub use app_event::AppEventHub;
 pub use bootstrap::{Backend, BackendBootstrapError, BackendPaths};
 pub use error::{BackendError, ErrorClassification};
 pub use plugin_gateway::{GatewayError, PluginGateway};
+pub use project::ProjectApi;
 pub use request_lifecycle::{RequestIdGenerator, RequestLifecycle, UuidRequestIdGenerator};
 pub use settings::{BackendPreferredLogLevelStore, Settings};
 pub use skill::SkillApi;
 pub use skill_reconciliation::SkillStorageReconciliationError;
+pub use task::TaskApi;
 pub use workflow::WorkflowApi;
 
 #[cfg(test)]

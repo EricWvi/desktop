@@ -11,7 +11,7 @@ use crate::repository_work::spawn_repository_work;
 use crate::session::SessionApi;
 use crate::settings::Settings;
 use crate::skill::SkillApi;
-use crate::task::TaskApi;
+use crate::task::{TaskApi, TaskSetup};
 use crate::workflow::WorkflowApi;
 use crate::workflow::run::WorkflowRunApi;
 use crate::workflow::run::{
@@ -107,7 +107,6 @@ pub struct Backend {
     sessions_root: PathBuf,
     baselines_root: PathBuf,
     app_events: Arc<AppEventHub>,
-    git_cleanup: crate::git_cleanup::GitCleanupHandle,
     relative_path_base: PathBuf,
 }
 
@@ -229,19 +228,21 @@ impl Backend {
                 sessions_root.clone(),
                 clock,
                 effect_reconcile.clone(),
+                git_cleanup.clone(),
             )),
-            task: Arc::new(TaskApi::new(
-                pool.clone(),
-                worktree_root.clone(),
-                relative_path_base.clone(),
-                sessions_root.clone(),
+            task: Arc::new(TaskApi::new(TaskSetup {
+                pool: pool.clone(),
+                worktree_root: worktree_root.clone(),
+                relative_path_base: relative_path_base.clone(),
+                sessions_root: sessions_root.clone(),
                 repository_gates,
                 clock,
-                effect_reconcile.clone(),
-            )),
+                effect_reconcile: effect_reconcile.clone(),
+                git_cleanup: git_cleanup.clone(),
+            })),
             workspace_diff: Arc::new(WorkspaceDiffApi::new(
                 pool.clone(),
-                git_cleanup.clone(),
+                git_cleanup,
                 relative_path_base.clone(),
             )),
             settings,
@@ -263,7 +264,6 @@ impl Backend {
             sessions_root,
             baselines_root,
             app_events,
-            git_cleanup,
             pool,
             worktree_root,
             relative_path_base,
@@ -707,11 +707,6 @@ impl Backend {
             .map_err(BackendError::from)
     }
 
-    /// Returns the repository pool needed by server-only services excluded from this extraction.
-    pub fn repository_pool(&self) -> RepositoryPool {
-        self.pool.clone()
-    }
-
     /// Returns the settings interface without exposing storage or runtime internals.
     pub fn settings(&self) -> &Settings {
         &self.settings
@@ -730,6 +725,16 @@ impl Backend {
     /// Shares definition/draft/version use cases independently of workflow-run execution.
     pub fn workflows(&self) -> Arc<WorkflowApi> {
         self.workflow.clone()
+    }
+
+    /// Shares complete project use cases, including aggregate deletion and cleanup notification.
+    pub fn projects(&self) -> Arc<ProjectApi> {
+        self.project.clone()
+    }
+
+    /// Shares task use cases without exposing Git provisioning gates or deletion transactions.
+    pub fn tasks(&self) -> Arc<TaskApi> {
+        self.task.clone()
     }
 
     /// Returns the worktree root row, preserving absence for first-run migration.
@@ -816,28 +821,6 @@ impl Backend {
     // project
     // =============================================================================
 
-    /// Creates one project through the shared application composition.
-    pub fn create_project(
-        &self,
-        request: CreateProjectRequest,
-    ) -> Result<CreateProjectResponse, BackendError> {
-        self.project.create(request).map_err(BackendError::from)
-    }
-    /// Gets one project through the shared application composition.
-    pub fn get_project(
-        &self,
-        request: GetProjectRequest,
-    ) -> Result<GetProjectResponse, BackendError> {
-        self.project.get(request).map_err(BackendError::from)
-    }
-    /// Lists projects through the shared application composition.
-    pub fn list_projects(
-        &self,
-        request: ListProjectsRequest,
-    ) -> Result<ListProjectsResponse, BackendError> {
-        self.project.list(request).map_err(BackendError::from)
-    }
-
     /// Lists visible workspaces directly from their Workspace-owned persistence boundary.
     pub fn list_workspaces(
         &self,
@@ -871,86 +854,10 @@ impl Backend {
                 .collect(),
         })
     }
-    /// Lists selectable branches for one project repository.
-    pub fn list_project_branches(
-        &self,
-        request: ListProjectBranchesRequest,
-    ) -> Result<ListProjectBranchesResponse, BackendError> {
-        self.project
-            .list_branches(request)
-            .map_err(BackendError::from)
-    }
-    /// Updates one project through the shared application composition.
-    pub fn update_project(
-        &self,
-        request: UpdateProjectRequest,
-    ) -> Result<UpdateProjectResponse, BackendError> {
-        self.project.update(request).map_err(BackendError::from)
-    }
-    /// Deletes one project through the shared application composition.
-    ///
-    /// The delete cascades to the project's Workspaces and Tasks and registers cleanup jobs.
-    pub async fn delete_project(
-        &self,
-        request: DeleteProjectRequest,
-    ) -> Result<DeleteProjectResponse, BackendError> {
-        let project = self.project.clone();
-        // A project cascade deletes its Workspaces, Tasks, and Sessions in one transaction, which
-        // is the longest blocking repository operation the app issues; it stays off the async
-        // runtime's worker threads.
-        let response = spawn_repository_work(move || project.delete(request)).await?;
-        // The cascade registered the cleanup jobs; this only trims their latency.
-        self.git_cleanup.notify();
-        Ok(response)
-    }
 
     // =============================================================================
     // task
     // =============================================================================
-
-    /// Creates one task through the shared application composition.
-    pub fn create_task(
-        &self,
-        request: CreateTaskRequest,
-    ) -> Result<CreateTaskResponse, BackendError> {
-        self.task.create(request).map_err(BackendError::from)
-    }
-    /// Gets one task through the shared application composition.
-    pub fn get_task(&self, request: GetTaskRequest) -> Result<GetTaskResponse, BackendError> {
-        self.task.get(request).map_err(BackendError::from)
-    }
-    /// Lists tasks through the shared application composition.
-    pub fn list_tasks(&self, request: ListTasksRequest) -> Result<ListTasksResponse, BackendError> {
-        self.task.list(request).map_err(BackendError::from)
-    }
-    /// Updates one task through the shared application composition.
-    pub fn update_task(
-        &self,
-        request: UpdateTaskRequest,
-    ) -> Result<UpdateTaskResponse, BackendError> {
-        self.task.update(request).map_err(BackendError::from)
-    }
-    /// Deletes one task through the shared application composition.
-    ///
-    /// The delete cascade registers the task's durable cleanup job.
-    pub async fn delete_task(
-        &self,
-        request: DeleteTaskRequest,
-    ) -> Result<DeleteTaskResponse, BackendError> {
-        let task = self.task.clone();
-        let response = spawn_repository_work(move || task.delete(request)).await?;
-        // The cascade registered the cleanup job; this only trims its latency.
-        self.git_cleanup.notify();
-        Ok(response)
-    }
-
-    /// Returns the authoritative checkout root and optional branch for a task.
-    pub fn get_task_workspace(
-        &self,
-        request: GetTaskWorkspaceRequest,
-    ) -> Result<GetTaskWorkspaceResponse, BackendError> {
-        crate::task::get_task_workspace(&self.pool, &request.task_id, &self.relative_path_base)
-    }
 
     // =============================================================================
     // workspaceDiff
@@ -1313,31 +1220,17 @@ fn prune_orphaned_baselines(pool: &RepositoryPool, baselines_root: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Backend, BackendPaths};
+    use super::Backend;
     use crate::error::ErrorClassification;
-    use ora_contracts::CreateTaskRequest;
+    use crate::test_backend::backend_paths;
     use ora_contracts::{
         CreateAgentRequest, CreateProjectRequest, CreateSkillRequest, DeleteAgentRequest,
-        DeleteProjectRequest, DeleteSkillRequest, DeleteTaskRequest, GetProjectRequest,
-        GetTaskRequest, ListAgentsRequest, ListProjectsRequest, ListSkillsRequest,
-        UpdateAgentRequest, UpdateProjectRequest, UpdateSkillRequest,
+        DeleteProjectRequest, DeleteSkillRequest, GetProjectRequest, ListAgentsRequest,
+        ListProjectsRequest, ListSkillsRequest, UpdateAgentRequest, UpdateProjectRequest,
+        UpdateSkillRequest,
     };
-    use ora_test_support::GitTestScaffold;
     use std::fs;
-    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
-
-    /// Builds Backend paths with independently selectable application-data and Ora-home roots.
-    fn backend_paths(app_data_directory: &Path, home_directory: &Path) -> BackendPaths {
-        ora_logging::initialize_test_clock();
-        BackendPaths {
-            app_data_directory: app_data_directory.to_path_buf(),
-            home_directory: home_directory.to_path_buf(),
-            deno_path: PathBuf::from("deno"),
-            relative_path_base: app_data_directory.to_path_buf(),
-            timezone: chrono_tz::UTC,
-        }
-    }
 
     /// Verifies the shared composition owns storage bootstrap and complete non-Git CRUD flows.
     #[tokio::test]
@@ -1355,7 +1248,8 @@ mod tests {
         assert!(worktree_root.is_dir());
 
         let project = backend
-            .create_project(CreateProjectRequest {
+            .projects()
+            .create(CreateProjectRequest {
                 name: "Ora".to_string(),
                 main_workspace_path: temporary
                     .path()
@@ -1366,7 +1260,8 @@ mod tests {
             .expect("create project")
             .project;
         let updated_project = backend
-            .update_project(UpdateProjectRequest {
+            .projects()
+            .update(UpdateProjectRequest {
                 project_id: project.id.clone(),
                 name: "Ora Desktop".to_string(),
             })
@@ -1375,7 +1270,8 @@ mod tests {
         assert_eq!(updated_project.name, "Ora Desktop");
         assert_eq!(
             backend
-                .list_projects(ListProjectsRequest {})
+                .projects()
+                .list(ListProjectsRequest {})
                 .expect("list projects")
                 .projects,
             vec![updated_project.clone()]
@@ -1446,14 +1342,16 @@ mod tests {
             .delete(DeleteSkillRequest { skill_id: skill.id })
             .expect("delete skill");
         backend
-            .delete_project(DeleteProjectRequest {
+            .projects()
+            .delete(DeleteProjectRequest {
                 project_id: project.id.clone(),
             })
             .await
             .expect("delete project");
 
         let error = backend
-            .get_project(GetProjectRequest {
+            .projects()
+            .get(GetProjectRequest {
                 project_id: project.id,
             })
             .expect_err("deleted project should be hidden");
@@ -1546,60 +1444,6 @@ mod tests {
             fs::read_to_string(skills_root.join("review").join("SKILL.md")).expect("read manifest");
         assert!(manifest.contains("description: Reviews pull requests"));
         assert!(!home_directory.join("atoms").exists());
-    }
-
-    /// Verifies task deletion hides Ora records while deliberately preserving the Git worktree.
-    #[tokio::test]
-    async fn deletes_existing_task_after_worktree_root_changes() {
-        let temporary = TempDir::new().expect("create temporary backend directory");
-        let scaffold =
-            GitTestScaffold::new("backend-task-deletion").expect("create Git test scaffold");
-        scaffold
-            .write_file(scaffold.repo_path(), "README.md", "ora backend test\n")
-            .expect("write repository seed file");
-        scaffold
-            .stage_all_and_commit("initial")
-            .expect("create repository seed commit");
-        let repository_root = scaffold.repo_path().to_path_buf();
-        let original_worktree_root = temporary.path().join("worktrees");
-        let backend = Backend::open(backend_paths(temporary.path(), temporary.path()))
-            .expect("open shared backend");
-        let project = backend
-            .create_project(CreateProjectRequest {
-                name: "Ora".to_string(),
-                main_workspace_path: repository_root.to_string_lossy().into_owned(),
-            })
-            .expect("create project")
-            .project;
-        let task = backend
-            .create_task(CreateTaskRequest {
-                project_id: project.id,
-                title: "Move configuration".to_string(),
-                base_branch: Some("main".to_string()),
-            })
-            .expect("create task")
-            .task;
-        let original_worktree_path = original_worktree_root.join(&task.workspace_id);
-        assert!(original_worktree_path.is_dir());
-
-        let replacement_root = temporary.path().join("replacement-worktrees");
-        fs::create_dir_all(&replacement_root).expect("create replacement worktree root");
-        backend
-            .set_worktree_root(replacement_root)
-            .expect("replace worktree creation root");
-        backend
-            .delete_task(DeleteTaskRequest {
-                task_id: task.id.clone(),
-            })
-            .await
-            .expect("delete task without Git mutation");
-
-        assert!(original_worktree_path.exists());
-        assert!(
-            backend
-                .get_task(GetTaskRequest { task_id: task.id })
-                .is_err()
-        );
     }
 
     /// Verifies a local Tavily MCP `.orax` import, configuration editor snapshot, and `store.json`
