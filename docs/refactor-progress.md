@@ -135,3 +135,12 @@
 - 新协调代码放在约 210 行的 `plugin/operations.rs`。原大型 `PluginApi` 保持 crate-private，继续作为 runtime/Effect/configuration/gateway 共用的 host implementation；没有复制 lifecycle、锁、registry 或 generation 规则。
 - 安装冲突与 README 测试迁至该 module，并通过公开 `Plugins` interface 执行；Tavily/configuration 场景从 bootstrap 随职责移动。需要外部发布产物的一项测试仍 ignored，其他依赖 `.tmp` 产物或 `ORA_E2E_PLUGIN_DATA` 的场景保留原条件，不将缺少 fixture 时的早退当成完整集成证据。
 - 验证：Backend 210 项通过、1 项 ignored；标准 Rust lint、58 项 Tauri、4 项 E2E 与生成漂移检查通过。本次未配置 live plugin-home fixture。
+
+### 阶段 4e：workflow-run 生命周期（2026-09-06）
+
+- 12 个根 operation 迁到 `WorkflowRuns`，连同手工完成的 claim/prepare/revalidate/commit 和取消后的 session 清理一起迁移。Desktop 的 cancel/complete 也进入统一 async lifecycle，成功和失败均有 requestId 关联的完成记录。
+- `WorkflowRunSetup` 注入原来的 engine、runtime、run locks 和完成中集合；自动回调、手工操作与尚待迁移的 session prompt 仍共享同一实例，没有新建 supervisor 或锁。
+- boot sweep 和 baseline pruning 迁到 `workflow/run/recovery.rs`，启动调用顺序与 best-effort 语义不变。新的 operations 生产文件小于 500 行。
+- 6 项公开 interface 测试使用生产 engine/runtime 与真实 SQLite：并发完成恰好一次、取消/完成竞争、history 读取失败后释放 claim 重试、session 清理失败不撤销取消、重开保留 awaiting node 并清理 orphan baseline、重开失败化中断 turn 并恢复 stalled run。没有外部 agent 进程的场景不被当作活跃 actor 取消证据，后续 session 迁移仍须覆盖。
+- 测试共用已有真实数据库 fixture；内部 turn-policy 测试也改为 scoped TRACE 执行，避免共享日志 callsite 污染。
+- 验证：Backend 216 项通过、1 项 ignored；标准 Rust lint、58 项 Tauri、4 项 E2E 与生成漂移检查通过。

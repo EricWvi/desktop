@@ -45,6 +45,7 @@ pub use skill::SkillApi;
 pub use skill_reconciliation::SkillStorageReconciliationError;
 pub use task::TaskApi;
 pub use workflow::WorkflowApi;
+pub use workflow::run::WorkflowRuns;
 pub use workspace::WorkspaceApi;
 
 #[cfg(test)]

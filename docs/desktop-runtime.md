@@ -55,6 +55,12 @@ required after discovery or package mutations. The progress callback stays trans
 the surface host obtains its restricted gateway through `backend.plugins().gateway()`. Desktop
 never coordinates a plugin mutation and a separate runtime sync itself.
 
+Workflow-run commands capture `backend.workflow_runs()`. Start/restart/input mutations and
+manual completion share the callback's run gate; terminal transitions commit before best-effort
+session cleanup. Cancel and complete commands now use the same async request lifecycle wrapper
+as other operations, including successful completion records. Startup recovery remains Backend-
+composed but its implementation belongs to the workflow-run module.
+
 The frontend injects `createTauriTransport()` into `createContractsClient`. The transport maps contract operation names to Tauri commands and forwards the original request DTO unchanged. Backend failures use the direct `{ code, params, requestId }` payload without a public message or outer envelope. Local Tauri invocation failures never invent a request id.
 
 Task workspace lookup is part of that shared contract surface. `get_task_workspace` returns the authoritative task root with an optional branch. `watchAppEvents` uses the same channel framing, cancellation, and exactly-once completion lifecycle as other Desktop streams.
