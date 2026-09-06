@@ -3,7 +3,10 @@ import { mockWorkflowKeys } from "./mock-workflows";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderHookWithClient } from "../../test/hook-harness";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createWorkspaceMemory } from "../../test/memory/workspaces";
 import {
   createWorkflowMemory,
@@ -36,11 +39,11 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workflowHandlers(state),
     ...workflowRunHandlers(state),
-  });
+  };
 }
 
 beforeEach(() => {
@@ -455,7 +458,8 @@ describe("useRealWorkflowRun", () => {
         ],
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result } = renderHookWithClient(
       () => useRealWorkflowRun("run-1"),
       client,
@@ -470,7 +474,8 @@ describe("useRealWorkflowRun", () => {
 describe("persisted run hooks", () => {
   it("lists the persisted runs of a project", async () => {
     const state = seededState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result } = renderHookWithClient(
       () => useWorkflowRunsByProject("p1"),
       client,
@@ -493,7 +498,8 @@ describe("persisted run hooks", () => {
 
   it("renames a run through its workspace-owned name", async () => {
     const state = seededState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result } = renderHookWithClient(
       () => useRenameWorkflowRun(),
       client,
@@ -504,7 +510,8 @@ describe("persisted run hooks", () => {
 
   it("deletes a run and refreshes its project list", async () => {
     const state = seededState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result } = renderHookWithClient(
       () => useDeleteWorkflowRun(),
       client,
@@ -515,7 +522,8 @@ describe("persisted run hooks", () => {
 
   it("retires the selection when the deleted run is the one open in the workspace", async () => {
     const state = seededState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     useWorkspaceSelectionStore.getState().selectWorkflowRun("run-1", "p1");
     const { result } = renderHookWithClient(
       () => useDeleteWorkflowRun(),
@@ -533,7 +541,8 @@ describe("persisted run hooks", () => {
 
   it("keeps the selection when a different run is deleted", async () => {
     const state = seededState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     useWorkspaceSelectionStore.getState().selectWorkflowRun("run-other", "p1");
     const { result } = renderHookWithClient(
       () => useDeleteWorkflowRun(),

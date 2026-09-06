@@ -1,6 +1,9 @@
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import "../../i18n/i18n-instance";
 import {
@@ -18,10 +21,10 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...pluginHandlers(state),
-  });
+  };
 }
 
 afterEach(() => {
@@ -43,7 +46,8 @@ describe("useInstallPlugin", () => {
       logo: null,
       compatibility: "compatible",
     });
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result } = renderHookWithClient(
       () => useInstallPlugin("official/weather"),
       client,
@@ -64,16 +68,20 @@ describe("useInstallPlugin", () => {
   });
 
   it("keeps an install pending across unmount and rejects a duplicate start", async () => {
-    const client = createFixtureClient(createFixtureState());
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
     let resolveInstall:
       | ((response: Awaited<ReturnType<typeof client.plugin.install>>) => void)
       | undefined;
-    const install = vi.spyOn(client.plugin, "install").mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveInstall = resolve;
-        }),
-    );
+    const install = vi
+      .spyOn(clientHandlers, "installPlugin")
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveInstall = resolve;
+          }),
+      );
     const queryClient = createTestQueryClient();
     const first = renderHookWithClient(
       () => useInstallPlugin("official/weather"),

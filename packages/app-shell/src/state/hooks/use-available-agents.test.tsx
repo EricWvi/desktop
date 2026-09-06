@@ -1,7 +1,10 @@
 import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "@ora/contracts";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createAgentRuntimeMemory,
   agentRuntimeHandlers,
@@ -21,11 +24,11 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...agentRuntimeHandlers(state),
     ...pluginHandlers(state),
-  });
+  };
 }
 
 /**
@@ -74,7 +77,7 @@ async function offeredAgents(
       offered: useAvailableAgents(),
       statuses: useAgentRuntimeStatus(),
     }),
-    createFixtureClient(state),
+    createTestClient(createFixtureHandlers(state)),
   );
   await waitFor(() => expect(result.current.statuses.isSuccess).toBe(true));
   await waitFor(() => expect(result.current.offered.length).toBeGreaterThan(0));
@@ -92,7 +95,7 @@ describe("useAvailableAgents", () => {
         offered: useAvailableAgents(),
         statuses: useAgentRuntimeStatus(),
       }),
-      createFixtureClient(createFixtureState()),
+      createTestClient(createFixtureHandlers(createFixtureState())),
     );
     await waitFor(() => expect(result.current.statuses.isSuccess).toBe(true));
     await waitFor(() =>
@@ -113,7 +116,7 @@ describe("useAvailableAgents", () => {
         offered: useAvailableAgents(),
         statuses: useAgentRuntimeStatus(),
       }),
-      createFixtureClient(state),
+      createTestClient(createFixtureHandlers(state)),
     );
     await waitFor(() => expect(result.current.statuses.isSuccess).toBe(true));
     await waitFor(() =>
@@ -171,7 +174,7 @@ describe("useAvailableAgents", () => {
   it("offers the whole installed catalog while the detection status is still loading", async () => {
     const { result } = renderHookWithClient(
       () => useAvailableAgents(),
-      createFixtureClient(createFixtureState()),
+      createTestClient(createFixtureHandlers(createFixtureState())),
     );
 
     await waitFor(() => expect(result.current.length).toBeGreaterThan(0));

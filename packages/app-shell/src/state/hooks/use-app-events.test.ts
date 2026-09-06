@@ -1,7 +1,10 @@
 import { waitFor } from "@testing-library/react";
 import type { AppEvent } from "@ora/contracts";
 import { describe, expect, it, vi } from "vitest";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import "../../i18n/i18n-instance";
 import {
   createTestQueryClient,
@@ -14,8 +17,9 @@ import { useAppEvents } from "./use-app-events";
 
 describe("useAppEvents", () => {
   it("refetches after Ready and invalidates sessions for title events", async () => {
-    const client = createTestClient({});
-    client.appEvents.watch = async function* (
+    const clientHandlers: TestHandlers = {};
+    const client = createTestClient(clientHandlers);
+    clientHandlers.watchAppEvents = async function* (
       _request,
       options,
     ): AsyncGenerator<AppEvent> {
@@ -48,8 +52,9 @@ describe("useAppEvents", () => {
   });
 
   it("invalidates the plugin snapshot and agent detection for lifecycle events", async () => {
-    const client = createTestClient({});
-    client.appEvents.watch = async function* (
+    const clientHandlers: TestHandlers = {};
+    const client = createTestClient(clientHandlers);
+    clientHandlers.watchAppEvents = async function* (
       _request,
       options,
     ): AsyncGenerator<AppEvent> {

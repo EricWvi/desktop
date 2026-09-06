@@ -104,6 +104,8 @@ operations at all and start with `createTestClient({})`. The old `test/mock-clie
 composer has been deleted, including its combined state type. New feature fixtures change their
 local composition and data-owner adapters, not a global mock-client registry.
 
-Existing direct client-method overrides are being migrated to the handler seam as the remaining
-stage 5c work. New tests should supply their custom behavior as typed operation handlers instead
-of replacing generated client methods.
+Custom behavior now uses typed operation handlers, including scripted chat streams and failure
+injection. Do not replace generated client methods or cast partial objects to `ContractsClient`.
+Handler assertions include the transport's second `options` argument (possibly `undefined`).
+Pass-through spies may observe the public client without replacing its implementation; these
+observe UI call arguments, whereas handler spies observe the actual transport invocation.

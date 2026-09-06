@@ -24,7 +24,10 @@ import { appI18n } from "../../i18n/i18n-instance";
 import { ContractsClientContext } from "../../contracts-client-context";
 import { ChatStoreContext } from "../../chat-store-context";
 import { createChatStore } from "@ora/chat";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createWorkspaceMemory,
   workspaceHandlers,
@@ -71,13 +74,13 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workspaceHandlers(state),
     ...sessionHandlers(state),
     ...agentRuntimeHandlers(state),
     ...pluginHandlers(state),
-  });
+  };
 }
 
 void appI18n;
@@ -127,7 +130,9 @@ function createTestQueryClient() {
 
 /** Renders chat components wrapped in all providers required by the app shell. */
 function renderWithI18n(element: ReactNode) {
-  const client = createFixtureClient(createFixtureState());
+  const clientHandlers: TestHandlers =
+    createFixtureHandlers(createFixtureState());
+  const client = createTestClient(clientHandlers);
   const queryClient = createTestQueryClient();
   const chatStore = createChatStore(client.session);
   // A wrapper (rather than a one-off wrapped element) so `rerender` re-applies
@@ -1486,8 +1491,10 @@ describe("Composer", () => {
 
   it("mentions a workspace file with @ and inserts a path chip", async () => {
     const user = userEvent.setup();
-    const client = createFixtureClient(createFixtureState());
-    client.fileSystem.searchWorkspace = async ({ query }) => {
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.searchWorkspace = async ({ query }) => {
       const paths = ["src/app.ts", "src/lib/util.ts", "README.md"].filter(
         (path) => path.toLowerCase().includes(query.toLowerCase()),
       );
@@ -1496,7 +1503,7 @@ describe("Composer", () => {
         truncated: false,
       };
     };
-    client.fileSystem.listWorkspaceDirectory = async () => ({
+    clientHandlers.listWorkspaceDirectory = async () => ({
       path: "",
       entries: [
         {
@@ -1569,8 +1576,10 @@ describe("Composer", () => {
 
   it("mentions a project file with @ when no task is selected yet", async () => {
     const user = userEvent.setup();
-    const client = createFixtureClient(createFixtureState());
-    client.fileSystem.listProjectDirectory = async () => ({
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.listProjectDirectory = async () => ({
       path: "",
       entries: [
         {
@@ -1581,7 +1590,7 @@ describe("Composer", () => {
         },
       ],
     });
-    client.fileSystem.searchProject = async ({ query }) => ({
+    clientHandlers.searchProject = async ({ query }) => ({
       results: ["src/draft.ts"]
         .filter((path) => path.toLowerCase().includes(query.toLowerCase()))
         .map((path) => ({ kind: "file" as const, path })),
@@ -1621,8 +1630,10 @@ describe("Composer", () => {
 
   it("mentions a workspace folder with @ and inserts a path chip", async () => {
     const user = userEvent.setup();
-    const client = createFixtureClient(createFixtureState());
-    client.fileSystem.listWorkspaceDirectory = async () => ({
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.listWorkspaceDirectory = async () => ({
       path: "",
       entries: [
         {
@@ -1639,7 +1650,7 @@ describe("Composer", () => {
         },
       ],
     });
-    client.fileSystem.searchWorkspace = async ({ query }) => ({
+    clientHandlers.searchWorkspace = async ({ query }) => ({
       results: ["src/app.ts"]
         .filter((path) => path.toLowerCase().includes(query.toLowerCase()))
         .map((path) => ({ kind: "file" as const, path })),
@@ -1678,8 +1689,10 @@ describe("Composer", () => {
 
   it("keeps root file hits during debounce but disables selection until search settles", async () => {
     const user = userEvent.setup();
-    const client = createFixtureClient(createFixtureState());
-    client.fileSystem.listWorkspaceDirectory = async () => ({
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.listWorkspaceDirectory = async () => ({
       path: "",
       entries: [
         {
@@ -1694,7 +1707,7 @@ describe("Composer", () => {
       results: Array<{ kind: "file"; path: string }>;
       truncated: boolean;
     }) => void = () => {};
-    client.fileSystem.searchWorkspace = () =>
+    clientHandlers.searchWorkspace = () =>
       new Promise((resolve) => {
         releaseSearch = resolve;
       });
@@ -1757,8 +1770,10 @@ describe("Composer", () => {
 
   it("shows an error when workspace file search fails", async () => {
     const user = userEvent.setup();
-    const client = createFixtureClient(createFixtureState());
-    client.fileSystem.searchWorkspace = async () => {
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.searchWorkspace = async () => {
       throw new Error("search failed");
     };
 
@@ -1793,8 +1808,10 @@ describe("Composer", () => {
 
   it("keeps typing after an @ file chip inserted mid-prompt", async () => {
     const user = userEvent.setup();
-    const client = createFixtureClient(createFixtureState());
-    client.fileSystem.searchWorkspace = async () => ({
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.searchWorkspace = async () => ({
       results: [{ kind: "file", path: "src/mid.ts" }],
       truncated: false,
     });

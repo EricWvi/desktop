@@ -2,7 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { createChatStore } from "@ora/chat";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import { createAgentMemory, agentHandlers } from "../../test/memory/agents";
 import { createSkillMemory, skillHandlers } from "../../test/memory/skills";
@@ -27,12 +30,12 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...pluginHandlers(state),
     ...agentHandlers(state),
     ...skillHandlers(state),
-  });
+  };
 }
 
 const AGENT_DATA: WorkflowNodeData = {
@@ -84,7 +87,8 @@ function renderInspector() {
       availability: "available",
     },
   ];
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const queryClient = createTestQueryClient();
   const Wrapper = createHookWrapper(
     client,

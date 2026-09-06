@@ -9,7 +9,10 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createSettingsMemory,
   settingsHandlers,
@@ -24,10 +27,10 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...settingsHandlers(state),
-  });
+  };
 }
 
 describe("DeveloperModeSettings", () => {
@@ -36,8 +39,10 @@ describe("DeveloperModeSettings", () => {
   });
 
   it("keeps the switch disabled while the authoritative value is loading", () => {
-    const client = createFixtureClient(createFixtureState());
-    client.developerMode.get = vi.fn(
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.getDeveloperMode = vi.fn(
       () => new Promise<DeveloperModeResponse>(() => undefined),
     );
 
@@ -56,7 +61,8 @@ describe("DeveloperModeSettings", () => {
     async () => {
       const user = userEvent.setup();
       const state = createFixtureState();
-      const client = createFixtureClient(state);
+      const clientHandlers: TestHandlers = createFixtureHandlers(state);
+      const client = createTestClient(clientHandlers);
       const setDeveloperMode = vi.spyOn(client.developerMode, "set");
       renderSettings(client);
 
@@ -76,9 +82,11 @@ describe("DeveloperModeSettings", () => {
 
   it("retains the last authoritative value and prevents duplicate pending submissions", async () => {
     const user = userEvent.setup();
-    const client = createFixtureClient(createFixtureState());
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
     let rejectUpdate: ((reason: Error) => void) | undefined;
-    client.developerMode.set = vi.fn(
+    clientHandlers.setDeveloperMode = vi.fn(
       () =>
         new Promise<DeveloperModeResponse>((_resolve, reject) => {
           rejectUpdate = reject;
@@ -95,7 +103,7 @@ describe("DeveloperModeSettings", () => {
       expect(toggle).toHaveAttribute("aria-disabled", "true"),
     );
     await user.click(toggle);
-    expect(client.developerMode.set).toHaveBeenCalledTimes(1);
+    expect(clientHandlers.setDeveloperMode).toHaveBeenCalledTimes(1);
 
     rejectUpdate?.(new Error("persistence failed"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -106,8 +114,10 @@ describe("DeveloperModeSettings", () => {
 
   it("keeps developer mode unavailable after a read failure and supports retry", async () => {
     const user = userEvent.setup();
-    const client = createFixtureClient(createFixtureState());
-    client.developerMode.get = vi
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.getDeveloperMode = vi
       .fn()
       .mockRejectedValueOnce(new Error("read failed"))
       .mockResolvedValueOnce({ enabled: false });
@@ -120,7 +130,7 @@ describe("DeveloperModeSettings", () => {
     expect(toggle).toHaveAttribute("aria-disabled", "true");
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(toggle).toBeEnabled());
-    expect(client.developerMode.get).toHaveBeenCalledTimes(2);
+    expect(clientHandlers.getDeveloperMode).toHaveBeenCalledTimes(2);
   });
 });
 

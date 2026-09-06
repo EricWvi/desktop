@@ -12,7 +12,10 @@ import type { ContractsClient } from "@ora/contracts";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { appI18n } from "../../i18n/i18n-instance";
 import { ContractsClientContext } from "../../contracts-client-context";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import { PluginSourcesManager } from "./plugin-sources-manager";
 
@@ -24,10 +27,10 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...pluginHandlers(state),
-  });
+  };
 }
 
 // Keep this test worker responsible for initializing the instance used by useTranslation.
@@ -58,7 +61,8 @@ it("renders configured marketplace sources", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
 
   renderManager(client);
 
@@ -69,7 +73,8 @@ it("renders configured marketplace sources", async () => {
 
 it("adds a marketplace source through the backend", async () => {
   const state = createFixtureState();
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const user = userEvent.setup();
 
   renderManager(client);
@@ -102,7 +107,8 @@ it("removes a marketplace source through the backend", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const deleteSource = vi.spyOn(client.plugin, "deleteSource");
 
   renderManager(client);
@@ -130,7 +136,8 @@ it("edits a marketplace source URL and branch", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const user = userEvent.setup();
 
   renderManager(client);
@@ -167,7 +174,8 @@ it("configures S3 SigV4 retrieval without returning credentials", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const updateSource = vi.spyOn(client.plugin, "updateSource");
   const user = userEvent.setup();
 
@@ -231,7 +239,8 @@ it("disables a marketplace source without removing it", async () => {
     enabled: true,
     artifactRetrieval: { type: "direct_https" },
   });
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const user = userEvent.setup();
 
   renderManager(client);

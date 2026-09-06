@@ -1,6 +1,9 @@
 import { act } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createWorkspaceMemory,
   workspaceHandlers,
@@ -36,11 +39,11 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workspaceHandlers(state),
     ...sessionHandlers(state),
-  });
+  };
 }
 
 beforeEach(() => {
@@ -62,7 +65,8 @@ describe("useRenameSession", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const { result } = renderHookWithClient(
@@ -105,7 +109,8 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const { result } = renderHookWithClient(
@@ -134,7 +139,8 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     useComposerInputStore.getState().setInput("s1", {
@@ -172,7 +178,8 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
     const draftId = useDraftSessionsStore
@@ -220,7 +227,8 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(workspaceKeys.tasks, state.tasks);
     queryClient.setQueryData(sessionKeys.sessions, state.sessions);
@@ -272,7 +280,8 @@ describe("delete mutations clear parked composer state", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(workspaceKeys.projects, state.projects);
     queryClient.setQueryData(workspaceKeys.tasks, state.tasks);
@@ -308,7 +317,8 @@ describe("delete mutations clear parked composer state", () => {
 describe("useCreateTask", () => {
   it("creates a worktree task and selects its workspace draft", async () => {
     const state = createFixtureState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result } = renderHookWithClient(
       () => useCreateTask(),
       client,
@@ -334,7 +344,8 @@ describe("useCreateTask", () => {
 
   it("invalidates project branches after creating a worktree", async () => {
     const state = createFixtureState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const queryClient = createTestQueryClient();
     const projectBranchesKey = workspaceKeys.projectBranches("p1");
     queryClient.setQueryData(projectBranchesKey, []);

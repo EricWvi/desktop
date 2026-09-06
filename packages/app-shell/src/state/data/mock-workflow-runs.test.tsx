@@ -4,7 +4,10 @@ import { createChatStore } from "@ora/chat";
 import { createMockWorkflow } from "@ora/workflow-mock";
 import { normalizeWorkflowDefinition } from "@ora/workflow-runtime";
 import { createMemoryWorkflowRuntime } from "@ora/workflow-runtime/memory";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import "../../i18n/i18n-instance";
 import {
   createTestQueryClient,
@@ -22,7 +25,8 @@ describe("useGraphWorkflowRunLive", () => {
       definitionId: definition.id,
     });
     const onRunFinished = vi.fn();
-    const client = createTestClient({});
+    const clientHandlers: TestHandlers = {};
+    const client = createTestClient(clientHandlers);
     const queryClient = createTestQueryClient();
     const chatStore = createChatStore(client.session);
     const { result, unmount } = renderHookWithClient(

@@ -10,7 +10,10 @@ import { ContractsClientContext } from "../../contracts-client-context";
 import { PlatformProvider, type PlatformAdapter } from "../../platform";
 import { createStubPlatform } from "../../test/stub-platform";
 import { usePluginOperationStore } from "../../state/stores/plugin-operation-store";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import { PluginOperationEventBridge } from "./plugin-operation-event-bridge";
 import { PluginsSettings } from "./plugins-settings";
@@ -23,10 +26,10 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...pluginHandlers(state),
-  });
+  };
 }
 
 // Keep this test worker responsible for initializing the instance used by useTranslation.
@@ -91,7 +94,8 @@ function clientWithWeather(logo: string | null = null) {
     logo,
     compatibility: "compatible",
   });
-  return { state, client: createFixtureClient(state) };
+  const handlers = createFixtureHandlers(state);
+  return { state, handlers, client: createTestClient(handlers) };
 }
 
 /** A mock installed entry so import tests can assert the committed package shape. */
@@ -150,7 +154,7 @@ function clientWithPluginConfiguration(unavailable = false) {
       ? { state: "unavailable", errorCode: "configuration_load_failed" }
       : { state: "available", completeness: "incomplete" },
   });
-  return { state, client: createFixtureClient(state) };
+  return { state, client: createTestClient(createFixtureHandlers(state)) };
 }
 
 /** The browse grid is driven entirely by the backend registry index. */
@@ -205,8 +209,8 @@ it("installs a marketplace plugin through the backend", async () => {
 /** Marketplace cards expose native byte progress while a package download is pending. */
 it("shows marketplace plugin download progress", async () => {
   const user = userEvent.setup();
-  const { client } = clientWithWeather();
-  vi.spyOn(client.plugin, "install").mockImplementation(
+  const { client, handlers } = clientWithWeather();
+  vi.spyOn(handlers, "installPlugin").mockImplementation(
     () => new Promise<never>(() => undefined),
   );
   let reportProgress:
@@ -264,8 +268,8 @@ it("syncs the marketplace through the backend", async () => {
 /** A failed marketplace sync surfaces an error toast instead of failing silently. */
 it("reports a failed marketplace sync", async () => {
   const user = userEvent.setup();
-  const { client } = clientWithWeather();
-  vi.spyOn(client.plugin, "syncAvailable").mockRejectedValue(
+  const { client, handlers } = clientWithWeather();
+  vi.spyOn(handlers, "syncAvailablePlugins").mockRejectedValue(
     new Error("marketplace unreachable"),
   );
   const errorToast = vi
@@ -404,7 +408,7 @@ it("hides start and stop for stopped, starting, failed, and running plugins", as
     },
     { ...weatherInstalled(), id: "official/running", runtime: "running" },
   ];
-  renderSettings(createFixtureClient(state));
+  renderSettings(createTestClient(createFixtureHandlers(state)));
 
   await openManagePlugins(user);
   await screen.findByText("official/weather");
@@ -485,7 +489,8 @@ it("configures declared plugin settings and keeps the editor open after save", a
     ],
     summary: { state: "available", completeness: "incomplete" },
   });
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const save = vi.spyOn(client.plugin, "saveConfiguration");
   renderSettings(client);
 
@@ -644,7 +649,7 @@ it("disables install for a host-incompatible marketplace plugin", async () => {
     reason:
       "this release supports x86_64-pc-windows-msvc but your host is aarch64-apple-darwin",
   });
-  renderSettings(createFixtureClient(state));
+  renderSettings(createTestClient(createFixtureHandlers(state)));
 
   expect(await screen.findByText("RTK")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /安装|Install/ })).toBeDisabled();
@@ -678,7 +683,7 @@ it("shows hook descriptor fields and hides configure when settings are not decla
     configuration: { state: "not_declared" },
     runtime: "stopped",
   });
-  renderSettings(createFixtureClient(state));
+  renderSettings(createTestClient(createFixtureHandlers(state)));
 
   await openManagePlugins(user);
   expect(await screen.findByText("official/rtk-ai.rtk")).toBeInTheDocument();

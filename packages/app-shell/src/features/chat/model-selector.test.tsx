@@ -10,7 +10,10 @@ import {
 } from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
 import { createChatStore } from "@ora/chat";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createWorkspaceMemory,
   workspaceHandlers,
@@ -51,13 +54,13 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workspaceHandlers(state),
     ...sessionHandlers(state),
     ...agentRuntimeHandlers(state),
     ...pluginHandlers(state),
-  });
+  };
 }
 
 beforeEach(() => {
@@ -103,7 +106,8 @@ function renderModelSelector(seed: (state: FixtureState) => void = () => {}) {
     lifecycle: "active" as const,
   }));
   seed(state);
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const discover = vi.spyOn(client.agentRuntime, "listModels");
   const chatStore = createChatStore(client.session);
   const queryClient = createTestQueryClient();

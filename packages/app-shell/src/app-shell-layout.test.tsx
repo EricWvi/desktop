@@ -10,7 +10,10 @@ import {
 } from "@ora/workflow-runtime";
 import { AppShell } from "./app-shell";
 import { appI18n } from "./i18n/i18n-instance";
-import { createTestClient } from "./test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "./test/contracts-transport";
 import {
   createWorkspaceMemory,
   workspaceHandlers,
@@ -50,8 +53,8 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workspaceHandlers(state),
     ...sessionHandlers(state),
     ...agentRuntimeHandlers(state),
@@ -61,7 +64,7 @@ function createFixtureClient(state: FixtureState) {
     ...settingsHandlers(state),
     ...workflowHandlers(state),
     ...appEventHandlers(),
-  });
+  };
 }
 
 /** Puts one named draft in the mock library so the editor can hydrate a title field. */
@@ -131,7 +134,8 @@ describe("AppShell sidebar collapse", () => {
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Demo" }];
     seedNamedDraft(state, "代码审查工作流");
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
 
     render(
       <AppShell

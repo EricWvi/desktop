@@ -6,7 +6,10 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createAgentRuntimeMemory,
   agentRuntimeHandlers,
@@ -26,11 +29,11 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...agentRuntimeHandlers(state),
     ...pluginHandlers(state),
-  });
+  };
 }
 
 /**
@@ -96,18 +99,16 @@ function SettleProbe() {
 function renderBanner(plugins: InstalledPlugin[], bound: Session) {
   const state = createFixtureState();
   state.installedPlugins = plugins;
-  const backend = createFixtureClient(state);
-  const client: ContractsClient = {
-    ...backend,
-    plugin: {
-      ...backend.plugin,
-      listInstalled: async (request) => ({
-        plugins: (await backend.plugin.listInstalled(request)).plugins.map(
-          (plugin) => ({ ...plugin }),
-        ),
-      }),
-    },
-  };
+  const backendHandlers: TestHandlers = createFixtureHandlers(state);
+  const backend = createTestClient(backendHandlers);
+  const client: ContractsClient = createTestClient({
+    ...backendHandlers,
+    listInstalledPlugins: async (request) => ({
+      plugins: (await backend.plugin.listInstalled(request)).plugins.map(
+        (plugin) => ({ ...plugin }),
+      ),
+    }),
+  });
   const Wrapper = createHookWrapper(
     client,
     createTestQueryClient(),

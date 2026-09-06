@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { ContractsClientContext } from "../../contracts-client-context";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import "../../i18n/i18n-instance";
 import { diffKeys } from "../../state/data/diff";
 import { TaskDiffView } from "./task-diff-view";
@@ -53,8 +56,9 @@ function renderDiff(
     onFileNotFound?: () => void;
   },
 ) {
-  const client = createTestClient({});
-  client.workspace.getDiff = async () => ({
+  const clientHandlers: TestHandlers = {};
+  const client = createTestClient(clientHandlers);
+  clientHandlers.getWorkspaceDiff = async () => ({
     baseCommitId: "base",
     headCommitId: "head",
     patch,

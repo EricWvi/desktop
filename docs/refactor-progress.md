@@ -11,7 +11,7 @@
 | 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                |
 | 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
 | 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除          |
-| 5：前端归属     | 进行中 | 翻译与共享查询归属已迁移；测试 transport 待迁移   |
+| 5：前端归属     | 已完成 | 翻译、共享查询与 typed 测试 transport 均已迁移    |
 | 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`              |
 
 ## 人工登记点
@@ -200,3 +200,10 @@
 - 删除 `test/mock-client.ts` 及其全部调用/导入。删除的是已迁移的临时组合器，无持久化数据变化；历史提交仍可恢复。
 - 渲染测试直接引入本文件需要的 i18n 实例模块，避免依赖 worker 内其他文件的先后顺序。app-shell lint 和 143 个文件、1285 项 clean-stderr 测试通过。
 - 阶段 5c 的剩余工作是把旧的 client 直接替换改到 typed handler seam，随后运行全量验收；不将“删除了中央文件”单独当作阶段完成。
+
+### 阶段 5c-4：测试注入收口（2026-09-06）
+
+- 自定义响应、失败注入、scripted chat stream 和 client 副本全部改为 typed operation handler；不再直接替换生成方法，也不再把不完整对象强转为 `ContractsClient`。只观察、不替换实现的 public-client spy 保留，用于验证 UI 调用。
+- 迁移包括 84 处直接 override、22 处嵌套 client 副本及 callback/spy 注入。Surface 下载测试也移除旧的强转 stub，并补齐真实契约要求的时间和进度字段。
+- 生产 client 继续构造请求并传递 options；handler mock 的断言包含第二个 options 参数，不为了兼容旧断言改变 transport 行为。
+- `task test` 全量通过：app-shell 143 个文件、1285 项 clean-stderr 测试，Rust workspace lint/测试、58 项 Tauri 和 7 项 E2E。原 Backend 外部发布产物测试仍有 1 项 ignored。阶段 5 完成，阶段 6 的门禁和增删演练仍待实施。

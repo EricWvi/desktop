@@ -1,7 +1,10 @@
 import { act, waitFor } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createAgentRuntimeMemory,
   agentRuntimeHandlers,
@@ -24,11 +27,11 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...agentRuntimeHandlers(state),
     ...pluginHandlers(state),
-  });
+  };
 }
 
 const AGENT_REF = "ora-space.opencode";
@@ -62,22 +65,20 @@ describe("usePluginMutations", () => {
         runtime: "running",
       },
     ];
-    const baseClient = createFixtureClient(state);
-    const client = {
-      ...baseClient,
-      plugin: {
-        ...baseClient.plugin,
-        uninstall: async (
-          ...args: Parameters<typeof baseClient.plugin.uninstall>
-        ) => {
-          const response = await baseClient.plugin.uninstall(...args);
-          state.agentRuntimeStatuses = state.agentRuntimeStatuses.filter(
-            (status) => status.agentRef !== AGENT_REF,
-          );
-          return response;
-        },
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
+    const client = createTestClient({
+      ...baseClientHandlers,
+      uninstallPlugin: async (
+        ...args: Parameters<typeof baseClient.plugin.uninstall>
+      ) => {
+        const response = await baseClient.plugin.uninstall(...args);
+        state.agentRuntimeStatuses = state.agentRuntimeStatuses.filter(
+          (status) => status.agentRef !== AGENT_REF,
+        );
+        return response;
       },
-    };
+    });
     const queryClient = createTestQueryClient();
     const queryKey = agentRuntimeKeys.agentModels(
       AGENT_REF,
@@ -122,18 +123,22 @@ describe("usePluginMutations", () => {
   });
 
   it("keeps uninstall pending across unmount and rejects a duplicate operation", async () => {
-    const client = createFixtureClient(createFixtureState());
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
     let resolveUninstall:
       | ((
           response: Awaited<ReturnType<typeof client.plugin.uninstall>>,
         ) => void)
       | undefined;
-    const uninstall = vi.spyOn(client.plugin, "uninstall").mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveUninstall = resolve;
-        }),
-    );
+    const uninstall = vi
+      .spyOn(clientHandlers, "uninstallPlugin")
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveUninstall = resolve;
+          }),
+      );
     const stop = vi.spyOn(client.plugin, "stop");
     const queryClient = createTestQueryClient();
     const first = renderHookWithClient(

@@ -1,6 +1,9 @@
 import { act, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import "../../i18n/i18n-instance";
 import { renderHookWithClient } from "../../test/hook-harness";
@@ -14,10 +17,10 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...pluginHandlers(state),
-  });
+  };
 }
 
 describe("useUpdatePlugin", () => {
@@ -51,7 +54,8 @@ describe("useUpdatePlugin", () => {
       configuration: { state: "not_declared" },
       runtime: "stopped",
     });
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result } = renderHookWithClient(
       () => useUpdatePlugin("official/weather"),
       client,

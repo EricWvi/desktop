@@ -28,7 +28,10 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createWorkspaceMemory,
   workspaceHandlers,
@@ -71,15 +74,15 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workspaceHandlers(state),
     ...agentRuntimeHandlers(state),
     ...pluginHandlers(state),
     ...agentHandlers(state),
     ...skillHandlers(state),
     ...workflowHandlers(state),
-  });
+  };
 }
 
 /** Seeds the mock client with the demo workflows and their published versions. */
@@ -158,7 +161,7 @@ function seedDemoWorkflows(state: FixtureState): void {
 function renderEditor(
   ui?: ReactElement,
   state: FixtureState = createFixtureState(),
-  patchClient?: (client: ReturnType<typeof createFixtureClient>) => void,
+  configureHandlers?: (handlers: TestHandlers) => void,
   seedLibrary = true,
 ): RenderResult {
   if (seedLibrary) {
@@ -274,8 +277,9 @@ function renderEditor(
       ],
     },
   ];
-  const client = createFixtureClient(state);
-  patchClient?.(client);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
+  configureHandlers?.(clientHandlers);
   const Wrapper = createHookWrapper(
     client,
     createTestQueryClient(),
@@ -1353,8 +1357,8 @@ describe("WorkflowEditor", () => {
 
   it("keeps the create dialog open when creating a workflow fails", async () => {
     const user = userEvent.setup();
-    renderEditor(undefined, createFixtureState(), (client) => {
-      client.workflow.create = async () => {
+    renderEditor(undefined, createFixtureState(), (handlers) => {
+      handlers.createWorkflow = async () => {
         throw new Error("disk full");
       };
     });
@@ -1588,8 +1592,8 @@ describe("WorkflowEditor", () => {
   it("keeps the editor open and reports when leaving cannot flush the draft", async () => {
     const user = userEvent.setup();
     useUiStore.setState({ sidebarCollapsed: true, workflowEditorOpen: true });
-    renderEditor(undefined, createFixtureState(), (client) => {
-      client.workflow.updateDraft = async () => {
+    renderEditor(undefined, createFixtureState(), (handlers) => {
+      handlers.updateDraft = async () => {
         throw new Error("disk full");
       };
     });
@@ -1611,10 +1615,10 @@ describe("WorkflowEditor", () => {
 
   it("shows a retryable error when the workflow library fails to load", async () => {
     const user = userEvent.setup();
-    renderEditor(undefined, createFixtureState(), (client) => {
-      const list = client.workflow.list;
+    renderEditor(undefined, createFixtureState(), (handlers) => {
+      const list = handlers.listWorkflows!;
       let failed = false;
-      client.workflow.list = async (request) => {
+      handlers.listWorkflows = async (request) => {
         if (!failed) {
           failed = true;
           throw new Error("unavailable");
@@ -1633,8 +1637,8 @@ describe("WorkflowEditor", () => {
   });
 
   it("shows a retryable error when the selected draft fails to load", async () => {
-    renderEditor(undefined, createFixtureState(), (client) => {
-      client.workflow.get = async () => {
+    renderEditor(undefined, createFixtureState(), (handlers) => {
+      handlers.getWorkflow = async () => {
         throw new Error("unavailable");
       };
     });
@@ -1656,7 +1660,8 @@ describe("useCreateWorkflow", () => {
   it("prepends the created workflow onto the library cache synchronously", async () => {
     const state = createFixtureState();
     seedDemoWorkflows(state);
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result, queryClient } = renderHookWithClient(
       () => useCreateWorkflow(),
       client,
@@ -1687,7 +1692,8 @@ describe("useDeleteWorkflow", () => {
   it("removes the deleted workflow from the library cache synchronously", async () => {
     const state = createFixtureState();
     seedDemoWorkflows(state);
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const { result, queryClient } = renderHookWithClient(
       () => useDeleteWorkflow(),
       client,

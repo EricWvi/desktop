@@ -11,7 +11,10 @@ import {
   createTestQueryClient,
 } from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createWorkspaceMemory,
   workspaceHandlers,
@@ -64,8 +67,8 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workspaceHandlers(state),
     ...sessionHandlers(state),
     ...agentRuntimeHandlers(state),
@@ -74,7 +77,7 @@ function createFixtureClient(state: FixtureState) {
     ...skillHandlers(state),
     ...workflowHandlers(state),
     ...workflowRunHandlers(state),
-  });
+  };
 }
 
 const USER = { name: "Eric", email: "eric@example.com" };
@@ -106,7 +109,8 @@ function renderWorkspace() {
   const state = createFixtureState();
   state.projects = [PROJECT];
   state.tasks = [TASK1, TASK2];
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const chatStore = createChatStore(client.session);
   const Wrapper = createHookWrapper(client, createTestQueryClient(), chatStore);
   render(

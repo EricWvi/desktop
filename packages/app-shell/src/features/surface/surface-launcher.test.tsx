@@ -8,7 +8,10 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import "../../i18n/i18n-instance";
 import { createSurfaceTestPlatform } from "../../test/surface-test-platform";
@@ -23,10 +26,10 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...pluginHandlers(state),
-  });
+  };
 }
 
 function webviewPlugin(
@@ -56,7 +59,8 @@ function webviewPlugin(
 function renderLauncher(plugins: InstalledPlugin[], embedded: boolean) {
   const state = createFixtureState();
   state.installedPlugins = plugins;
-  const client = createFixtureClient(state);
+  const clientHandlers: TestHandlers = createFixtureHandlers(state);
+  const client = createTestClient(clientHandlers);
   const Wrapper = createHookWrapper(
     client,
     createTestQueryClient(),

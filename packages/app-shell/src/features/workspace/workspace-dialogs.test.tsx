@@ -15,7 +15,10 @@ import {
   type ContractsClient,
   type Session,
 } from "@ora/contracts";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createWorkspaceMemory,
   workspaceHandlers,
@@ -47,12 +50,12 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workspaceHandlers(state),
     ...sessionHandlers(state),
     ...workflowRunHandlers(state),
-  });
+  };
 }
 
 beforeEach(() => {
@@ -69,7 +72,8 @@ describe("WorkspaceDialogs project creation", () => {
   ])("derives the project name from %s", async (rootPath, expectedName) => {
     const user = userEvent.setup();
     const state = createFixtureState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -129,30 +133,25 @@ describe("WorkspaceDialogs task creation", () => {
   it("creates only worktree tasks and does not offer a workspace-mode selector", async () => {
     const user = userEvent.setup();
     const state = createFixtureState();
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     let submittedBaseBranch: string | undefined;
     let branchesLoaded = false;
-    const client: ContractsClient = {
-      ...baseClient,
-      project: {
-        ...baseClient.project,
-        listBranches: async (request, options) => {
-          const response = await baseClient.project.listBranches(
-            request,
-            options,
-          );
-          branchesLoaded = true;
-          return response;
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      listProjectBranches: async (request, options) => {
+        const response = await baseClient.project.listBranches(
+          request,
+          options,
+        );
+        branchesLoaded = true;
+        return response;
       },
-      task: {
-        ...baseClient.task,
-        create: async (request, options) => {
-          submittedBaseBranch = request.baseBranch;
-          return baseClient.task.create(request, options);
-        },
+      createTask: async (request, options) => {
+        submittedBaseBranch = request.baseBranch;
+        return baseClient.task.create(request, options);
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -205,21 +204,19 @@ describe("WorkspaceDialogs task creation", () => {
   it("shows a spinner on the create button while worktree provisioning is in flight", async () => {
     const user = userEvent.setup();
     const state = createFixtureState();
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     let releaseCreate: () => void = () => {};
     const createGate = new Promise<void>((resolve) => {
       releaseCreate = resolve;
     });
-    const client: ContractsClient = {
-      ...baseClient,
-      task: {
-        ...baseClient.task,
-        create: async (request, options) => {
-          await createGate;
-          return baseClient.task.create(request, options);
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      createTask: async (request, options) => {
+        await createGate;
+        return baseClient.task.create(request, options);
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -276,23 +273,20 @@ describe("WorkspaceDialogs task creation", () => {
   it("explains that worktree mode requires a Git repository", async () => {
     const user = userEvent.setup();
     const state = createFixtureState();
-    const baseClient = createFixtureClient(state);
-    const client: ContractsClient = {
-      ...baseClient,
-      task: {
-        ...baseClient.task,
-        create: async () => {
-          throw new RemoteContractError(
-            {
-              code: "worktree_requires_git_repository",
-              params: {},
-              requestId: "550e8400-e29b-41d4-a716-446655440000",
-            },
-            null,
-          );
-        },
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      createTask: async () => {
+        throw new RemoteContractError(
+          {
+            code: "worktree_requires_git_repository",
+            params: {},
+            requestId: "550e8400-e29b-41d4-a716-446655440000",
+          },
+          null,
+        );
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -333,18 +327,16 @@ describe("WorkspaceDialogs workflow run creation", () => {
   it("creates the run in the Workspace selected by the sidebar row", async () => {
     const user = userEvent.setup();
     const state = createFixtureState();
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     let submittedWorkspaceId: string | undefined;
-    const client: ContractsClient = {
-      ...baseClient,
-      workflowRun: {
-        ...baseClient.workflowRun,
-        create: async (request, options) => {
-          submittedWorkspaceId = request.workspaceId;
-          return baseClient.workflowRun.create(request, options);
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      createWorkflowRun: async (request, options) => {
+        submittedWorkspaceId = request.workspaceId;
+        return baseClient.workflowRun.create(request, options);
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -407,24 +399,19 @@ describe("WorkspaceDialogs project deletion", () => {
       },
     ];
     const calls: string[] = [];
-    const baseClient = createFixtureClient(state);
-    const client: ContractsClient = {
-      ...baseClient,
-      project: {
-        ...baseClient.project,
-        delete: async (request, options) => {
-          calls.push(`project:${request.projectId}`);
-          return baseClient.project.delete(request, options);
-        },
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      deleteProject: async (request, options) => {
+        calls.push(`project:${request.projectId}`);
+        return baseClient.project.delete(request, options);
       },
-      session: {
-        ...baseClient.session,
-        delete: async (request, options) => {
-          calls.push(`session:${request.sessionId}`);
-          return baseClient.session.delete(request, options);
-        },
+      deleteSession: async (request, options) => {
+        calls.push(`session:${request.sessionId}`);
+        return baseClient.session.delete(request, options);
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -483,24 +470,19 @@ describe("WorkspaceDialogs task deletion", () => {
       historyState: { type: "writable" },
     }));
     const calls: string[] = [];
-    const baseClient = createFixtureClient(state);
-    const client: ContractsClient = {
-      ...baseClient,
-      task: {
-        ...baseClient.task,
-        delete: async (request, options) => {
-          calls.push(`task:${request.taskId}`);
-          return baseClient.task.delete(request, options);
-        },
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      deleteTask: async (request, options) => {
+        calls.push(`task:${request.taskId}`);
+        return baseClient.task.delete(request, options);
       },
-      session: {
-        ...baseClient.session,
-        delete: async (request, options) => {
-          calls.push(`session:${request.sessionId}`);
-          return baseClient.session.delete(request, options);
-        },
+      deleteSession: async (request, options) => {
+        calls.push(`session:${request.sessionId}`);
+        return baseClient.session.delete(request, options);
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -542,23 +524,20 @@ describe("WorkspaceDialogs task deletion", () => {
     const expectedError = /无法删除，请先停止正在运行的会话|Unable to delete/;
     const user = userEvent.setup();
     const state = createFixtureState();
-    const baseClient = createFixtureClient(state);
-    const client: ContractsClient = {
-      ...baseClient,
-      task: {
-        ...baseClient.task,
-        delete: async () => {
-          throw new RemoteContractError(
-            {
-              code: "resource_in_use",
-              params: {},
-              requestId: "550e8400-e29b-41d4-a716-446655440000",
-            },
-            null,
-          );
-        },
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      deleteTask: async () => {
+        throw new RemoteContractError(
+          {
+            code: "resource_in_use",
+            params: {},
+            requestId: "550e8400-e29b-41d4-a716-446655440000",
+          },
+          null,
+        );
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),

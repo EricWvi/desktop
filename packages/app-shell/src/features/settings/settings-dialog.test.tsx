@@ -11,7 +11,10 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import {
   createSettingsMemory,
@@ -28,11 +31,11 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...pluginHandlers(state),
     ...settingsHandlers(state),
-  });
+  };
 }
 
 describe("SettingsDialog developer options", () => {
@@ -42,7 +45,9 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("keeps Developer options reachable and reveals log level in place after enabling developer mode", async () => {
-    const client = createFixtureClient(createFixtureState());
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
     renderDialog(client);
 
     expect(
@@ -68,8 +73,10 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("keeps Developer options reachable and hides log level when the initial read fails", async () => {
-    const client = createFixtureClient(createFixtureState());
-    client.developerMode.get = vi
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
+    clientHandlers.getDeveloperMode = vi
       .fn()
       .mockRejectedValue(new Error("read failed"));
     renderDialog(client);
@@ -103,7 +110,7 @@ describe("SettingsDialog developer options", () => {
       effectiveLevel: "trace",
       startupOverride: "trace",
     };
-    renderDialog(createFixtureClient(state));
+    renderDialog(createTestClient(createFixtureHandlers(state)));
 
     const developerNavigation = await screen.findByRole("button", {
       name: "Developer options",
@@ -121,7 +128,7 @@ describe("SettingsDialog developer options", () => {
   it("stays on Developer options and hides log level after developer mode is disabled", async () => {
     const state = createFixtureState();
     state.developerMode = { enabled: true };
-    renderDialog(createFixtureClient(state));
+    renderDialog(createTestClient(createFixtureHandlers(state)));
 
     await userEvent.click(
       await screen.findByRole("button", { name: "Developer options" }),
@@ -193,7 +200,7 @@ describe("SettingsDialog developer options", () => {
       summary: { state: "available", completeness: "incomplete" },
     });
     const user = userEvent.setup();
-    renderDialog(createFixtureClient(state));
+    renderDialog(createTestClient(createFixtureHandlers(state)));
 
     await user.click(screen.getByRole("button", { name: "Plugins" }));
     await user.click(
@@ -224,7 +231,9 @@ describe("SettingsDialog developer options", () => {
   });
 
   it("opens on the requested settings category when deep-linked", async () => {
-    const client = createFixtureClient(createFixtureState());
+    const clientHandlers: TestHandlers =
+      createFixtureHandlers(createFixtureState());
+    const client = createTestClient(clientHandlers);
     renderDialog(client);
 
     // Deep-linking writes directly to the Zustand UI store; wrap it in act so

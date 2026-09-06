@@ -14,7 +14,10 @@ import {
   createHookWrapper,
   createTestQueryClient,
 } from "../../test/hook-harness";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import { createPluginMemory, pluginHandlers } from "../../test/memory/plugins";
 import { createAgentMemory, agentHandlers } from "../../test/memory/agents";
 import "../../i18n/i18n-instance";
@@ -29,11 +32,11 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...pluginHandlers(state),
     ...agentHandlers(state),
-  });
+  };
 }
 
 const NODE_DATA: WorkflowNodeData = {
@@ -105,7 +108,9 @@ function loadedConversation(): SessionConversation {
 
 /** Builds application providers around a loaded ordinary session. */
 function createSessionWrapper() {
-  const client = createFixtureClient(createFixtureState());
+  const clientHandlers: TestHandlers =
+    createFixtureHandlers(createFixtureState());
+  const client = createTestClient(clientHandlers);
   const chatStore = createChatStore(client.session);
   chatStore.setState({
     conversations: { "session-1": loadedConversation() },

@@ -4,7 +4,10 @@ import type {
   AgentStatus,
   GetAgentRuntimeStatusResponse,
 } from "@ora/contracts";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createSessionMemory,
   sessionHandlers,
@@ -28,11 +31,11 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...sessionHandlers(state),
     ...agentRuntimeHandlers(state),
-  });
+  };
 }
 
 /** The project-only surface every case here resolves: no session, no task. */
@@ -71,7 +74,7 @@ async function readiness(
   seed(state);
   const { result } = renderHookWithClient(
     () => useTargetAgentReadiness(PROJECT_SELECTION),
-    createFixtureClient(state),
+    createTestClient(createFixtureHandlers(state)),
   );
   await waitFor(() => expect(result.current).not.toBe("unknown"));
   return result.current;
@@ -115,14 +118,12 @@ describe("useTargetAgentReadiness", () => {
 
   it("stays unknown while detection never answers", async () => {
     const state = createFixtureState();
-    const client = createFixtureClient(state);
-    const stalled = {
-      ...client,
-      agentRuntime: {
-        ...client.agentRuntime,
-        getStatus: () => new Promise<GetAgentRuntimeStatusResponse>(() => {}),
-      },
-    };
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const stalled = createTestClient({
+      ...clientHandlers,
+      getAgentRuntimeStatus: () =>
+        new Promise<GetAgentRuntimeStatusResponse>(() => {}),
+    });
     const { result } = renderHookWithClient(
       () => useTargetAgentReadiness(PROJECT_SELECTION),
       stalled,

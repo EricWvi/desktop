@@ -17,7 +17,10 @@ import {
   createTestQueryClient,
 } from "../../test/hook-harness";
 import { createStubPlatform } from "../../test/stub-platform";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import {
   createWorkspaceMemory,
   workspaceHandlers,
@@ -69,8 +72,8 @@ function createFixtureState() {
 type FixtureState = ReturnType<typeof createFixtureState>;
 
 /** Explicit domain composition for the behaviors exercised by this test file. */
-function createFixtureClient(state: FixtureState) {
-  return createTestClient({
+function createFixtureHandlers(state: FixtureState): TestHandlers {
+  return {
     ...workspaceHandlers(state),
     ...sessionHandlers(state),
     ...agentRuntimeHandlers(state),
@@ -79,7 +82,7 @@ function createFixtureClient(state: FixtureState) {
     ...skillHandlers(state),
     ...workflowHandlers(state),
     ...readyEffectHandlers(),
-  });
+  };
 }
 
 function composerText(element: HTMLElement): string {
@@ -135,11 +138,12 @@ describe("WorkspaceView", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const load = vi.fn(async function* () {
       yield { type: "completed" as const };
     });
-    client.session.load = load;
+    clientHandlers.loadSession = load;
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -177,7 +181,8 @@ describe("WorkspaceView", () => {
         title: "Worktree task",
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -209,7 +214,8 @@ describe("WorkspaceView", () => {
   it("shows the Changes button for a selected project with no task open", async () => {
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -259,8 +265,9 @@ describe("WorkspaceView", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
-    client.session.load = async function* () {
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
+    clientHandlers.loadSession = async function* () {
       yield {
         type: "history_notice" as const,
         notice: { type: "unreadable_records" as const, count: 2 },
@@ -316,11 +323,12 @@ describe("WorkspaceView", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const load = vi.fn(async function* () {
       yield { type: "completed" as const };
     });
-    client.session.load = load;
+    clientHandlers.loadSession = load;
     const chatStore = createChatStore(client.session);
     chatStore.getState().initializeSession("s1");
     const Wrapper = createHookWrapper(
@@ -350,7 +358,8 @@ describe("WorkspaceView", () => {
 
   it("keeps the composer disabled when no project is selected", async () => {
     const state = createFixtureState();
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -379,7 +388,8 @@ describe("WorkspaceView", () => {
     useSettingsStore.setState({ settings: { ...DEFAULT_SETTINGS } });
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -423,7 +433,8 @@ describe("WorkspaceView", () => {
       (candidate) => candidate.agentRef === AGENT_REF.opencode,
     );
     entry!.status = "unavailable";
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -471,7 +482,8 @@ describe("WorkspaceView", () => {
   it("does not repeat the default direct-chat mode in the composer context", async () => {
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -526,7 +538,8 @@ describe("WorkspaceView", () => {
         title: "Other worktree",
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -561,22 +574,20 @@ describe("WorkspaceView", () => {
     const user = userEvent.setup();
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     const calls: string[] = [];
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        start: async (request, options) => {
-          calls.push("start");
-          return baseClient.session.start(request, options);
-        },
-        prompt: async function* (request, options) {
-          calls.push("prompt");
-          yield* baseClient.session.prompt(request, options);
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      startSession: async (request, options) => {
+        calls.push("start");
+        return baseClient.session.start(request, options);
       },
-    };
+      promptSession: async function* (request, options) {
+        calls.push("prompt");
+        yield* baseClient.session.prompt(request, options);
+      },
+    });
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -644,19 +655,17 @@ describe("WorkspaceView", () => {
     const user = userEvent.setup();
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     let attachCalls = 0;
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        start: async (request, options) => {
-          attachCalls += 1;
-          if (attachCalls === 1) throw new Error("session unavailable");
-          return baseClient.session.start(request, options);
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      startSession: async (request, options) => {
+        attachCalls += 1;
+        if (attachCalls === 1) throw new Error("session unavailable");
+        return baseClient.session.start(request, options);
       },
-    };
+    });
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -705,19 +714,17 @@ describe("WorkspaceView", () => {
     const user = userEvent.setup();
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     let attachCalls = 0;
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        start: async (request, options) => {
-          attachCalls += 1;
-          if (attachCalls === 1) throw new Error("session unavailable");
-          return baseClient.session.start(request, options);
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      startSession: async (request, options) => {
+        attachCalls += 1;
+        if (attachCalls === 1) throw new Error("session unavailable");
+        return baseClient.session.start(request, options);
       },
-    };
+    });
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -763,7 +770,8 @@ describe("WorkspaceView", () => {
     const user = userEvent.setup();
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -818,17 +826,14 @@ describe("WorkspaceView", () => {
     const user = userEvent.setup();
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const baseClient = createFixtureClient(state);
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        prompt: async function* () {
-          yield* [];
-          throw new Error("provider disconnected");
-        },
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      promptSession: async function* () {
+        yield* [];
+        throw new Error("provider disconnected");
       },
-    };
+    });
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -897,21 +902,19 @@ describe("WorkspaceView", () => {
         historyState: { type: "writable" },
       },
     ];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     let releaseStart!: () => void;
     const startGate = new Promise<void>((resolve) => {
       releaseStart = resolve;
     });
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        start: async (request, options) => {
-          await startGate;
-          return baseClient.session.start(request, options);
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      startSession: async (request, options) => {
+        await startGate;
+        return baseClient.session.start(request, options);
       },
-    };
+    });
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -990,25 +993,23 @@ describe("WorkspaceView", () => {
         title: "Existing task",
       },
     ];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     let startCalls = 0;
     const startedSessionIds: string[] = [];
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        start: async (request, options) => {
-          startCalls += 1;
-          // A start that fails leaves nothing behind on either side: the backend
-          // releases the provider session it had created, and the client holds
-          // no identifier it could retry against.
-          if (startCalls === 1) throw new Error("session unavailable");
-          const response = await baseClient.session.start(request, options);
-          startedSessionIds.push(response.session.id);
-          return response;
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      startSession: async (request, options) => {
+        startCalls += 1;
+        // A start that fails leaves nothing behind on either side: the backend
+        // releases the provider session it had created, and the client holds
+        // no identifier it could retry against.
+        if (startCalls === 1) throw new Error("session unavailable");
+        const response = await baseClient.session.start(request, options);
+        startedSessionIds.push(response.session.id);
+        return response;
       },
-    };
+    });
     const chatStore = createChatStore(client.session);
     const Wrapper = createHookWrapper(
       client,
@@ -1073,28 +1074,23 @@ describe("WorkspaceView", () => {
         historyState: { type: "writable" },
       },
     ];
-    const baseClient = createFixtureClient(state);
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        // A persisted session reports its options through load, and only a
-        // persisted session's model change is asked of the backend at all.
-        load: async function* () {
-          yield {
-            type: "session_update" as const,
-            update: {
-              sessionUpdate: "config_option_update" as const,
-              configOptions: state.configOptions,
-            },
-          };
-          yield { type: "completed" as const };
-        },
-        setConfig: async () => {
-          throw new Error("agent unreachable");
-        },
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      loadSession: async function* () {
+        yield {
+          type: "session_update" as const,
+          update: {
+            sessionUpdate: "config_option_update" as const,
+            configOptions: state.configOptions,
+          },
+        };
+        yield { type: "completed" as const };
       },
-    };
+      setSessionConfig: async () => {
+        throw new Error("agent unreachable");
+      },
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -1134,15 +1130,13 @@ describe("WorkspaceView", () => {
     const user = userEvent.setup();
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     const discover = vi.fn(baseClient.agentRuntime.listModels);
-    const client: ContractsClient = {
-      ...baseClient,
-      agentRuntime: {
-        ...baseClient.agentRuntime,
-        listModels: discover,
-      },
-    };
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      listAgentModels: discover,
+    });
     // One query client and one chat store across both renders, so this is the
     // same app session leaving a surface and coming back to it.
     const Wrapper = createHookWrapper(
@@ -1194,20 +1188,15 @@ describe("WorkspaceView", () => {
     const user = userEvent.setup();
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
     let openHandshake: (response: ListAgentModelsResponse) => void = () => {};
-    const client: ContractsClient = {
-      ...baseClient,
-      agentRuntime: {
-        ...baseClient.agentRuntime,
-        // Held open so the picker can be inspected mid-handshake, which is what
-        // a real agent's a second or so of start-up looks like.
-        listModels: () =>
-          new Promise<ListAgentModelsResponse>((resolve) => {
-            openHandshake = resolve;
-          }),
-      },
-    };
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      listAgentModels: () =>
+        new Promise<ListAgentModelsResponse>((resolve) => {
+          openHandshake = resolve;
+        }),
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -1258,20 +1247,18 @@ describe("WorkspaceView", () => {
     const user = userEvent.setup();
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     const started: StartSessionRequest[] = [];
     const setConfig = vi.fn(baseClient.session.setConfig);
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        setConfig,
-        start: async (request, options) => {
-          started.push(request);
-          return baseClient.session.start(request, options);
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      setSessionConfig: setConfig,
+      startSession: async (request, options) => {
+        started.push(request);
+        return baseClient.session.start(request, options);
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -1327,18 +1314,16 @@ describe("WorkspaceView", () => {
     });
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     const started: StartSessionRequest[] = [];
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        start: async (request, options) => {
-          started.push(request);
-          return baseClient.session.start(request, options);
-        },
+    const client: ContractsClient = createTestClient({
+      ...baseClientHandlers,
+      startSession: async (request, options) => {
+        started.push(request);
+        return baseClient.session.start(request, options);
       },
-    };
+    });
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -1396,14 +1381,15 @@ describe("WorkspaceView", () => {
         historyState: { type: "writable" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     let finishReplay: () => void = () => {};
     const replayed = new Promise<void>((resolve) => {
       finishReplay = resolve;
     });
     // A selected session gets its options from `session/load`, which reports
     // them partway through the stream rather than at its start.
-    client.session.load = async function* () {
+    clientHandlers.loadSession = async function* () {
       await replayed;
       yield {
         type: "session_update" as const,
@@ -1458,7 +1444,8 @@ describe("WorkspaceView", () => {
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
     state.configOptions = [];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -1498,41 +1485,37 @@ describe("WorkspaceView", () => {
   function createSwitchTargetClient(
     state: ReturnType<typeof createFixtureState>,
   ) {
-    const baseClient = createFixtureClient(state);
+    const baseClientHandlers: TestHandlers = createFixtureHandlers(state);
+    const baseClient = createTestClient(baseClientHandlers);
     const switched: SwitchSessionAgentRequest[] = [];
     const prompted: string[] = [];
-    const client: ContractsClient = {
-      ...baseClient,
-      session: {
-        ...baseClient.session,
-        prompt: (request, options) => {
-          prompted.push(request.sessionId);
-          return baseClient.session.prompt(request, options);
-        },
-        switchAgent: async (request, options) => {
-          switched.push(request);
-          return baseClient.session.switchAgent(request, options);
-        },
+    const clientHandlers: TestHandlers = {
+      ...baseClientHandlers,
+      promptSession: (request, options) => {
+        prompted.push(request.sessionId);
+        return baseClient.session.prompt(request, options);
       },
-      agentRuntime: {
-        ...baseClient.agentRuntime,
-        listModels: async (request, options) => {
-          const response = await baseClient.agentRuntime.listModels(
-            request,
-            options,
-          );
-          if (request.agentRef !== AGENT_REF.claude) return response;
-          return {
-            ...response,
-            models: [
-              { id: "claude/sonnet", displayName: "Sonnet", default: true },
-              { id: "claude/haiku", displayName: "Haiku", default: false },
-            ],
-          };
-        },
+      switchSessionAgent: async (request, options) => {
+        switched.push(request);
+        return baseClient.session.switchAgent(request, options);
+      },
+      listAgentModels: async (request, options) => {
+        const response = await baseClient.agentRuntime.listModels(
+          request,
+          options,
+        );
+        if (request.agentRef !== AGENT_REF.claude) return response;
+        return {
+          ...response,
+          models: [
+            { id: "claude/sonnet", displayName: "Sonnet", default: true },
+            { id: "claude/haiku", displayName: "Haiku", default: false },
+          ],
+        };
       },
     };
-    return { client, switched, prompted };
+    const client = createTestClient(clientHandlers);
+    return { client, handlers: clientHandlers, switched, prompted };
   }
 
   /** Seeds one running session on OpenCode under a worktree task. */
@@ -1658,8 +1641,9 @@ describe("WorkspaceView", () => {
     state.agentRuntimeStatuses = state.agentRuntimeStatuses.filter(
       (status) => status.agentRef !== AGENT_REF.opencode,
     );
-    const { client, switched, prompted } = createSwitchTargetClient(state);
-    client.session.load = async function* (request) {
+    const { client, handlers, switched, prompted } =
+      createSwitchTargetClient(state);
+    handlers.loadSession = async function* (request) {
       if (request.sessionId === "s1") {
         throw new Error("ora-space.opencode is not installed");
       }
@@ -1771,7 +1755,8 @@ describe("WorkspaceView", () => {
         historyState: { type: "degraded", reason: "no space left on device" },
       },
     ];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),
@@ -1805,7 +1790,8 @@ describe("WorkspaceView", () => {
     await act(() => appI18n.changeLanguage("zh-CN"));
     const state = createFixtureState();
     state.projects = [{ id: "p1", name: "Ora" }];
-    const client = createFixtureClient(state);
+    const clientHandlers: TestHandlers = createFixtureHandlers(state);
+    const client = createTestClient(clientHandlers);
     const Wrapper = createHookWrapper(
       client,
       createTestQueryClient(),

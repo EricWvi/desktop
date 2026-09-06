@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { ContractsClientContext } from "../../contracts-client-context";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import "../../i18n/i18n-instance";
 import { TaskDiffView } from "./task-diff-view";
 import { DIFF_FILE_SCROLL_INSET_PX } from "./task-diff-scroll";
@@ -44,8 +47,9 @@ const PATCH = [
 
 /** Renders Changes with the mocked three-file patch and no file request. */
 function renderTreeDiff() {
-  const client = createTestClient({});
-  client.workspace.getDiff = async () => ({
+  const clientHandlers: TestHandlers = {};
+  const client = createTestClient(clientHandlers);
+  clientHandlers.getWorkspaceDiff = async () => ({
     baseCommitId: "base",
     headCommitId: "head",
     patch: PATCH,

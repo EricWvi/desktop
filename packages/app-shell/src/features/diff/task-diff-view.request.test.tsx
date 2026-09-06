@@ -10,7 +10,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../i18n/i18n";
 import { ContractsClientContext } from "../../contracts-client-context";
-import { createTestClient } from "../../test/contracts-transport";
+import {
+  createTestClient,
+  type TestHandlers,
+} from "../../test/contracts-transport";
 import "../../i18n/i18n-instance";
 import { TaskDiffView } from "./task-diff-view";
 import { DIFF_FILE_SCROLL_INSET_PX } from "./task-diff-scroll";
@@ -45,8 +48,9 @@ function renderRequestedDiff(fileRequest?: {
   requestId?: number;
   line?: number;
 }) {
-  const client = createTestClient({});
-  client.workspace.getDiff = async () => ({
+  const clientHandlers: TestHandlers = {};
+  const client = createTestClient(clientHandlers);
+  clientHandlers.getWorkspaceDiff = async () => ({
     baseCommitId: "base",
     headCommitId: "head",
     patch: MULTI_FILE_PATCH,
@@ -311,8 +315,9 @@ describe("TaskDiffView file requests", () => {
       "+}",
       "",
     ].join("\n");
-    const client = createTestClient({});
-    client.workspace.getDiff = async () => ({
+    const clientHandlers: TestHandlers = {};
+    const client = createTestClient(clientHandlers);
+    clientHandlers.getWorkspaceDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
       patch,
@@ -369,8 +374,9 @@ describe("TaskDiffView file requests", () => {
       "+}",
       "",
     ].join("\n");
-    const client = createTestClient({});
-    client.workspace.getDiff = async () => ({
+    const clientHandlers: TestHandlers = {};
+    const client = createTestClient(clientHandlers);
+    clientHandlers.getWorkspaceDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
       patch,
@@ -424,8 +430,9 @@ describe("TaskDiffView file requests", () => {
       "+added",
       "",
     ].join("\n");
-    const client = createTestClient({});
-    client.workspace.getDiff = async () => ({
+    const clientHandlers: TestHandlers = {};
+    const client = createTestClient(clientHandlers);
+    clientHandlers.getWorkspaceDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
       patch,
@@ -489,8 +496,9 @@ describe("TaskDiffView file requests", () => {
       "+}",
       "",
     ].join("\n");
-    const client = createTestClient({});
-    client.workspace.getDiff = async () => ({
+    const clientHandlers: TestHandlers = {};
+    const client = createTestClient(clientHandlers);
+    clientHandlers.getWorkspaceDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
       patch,
@@ -555,7 +563,8 @@ describe("TaskDiffView file requests", () => {
 
 describe("TaskDiffView collapsed context", () => {
   it("expands a collapsed unchanged block without crashing", async () => {
-    const client = createTestClient({});
+    const clientHandlers: TestHandlers = {};
+    const client = createTestClient(clientHandlers);
     const longContextPatch = [
       "diff --git a/src/example.ts b/src/example.ts",
       "index 1111111..2222222 100644",
@@ -568,7 +577,7 @@ describe("TaskDiffView collapsed context", () => {
       ...Array.from({ length: 10 }, (_, index) => ` line ${index + 11}`),
       "",
     ].join("\n");
-    client.workspace.getDiff = async () => ({
+    clientHandlers.getWorkspaceDiff = async () => ({
       baseCommitId: "base",
       headCommitId: "head",
       patch: longContextPatch,
