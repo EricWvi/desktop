@@ -31,12 +31,15 @@ describe("createTauriTransport", () => {
   });
 
   it("signals cancellation while startup is pending and settles without yielding late data", async () => {
-    const startup = Promise.withResolvers<void>();
+    let resolveStartup!: () => void;
+    const startup = new Promise<void>((resolve) => {
+      resolveStartup = resolve;
+    });
     const channel: { onmessage: (frame: unknown) => void } = {
       onmessage: () => undefined,
     };
     const invoke = vi.fn().mockImplementation(async (command: string) => {
-      if (command === "stream_contract") await startup.promise;
+      if (command === "stream_contract") await startup;
     });
     const controller = new AbortController();
     const stream = createTauriTransport(invoke, () => channel).stream(
@@ -54,7 +57,7 @@ describe("createTauriTransport", () => {
       streamCallId: id,
     });
     channel.onmessage({ type: "data", data: "late" });
-    startup.resolve();
+    resolveStartup();
     await rejected;
     expect(invoke).toHaveBeenLastCalledWith("cancel_contract_stream", {
       streamCallId: id,

@@ -222,3 +222,9 @@
 - 按“不含测试与空行、包含注释”统计，初始 671 个文件中 80 个为测试专用；30 个超过 500 行目标，7 个超过 800 行硬门槛。仅这 7 个已有文件记录 owning crate、精确上限和具体拆分计划；增长、未登记超限、缩减后未下调基线及过时例外都会失败。
 - `check:rust-size` 接入 Rust lint；12 项解析测试、5 项引用图测试、4 项基线策略测试及定向 Clippy 通过。长期规则和存量责任见 `docs/architecture-checks.md`。
 - 集成门禁后的 `task test` 全量通过：tooling、frontend lint/测试（app-shell 1285 项）、Rust workspace、58 项 Tauri 和 7 项 E2E；原 Backend 外部发布产物测试仍有 1 项 ignored。阶段 6 的临时增删演练仍待完成。
+
+### 阶段 6 验收发现：Desktop 类型检查缺口（2026-09-06）
+
+- unary 演练额外运行 Desktop TypeScript 检查时，发现阶段 2 新增的取消测试使用了 ES2024 的 `Promise.withResolvers`，不符合仓库 ES2023 lib。既有 Desktop lint 只运行 ESLint，因此此前完整 `task test` 没有覆盖这个编译入口。
+- 测试改为显式可完成的 ES2023 Promise，保持“创建中取消”的异步边界不变；Desktop lint 加入 app 和 node 两份 tsconfig 的类型检查，不提高产品运行目标，也不依赖临时的 lib 覆盖参数。
+- 修正后的 Desktop lint 和 41 项 transport/platform 测试通过。演练从包含此修正的干净基线重新执行；最终全量验收将包含新增类型门禁。
