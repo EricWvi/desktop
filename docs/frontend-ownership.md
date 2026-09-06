@@ -109,3 +109,32 @@ injection. Do not replace generated client methods or cast partial objects to `C
 Handler assertions include the transport's second `options` argument (possibly `undefined`).
 Pass-through spies may observe the public client without replacing its implementation; these
 observe UI call arguments, whereas handler spies observe the actual transport invocation.
+
+## Public feature interfaces
+
+Each feature's `interface.json` records its owner and the named exports that other features or
+shell composition may consume. Every entry explains why that interface is shared. Everything
+else is private, including other TypeScript exports in the same file. This is a visibility policy,
+not a runtime registry: callers retain direct, named imports and no all-feature barrel is loaded.
+Do not generate a policy by listing every export or add wildcard access to make a check pass.
+
+`task check:features` resolves imports with the app-shell TypeScript configuration and checks
+actual exported symbols. It runs in `lint:frontend` and therefore `task test`. Static imports,
+re-exports, aliases, inline type imports, dynamic imports, CommonJS imports and Vitest mocks are
+checked across `apps/` and `packages/`. Foreign namespace/whole-module access is rejected because
+it would expose private exports. A test may replace explicitly named public UI exports with a
+zero-argument object-literal mock factory; spreading an original module is not an escape hatch.
+Nonliteral module access is rejected because the checker cannot establish its ownership.
+
+Shared `state/` code and its tests cannot import feature UI even when that UI is public. The agent
+catalog belongs to `state/hooks/use-agent-catalog.ts`, review sizing policy to
+`state/stores/review-layout.ts`, and composer quote actions to
+`state/actions/add-composer-file-selection.ts`. Editor and run zoom constraints belong to shared
+`workflow-node-chrome/viewport.ts`, not the editor implementation. Existing data factories and
+invalidation remain `state/data/` owned. These moves preserve behavior and remove old paths.
+
+Feature translation exports are marked as resources and only the root `i18n/resources.ts` may
+consume them from outside their owner. Necessary UI composition remains explicit: workspace
+hosts Chat/Files/Changes, surface downloads invoke the Skill import review, and workflow hosts
+reuse composer and node presentation. The current synthetic plugin display catalog remains a
+documented settings-owned presentation interface; it must not replace authoritative plugin data.

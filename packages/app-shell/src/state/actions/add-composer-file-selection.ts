@@ -2,9 +2,9 @@ import { toast } from "@ora/ui";
 import {
   useComposerFileContextStore,
   type ComposerFileSelection,
-} from "../../state/stores/composer-file-context-store";
-import { conversationKeyFor } from "../../state/stores/conversation-key";
-import { useWorkspaceSelectionStore } from "../../state/stores/workspace-selection-store";
+} from "../stores/composer-file-context-store";
+import { conversationKeyFor } from "../stores/conversation-key";
+import { useWorkspaceSelectionStore } from "../stores/workspace-selection-store";
 import { appI18n } from "../../i18n/i18n-instance";
 
 /** Queues one file line quote for the active conversation composer. */

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useInstalledPlugins } from "../../state/hooks/use-installed-plugins";
+import { useInstalledPlugins } from "./use-installed-plugins";
 
 /**
  * Describes one agent this installation can bind a session to.

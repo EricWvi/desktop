@@ -49,6 +49,11 @@ tasks:
       - cargo xtask check-contracts
       - deno run -A scripts/check-contract-schema.ts
 
+  check:features:
+    desc: Verify named public feature interfaces and shared-state dependencies
+    cmds:
+      - deno run -A scripts/check-feature-interfaces.ts
+
   build:
     desc: Build all Rust workspace packages
     cmds:
@@ -138,6 +143,7 @@ tasks:
     silent: true
     cmds:
       - deno task check:tooling
+      - task: check:features
       - deno task --filter @ora/desktop lint
       - deno task --filter @ora/contracts lint
       - deno task --filter @ora/chat lint

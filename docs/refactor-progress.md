@@ -12,7 +12,7 @@
 | 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
 | 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除          |
 | 5：前端归属     | 已完成 | 翻译、共享查询与 typed 测试 transport 均已迁移    |
-| 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`              |
+| 6：验收         | 进行中 | 前端私有接口检查已接入；Rust 规模检查与演练待实施 |
 
 ## 人工登记点
 
@@ -207,3 +207,10 @@
 - 迁移包括 84 处直接 override、22 处嵌套 client 副本及 callback/spy 注入。Surface 下载测试也移除旧的强转 stub，并补齐真实契约要求的时间和进度字段。
 - 生产 client 继续构造请求并传递 options；handler mock 的断言包含第二个 options 参数，不为了兼容旧断言改变 transport 行为。
 - `task test` 全量通过：app-shell 143 个文件、1285 项 clean-stderr 测试，Rust workspace lint/测试、58 项 Tauri 和 7 项 E2E。原 Backend 外部发布产物测试仍有 1 项 ignored。阶段 5 完成，阶段 6 的门禁和增删演练仍待实施。
+
+### 阶段 6a：前端 interface 检查（2026-09-06）
+
+- 11 个 feature 的本地 `interface.json` 按导出名称声明 public interface 和用途；未声明 module/符号默认私有。没有新增 runtime registry、全量 barrel 或跨目录通配豁免。
+- 共享 agent catalog、review 尺寸规则、composer quote action 移到 state 归属；编辑和执行视图共用的 zoom 约束移到 workflow-node-chrome。调用者和测试/mock 路径同步迁移，不保留旧路径转发。
+- `check:features` 使用 TypeScript resolver 和真实导出符号，覆盖静态/type/alias/re-export、动态/CommonJS 和 mock 访问；state 禁止依赖 feature，纯翻译只向单一 i18n 组合开放。门禁接入 `lint:frontend`，继而进入 `task test`。
+- 6 项门禁正反例测试、tooling 检查和 app-shell lint 通过；143 个文件、1285 项 clean-stderr 测试通过。Rust 规模门禁、临时工作树增删演练和最终全量验收仍待完成。
