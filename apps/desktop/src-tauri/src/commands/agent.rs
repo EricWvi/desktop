@@ -6,35 +6,35 @@ backend_command!(
     create_agent,
     CreateAgentRequest,
     CreateAgentResponse,
-    create_agent,
+    agents.create,
     "Creates one configurable agent through the shared Backend."
 );
 backend_command!(
     get_agent,
     GetAgentRequest,
     GetAgentResponse,
-    get_agent,
+    agents.get,
     "Gets one configurable agent through the shared Backend."
 );
 backend_command!(
     list_agents,
     ListAgentsRequest,
     ListAgentsResponse,
-    list_agents,
+    agents.list,
     "Lists configurable agents through the shared Backend."
 );
 backend_command!(
     update_agent,
     UpdateAgentRequest,
     UpdateAgentResponse,
-    update_agent,
+    agents.update,
     "Updates one configurable agent through the shared Backend."
 );
 backend_command!(
     delete_agent,
     DeleteAgentRequest,
     DeleteAgentResponse,
-    delete_agent,
+    agents.delete,
     "Deletes one configurable agent through the shared Backend."
 );
 
@@ -42,13 +42,13 @@ backend_command!(
     prepare_agent_import,
     PrepareAgentImportRequest,
     PrepareAgentImportResponse,
-    prepare_agent_import,
+    agents.prepare_import,
     "Prepares one agent Markdown import source."
 );
 backend_command!(
     commit_agent_import,
     CommitAgentImportRequest,
     CommitAgentImportResponse,
-    commit_agent_import,
+    agents.commit_import,
     "Commits one prepared agent Markdown import."
 );

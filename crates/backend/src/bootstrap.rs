@@ -717,6 +717,21 @@ impl Backend {
         &self.settings
     }
 
+    /// Shares configurable-agent use cases without exposing repositories or runtime control.
+    pub fn agents(&self) -> Arc<AgentApi> {
+        self.agent.clone()
+    }
+
+    /// Shares Skill catalog/import use cases, including their Effect convergence obligations.
+    pub fn skills(&self) -> Arc<SkillApi> {
+        self.skill.clone()
+    }
+
+    /// Shares definition/draft/version use cases independently of workflow-run execution.
+    pub fn workflows(&self) -> Arc<WorkflowApi> {
+        self.workflow.clone()
+    }
+
     /// Returns the worktree root row, preserving absence for first-run migration.
     pub fn persisted_worktree_root(&self) -> Result<Option<PathBuf>, BackendError> {
         self.settings.worktree_root()
@@ -1150,131 +1165,6 @@ impl Backend {
     }
 
     // =============================================================================
-    // skill
-    // =============================================================================
-
-    /// Creates one skill through the shared application composition.
-    pub fn create_skill(
-        &self,
-        request: CreateSkillRequest,
-    ) -> Result<CreateSkillResponse, BackendError> {
-        self.skill.create(request).map_err(BackendError::from)
-    }
-    /// Gets one skill through the shared application composition.
-    pub fn get_skill(&self, request: GetSkillRequest) -> Result<GetSkillResponse, BackendError> {
-        self.skill.get(request).map_err(BackendError::from)
-    }
-    /// Lists skills through the shared application composition.
-    pub fn list_skills(
-        &self,
-        request: ListSkillsRequest,
-    ) -> Result<ListSkillsResponse, BackendError> {
-        self.skill.list(request).map_err(BackendError::from)
-    }
-    /// Updates one skill through the shared application composition.
-    pub fn update_skill(
-        &self,
-        request: UpdateSkillRequest,
-    ) -> Result<UpdateSkillResponse, BackendError> {
-        self.skill.update(request).map_err(BackendError::from)
-    }
-    /// Deletes one skill through the shared application composition.
-    pub fn delete_skill(
-        &self,
-        request: DeleteSkillRequest,
-    ) -> Result<DeleteSkillResponse, BackendError> {
-        self.skill.delete(request).map_err(BackendError::from)
-    }
-    // =============================================================================
-    // agent
-    // =============================================================================
-
-    /// Prepares one skill import source into a previewed session.
-    pub fn prepare_skill_import(
-        &self,
-        request: PrepareSkillImportRequest,
-    ) -> Result<PrepareSkillImportResponse, BackendError> {
-        self.skill
-            .prepare_import(request)
-            .map_err(BackendError::from)
-    }
-    /// Returns one skill import session with its current progress.
-    pub fn get_skill_import(
-        &self,
-        request: GetSkillImportSessionRequest,
-    ) -> Result<GetSkillImportSessionResponse, BackendError> {
-        self.skill.get_import(request).map_err(BackendError::from)
-    }
-    /// Accepts and freezes one skill import commit, starting the background task.
-    pub fn commit_skill_import(
-        &self,
-        request: CommitSkillImportRequest,
-    ) -> Result<CommitSkillImportResponse, BackendError> {
-        self.skill
-            .commit_import(request)
-            .map_err(BackendError::from)
-    }
-    /// Cancels a prepared skill import session.
-    pub fn cancel_skill_import(
-        &self,
-        request: CancelSkillImportRequest,
-    ) -> Result<CancelSkillImportResponse, BackendError> {
-        self.skill
-            .cancel_import(request)
-            .map_err(BackendError::from)
-    }
-
-    /// Creates one configurable agent through the shared application composition.
-    pub fn create_agent(
-        &self,
-        request: CreateAgentRequest,
-    ) -> Result<CreateAgentResponse, BackendError> {
-        self.agent.create(request).map_err(BackendError::from)
-    }
-    /// Gets one configurable agent through the shared application composition.
-    pub fn get_agent(&self, request: GetAgentRequest) -> Result<GetAgentResponse, BackendError> {
-        self.agent.get(request).map_err(BackendError::from)
-    }
-    /// Lists configurable agents through the shared application composition.
-    pub fn list_agents(
-        &self,
-        request: ListAgentsRequest,
-    ) -> Result<ListAgentsResponse, BackendError> {
-        self.agent.list(request).map_err(BackendError::from)
-    }
-    /// Updates one configurable agent through the shared application composition.
-    pub fn update_agent(
-        &self,
-        request: UpdateAgentRequest,
-    ) -> Result<UpdateAgentResponse, BackendError> {
-        self.agent.update(request).map_err(BackendError::from)
-    }
-    /// Deletes one configurable agent through the shared application composition.
-    pub fn delete_agent(
-        &self,
-        request: DeleteAgentRequest,
-    ) -> Result<DeleteAgentResponse, BackendError> {
-        self.agent.delete(request).map_err(BackendError::from)
-    }
-    pub fn prepare_agent_import(
-        &self,
-        request: PrepareAgentImportRequest,
-    ) -> Result<PrepareAgentImportResponse, BackendError> {
-        self.agent
-            .prepare_import(request)
-            .map_err(BackendError::from)
-    }
-
-    pub fn commit_agent_import(
-        &self,
-        request: CommitAgentImportRequest,
-    ) -> Result<CommitAgentImportResponse, BackendError> {
-        self.agent
-            .commit_import(request)
-            .map_err(BackendError::from)
-    }
-
-    // =============================================================================
     // gitIdentity
     // =============================================================================
 
@@ -1285,119 +1175,6 @@ impl Backend {
         _request: GetGitIdentityRequest,
     ) -> Result<GitIdentityResponse, BackendError> {
         Ok(crate::identity::resolve_git_identity())
-    }
-
-    // =============================================================================
-    // workflow
-    // =============================================================================
-
-    /// Creates one workflow through the shared application composition.
-    pub fn create_workflow(
-        &self,
-        request: CreateWorkflowRequest,
-    ) -> Result<CreateWorkflowResponse, BackendError> {
-        self.workflow.create(request).map_err(BackendError::from)
-    }
-    /// Gets one workflow through the shared application composition.
-    pub fn get_workflow(
-        &self,
-        request: GetWorkflowRequest,
-    ) -> Result<GetWorkflowResponse, BackendError> {
-        self.workflow.get(request).map_err(BackendError::from)
-    }
-    /// Lists workflows through the shared application composition.
-    pub fn list_workflows(
-        &self,
-        request: ListWorkflowsRequest,
-    ) -> Result<ListWorkflowsResponse, BackendError> {
-        self.workflow.list(request).map_err(BackendError::from)
-    }
-    /// Updates one workflow through the shared application composition.
-    pub fn update_workflow(
-        &self,
-        request: UpdateWorkflowRequest,
-    ) -> Result<UpdateWorkflowResponse, BackendError> {
-        self.workflow.update(request).map_err(BackendError::from)
-    }
-    /// Deletes one workflow through the shared application composition.
-    pub fn delete_workflow(
-        &self,
-        request: DeleteWorkflowRequest,
-    ) -> Result<DeleteWorkflowResponse, BackendError> {
-        self.workflow.delete(request).map_err(BackendError::from)
-    }
-    /// Gets the draft snapshot through the shared application composition.
-    pub fn get_workflow_draft(
-        &self,
-        request: GetDraftRequest,
-    ) -> Result<GetDraftResponse, BackendError> {
-        self.workflow.get_draft(request).map_err(BackendError::from)
-    }
-    /// Updates the draft snapshot through the shared application composition.
-    pub fn update_workflow_draft(
-        &self,
-        request: UpdateDraftRequest,
-    ) -> Result<UpdateDraftResponse, BackendError> {
-        self.workflow
-            .update_draft(request)
-            .map_err(BackendError::from)
-    }
-    /// Publishes a workflow draft through the shared application composition.
-    pub fn publish_workflow(
-        &self,
-        request: PublishWorkflowRequest,
-    ) -> Result<PublishWorkflowResponse, BackendError> {
-        self.workflow.publish(request).map_err(BackendError::from)
-    }
-    /// Rolls back the draft through the shared application composition.
-    pub fn rollback_workflow(
-        &self,
-        request: RollbackWorkflowRequest,
-    ) -> Result<RollbackWorkflowResponse, BackendError> {
-        self.workflow.rollback(request).map_err(BackendError::from)
-    }
-    /// Activates a published version through the shared application composition.
-    pub fn activate_workflow(
-        &self,
-        request: ActivateWorkflowRequest,
-    ) -> Result<ActivateWorkflowResponse, BackendError> {
-        self.workflow.activate(request).map_err(BackendError::from)
-    }
-    /// Lists published versions through the shared application composition.
-    pub fn list_workflow_versions(
-        &self,
-        request: ListVersionsRequest,
-    ) -> Result<ListVersionsResponse, BackendError> {
-        self.workflow
-            .list_versions(request)
-            .map_err(BackendError::from)
-    }
-    /// Gets one version snapshot through the shared application composition.
-    pub fn get_workflow_version(
-        &self,
-        request: GetVersionRequest,
-    ) -> Result<GetVersionResponse, BackendError> {
-        self.workflow
-            .get_version(request)
-            .map_err(BackendError::from)
-    }
-    /// Deletes one version snapshot through the shared application composition.
-    pub fn delete_workflow_snapshot(
-        &self,
-        request: DeleteSnapshotRequest,
-    ) -> Result<DeleteSnapshotResponse, BackendError> {
-        self.workflow
-            .delete_snapshot(request)
-            .map_err(BackendError::from)
-    }
-    /// Gets one snapshot by its stable identifier through the shared application composition.
-    pub fn get_workflow_snapshot(
-        &self,
-        request: GetWorkflowSnapshotRequest,
-    ) -> Result<GetWorkflowSnapshotResponse, BackendError> {
-        self.workflow
-            .get_snapshot(request)
-            .map_err(BackendError::from)
     }
 
     // =============================================================================
@@ -1605,7 +1382,8 @@ mod tests {
         );
 
         let skill = backend
-            .create_skill(CreateSkillRequest {
+            .skills()
+            .create(CreateSkillRequest {
                 name: "review".to_string(),
                 description: "Review changes".to_string(),
                 content: None,
@@ -1613,7 +1391,8 @@ mod tests {
             .expect("create skill")
             .skill;
         let skill = backend
-            .update_skill(UpdateSkillRequest {
+            .skills()
+            .update(UpdateSkillRequest {
                 skill_id: skill.id,
                 name: "review-code".to_string(),
                 description: "Review implementation changes".to_string(),
@@ -1623,14 +1402,16 @@ mod tests {
             .skill;
         assert_eq!(
             backend
-                .list_skills(ListSkillsRequest {})
+                .skills()
+                .list(ListSkillsRequest {})
                 .expect("list skills")
                 .skills,
             vec![skill.clone()]
         );
 
         let agent = backend
-            .create_agent(CreateAgentRequest {
+            .agents()
+            .create(CreateAgentRequest {
                 name: "codex".to_string(),
                 description: "Coding agent".to_string(),
                 content: None,
@@ -1638,7 +1419,8 @@ mod tests {
             .expect("create agent")
             .agent;
         let agent = backend
-            .update_agent(UpdateAgentRequest {
+            .agents()
+            .update(UpdateAgentRequest {
                 agent_id: agent.id,
                 name: "codex-desktop".to_string(),
                 description: "Desktop coding agent".to_string(),
@@ -1648,17 +1430,20 @@ mod tests {
             .agent;
         assert_eq!(
             backend
-                .list_agents(ListAgentsRequest {})
+                .agents()
+                .list(ListAgentsRequest {})
                 .expect("list agents")
                 .agents,
             vec![agent.clone()]
         );
 
         backend
-            .delete_agent(DeleteAgentRequest { agent_id: agent.id })
+            .agents()
+            .delete(DeleteAgentRequest { agent_id: agent.id })
             .expect("delete agent");
         backend
-            .delete_skill(DeleteSkillRequest { skill_id: skill.id })
+            .skills()
+            .delete(DeleteSkillRequest { skill_id: skill.id })
             .expect("delete skill");
         backend
             .delete_project(DeleteProjectRequest {
@@ -1703,7 +1488,8 @@ mod tests {
         assert!(home_directory.join("worktrees").is_dir());
 
         let skills = backend
-            .list_skills(ListSkillsRequest {})
+            .skills()
+            .list(ListSkillsRequest {})
             .expect("list plugin Skills")
             .skills;
         assert_eq!(skills.len(), 1);
@@ -1731,7 +1517,8 @@ mod tests {
             .expect("open shared backend");
 
         let skill = backend
-            .create_skill(CreateSkillRequest {
+            .skills()
+            .create(CreateSkillRequest {
                 name: "review".to_string(),
                 description: "Reviews changes".to_string(),
                 content: None,
@@ -1744,7 +1531,8 @@ mod tests {
             .expect("write helper file");
 
         let updated = backend
-            .update_skill(UpdateSkillRequest {
+            .skills()
+            .update(UpdateSkillRequest {
                 skill_id: skill.id,
                 name: "review".to_string(),
                 description: "Reviews pull requests".to_string(),

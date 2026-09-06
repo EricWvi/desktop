@@ -56,7 +56,7 @@ mod tests {
             import_source.join("SKILL.md"),
             "---\nname: review\ndescription: Reviews changes\n---\n# Review\n",
         )?;
-        let prepared = backend.prepare_skill_import(PrepareSkillImportRequest {
+        let prepared = backend.skills().prepare_import(PrepareSkillImportRequest {
             source: SkillImportSource::Folder {
                 path: import_source.to_string_lossy().into_owned(),
             },
@@ -64,13 +64,14 @@ mod tests {
         assert_eq!(prepared.session.candidates.len(), 1);
         let candidate_id = prepared.session.candidates[0].candidate_id.clone();
         let session_id = prepared.session.session_id;
-        backend.commit_skill_import(CommitSkillImportRequest {
+        backend.skills().commit_import(CommitSkillImportRequest {
             session_id: session_id.clone(),
             decisions: Vec::new(),
         })?;
         wait_until("Skill import did not complete", || {
             backend
-                .get_skill_import(GetSkillImportSessionRequest {
+                .skills()
+                .get_import(GetSkillImportSessionRequest {
                     session_id: session_id.clone(),
                 })
                 .is_ok_and(|response| {
@@ -78,7 +79,8 @@ mod tests {
                 })
         })?;
         let completed = backend
-            .get_skill_import(GetSkillImportSessionRequest { session_id })?
+            .skills()
+            .get_import(GetSkillImportSessionRequest { session_id })?
             .session;
         assert_eq!(
             completed.progress,
@@ -93,14 +95,14 @@ mod tests {
                 }],
             }
         );
-        let skills = backend.list_skills(ListSkillsRequest {})?.skills;
+        let skills = backend.skills().list(ListSkillsRequest {})?.skills;
         assert_eq!(skills.len(), 1);
 
         let materialized_skill = workspace.join(".opencode").join("skills").join("review");
         wait_until("imported Skill was not promptly materialized", || {
             materialized_skill.join("SKILL.md").is_file()
         })?;
-        backend.delete_skill(DeleteSkillRequest {
+        backend.skills().delete(DeleteSkillRequest {
             skill_id: skills[0].id.clone(),
         })?;
         wait_until("deleted Skill was not promptly removed", || {

@@ -25,97 +25,97 @@ backend_command!(
     create_workflow,
     CreateWorkflowRequest,
     CreateWorkflowResponse,
-    create_workflow,
+    workflows.create,
     "Creates one workflow through the shared Backend."
 );
 backend_command!(
     get_workflow,
     GetWorkflowRequest,
     GetWorkflowResponse,
-    get_workflow,
+    workflows.get,
     "Gets one workflow through the shared Backend."
 );
 backend_command!(
     list_workflows,
     ListWorkflowsRequest,
     ListWorkflowsResponse,
-    list_workflows,
+    workflows.list,
     "Lists workflows through the shared Backend."
 );
 backend_command!(
     update_workflow,
     UpdateWorkflowRequest,
     UpdateWorkflowResponse,
-    update_workflow,
+    workflows.update,
     "Updates one workflow through the shared Backend."
 );
 backend_command!(
     delete_workflow,
     DeleteWorkflowRequest,
     DeleteWorkflowResponse,
-    delete_workflow,
+    workflows.delete,
     "Deletes one workflow through the shared Backend."
 );
 backend_command!(
     get_workflow_draft,
     GetDraftRequest,
     GetDraftResponse,
-    get_workflow_draft,
+    workflows.get_draft,
     "Gets one workflow's draft snapshot through the shared Backend."
 );
 backend_command!(
     update_workflow_draft,
     UpdateDraftRequest,
     UpdateDraftResponse,
-    update_workflow_draft,
+    workflows.update_draft,
     "Updates one workflow's draft graph through the shared Backend."
 );
 backend_command!(
     publish_workflow,
     PublishWorkflowRequest,
     PublishWorkflowResponse,
-    publish_workflow,
+    workflows.publish,
     "Publishes one workflow draft through the shared Backend."
 );
 backend_command!(
     rollback_workflow,
     RollbackWorkflowRequest,
     RollbackWorkflowResponse,
-    rollback_workflow,
+    workflows.rollback,
     "Rolls back one workflow draft through the shared Backend."
 );
 backend_command!(
     activate_workflow,
     ActivateWorkflowRequest,
     ActivateWorkflowResponse,
-    activate_workflow,
+    workflows.activate,
     "Activates one workflow version through the shared Backend."
 );
 backend_command!(
     list_workflow_versions,
     ListVersionsRequest,
     ListVersionsResponse,
-    list_workflow_versions,
+    workflows.list_versions,
     "Lists one workflow's published versions through the shared Backend."
 );
 backend_command!(
     get_workflow_version,
     GetVersionRequest,
     GetVersionResponse,
-    get_workflow_version,
+    workflows.get_version,
     "Gets one workflow version snapshot through the shared Backend."
 );
 backend_command!(
     delete_workflow_snapshot,
     DeleteSnapshotRequest,
     DeleteSnapshotResponse,
-    delete_workflow_snapshot,
+    workflows.delete_snapshot,
     "Deletes one workflow snapshot through the shared Backend."
 );
 backend_command!(
     get_workflow_snapshot,
     GetWorkflowSnapshotRequest,
     GetWorkflowSnapshotResponse,
-    get_workflow_snapshot,
+    workflows.get_snapshot,
     "Gets one snapshot by id through the shared Backend."
 );

@@ -1,6 +1,14 @@
 # ora-backend
 
-`ora-backend` is the Desktop composition root behind the Tauri adapter. It opens persistent state, wires concrete application repositories and handlers, supervises agent providers, and exposes one stable `Backend` API over contract DTOs.
+`ora-backend` is the Desktop composition root behind the Tauri adapter. It opens persistent state, wires concrete application repositories and handlers, supervises agent providers, and exposes domain interfaces through `Backend`.
+
+`Backend::agents()`, `skills()`, and `workflows()` return shared handles for configurable-agent
+definitions, Skill catalog/import, and workflow definitions/drafts/versions. They expose contract
+DTO use cases and `BackendError`, not repositories, constructors, or execution engines. Adding
+a use case in one of these modules does not add a root forwarding method. Skill mutations still
+own their Effect wakeups, and definition use cases cannot accidentally start workflow execution.
+Desktop command execution captures only the relevant handle; surface download actions also use
+the Skill interface without retaining the entire Backend.
 
 ## Responsibilities
 

@@ -35,6 +35,11 @@ The frontend signals cancellation even while startup is pending and repeats clea
 settles. Application exit cancels all starting/running registrations and refuses new ones.
 Domain modules supply event sources; they do not duplicate forwarding or request completion.
 
+Agent-definition, Skill, and workflow-definition commands capture their corresponding Backend
+domain handle for blocking execution. Their command declarations name the owning domain and
+use case; neither the command executor nor root Backend gains a new forwarding method for each
+operation. Prompted and automatic surface download imports both use the Skill interface.
+
 The frontend injects `createTauriTransport()` into `createContractsClient`. The transport maps contract operation names to Tauri commands and forwards the original request DTO unchanged. Backend failures use the direct `{ code, params, requestId }` payload without a public message or outer envelope. Local Tauri invocation failures never invent a request id.
 
 Task workspace lookup is part of that shared contract surface. `get_task_workspace` returns the authoritative task root with an optional branch. `watchAppEvents` uses the same channel framing, cancellation, and exactly-once completion lifecycle as other Desktop streams.

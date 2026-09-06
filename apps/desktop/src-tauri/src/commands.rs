@@ -72,6 +72,22 @@ where
 }
 
 macro_rules! backend_command {
+    ($name:ident, $request:ty, $response:ty, $domain:ident.$operation:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[tauri::command]
+        pub async fn $name(
+            state: tauri::State<'_, $crate::state::DesktopState>,
+            request: $request,
+        ) -> Result<$response, $crate::error::CommandError> {
+            $crate::commands::run_backend(
+                stringify!($name),
+                state.backend.$domain(),
+                request,
+                |module, request| module.$operation(request),
+            )
+            .await
+        }
+    };
     ($name:ident, $request:ty, $response:ty, $operation:ident, $doc:literal) => {
         #[doc = $doc]
         #[tauri::command]

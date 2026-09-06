@@ -10,7 +10,7 @@
 | 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成 |
 | 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                |
 | 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
-| 4：Backend 迁移 | 待实施 | 领域操作、生命周期协调和启动装配                  |
+| 4：Backend 迁移 | 进行中 | 普通用例迁移中；聚合删除和运行控制随后迁移        |
 | 5：前端归属     | 待实施 | feature 资源、查询和按需测试 transport            |
 | 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`              |
 
@@ -104,3 +104,11 @@
 - 试点净收益：不是多套一层转发，而是移除根转发和不必要的 runtime 所有权，设置测试只需 SQLite。可以据此扩大阶段 4。
 - 额外尝试的 `cargo clippy -p ora-backend --all-targets -- -D warnings` 被现有测试大量使用 `unwrap`/`expect` 阻挡（仓库标准 lint 不包含这些测试目标）；不顺带改写无关测试，最终按 `task test` 的标准门禁验收。
 - 最终 `task test` 全量通过：含 208 项 Backend 测试、58 项 Tauri 测试和 4 项 E2E；标准 Rust/Frontend lint 均通过。
+
+### 阶段 4a：普通领域用例（2026-09-06）
+
+- 30 个 agent 定义、Skill 和 workflow 定义操作不再占用根 `Backend` 方法，调用者使用 `agents()` / `skills()` / `workflows()`。只导出所属用例，构造与字段仍隐藏，错误投影收进领域 module。
+- Desktop 命令捕获对应领域 handle；surface 的自动下载和用户确认导入都使用 Skill interface。原导入流程、事务和 Effect 唤醒归属不变，未改动生成 binding 或任何 operation/DTO。
+- 新增仅用 SQLite 的 agent CRUD/错误投影、workflow definition/draft 重开测试；既有 Skill 存储互斥和真实导入/Effect E2E 继续承担原验证义务。
+- 此处只是阶段 4 的第一组。旧 command 宏分支暂时只服务尚未迁移的其他领域，最终阶段 4 收拢时删除；不把拆出这些普通用例等同于完成生命周期协调迁移。
+- 验证：Backend 209 项通过、1 项原有测试保持 ignored；`task lint:crates`、`task test:tauri`（58 项）、`task test:e2e`（4 项）和 `task check:contracts` 通过。阶段 4 完成时再运行全量检查。

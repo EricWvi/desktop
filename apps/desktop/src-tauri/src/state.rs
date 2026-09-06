@@ -179,7 +179,7 @@ impl DesktopState {
                 // Same execution path as the automatic disposition (`DownloadActionHost`), so
                 // prompt and auto can never drift apart in how an import is prepared.
                 let response = DownloadActionHost::prepare_skill_import(
-                    &self.backend,
+                    self.backend.skills().as_ref(),
                     &staged.path,
                     &staged.file_name,
                 );

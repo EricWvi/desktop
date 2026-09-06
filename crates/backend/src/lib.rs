@@ -29,6 +29,7 @@ mod test_clock;
 mod workflow;
 mod workspace_diff;
 
+pub use agent::AgentApi;
 pub use agent_runtime::SessionEventStream;
 pub use app_event::AppEventHub;
 pub use bootstrap::{Backend, BackendBootstrapError, BackendPaths};
@@ -36,7 +37,9 @@ pub use error::{BackendError, ErrorClassification};
 pub use plugin_gateway::{GatewayError, PluginGateway};
 pub use request_lifecycle::{RequestIdGenerator, RequestLifecycle, UuidRequestIdGenerator};
 pub use settings::{BackendPreferredLogLevelStore, Settings};
+pub use skill::SkillApi;
 pub use skill_reconciliation::SkillStorageReconciliationError;
+pub use workflow::WorkflowApi;
 
 #[cfg(test)]
 mod local_agent_package_tests;
