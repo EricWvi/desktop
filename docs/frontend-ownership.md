@@ -75,3 +75,17 @@ neighboring checkout. Changing scope aborts the old watcher and unmount aborts t
 Data tests use real QueryClient caches/observers to verify exact invalidation and refetch behavior.
 The Files scope-switch test awaits rendered listings and actual stream finalization, and the
 existing mutation and event tests continue to exercise UI coordination and reconnect behavior.
+
+## Typed test transport
+
+`test/contracts-transport.ts` supplies `createTestClient(handlers)`, which uses the production
+generated client. `TestHandlers` derives each request, response, and unary/stream mode from the
+operation catalog; fixtures do not spell another namespace/member map. Tests register operation
+handlers explicitly, composing domain adapters or overriding a specific operation in that object.
+The transport rejects omitted/unknown operations and wrong response modes. Stream lookup happens
+on first consumption; iterator exit forwards cleanup to the handler. DTOs, bigint values, and
+AbortSignal options cross this seam unchanged.
+
+The Files scope-switch test uses this interface with exactly four handlers. Migration of the
+remaining full mock-client fixtures into explicit domain adapters is in progress; the old
+`test/mock-client.ts` is not a supported pattern for new tests and will be removed in stage 5c.

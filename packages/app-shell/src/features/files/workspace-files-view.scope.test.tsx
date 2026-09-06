@@ -5,45 +5,45 @@ import { I18nextProvider } from "react-i18next";
 import { expect, it } from "vitest";
 import { appI18n } from "../../i18n/i18n-instance";
 import { ContractsClientContext } from "../../contracts-client-context";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
 import { fileKeys } from "../../state/data/files";
 import { WorkspaceFilesView } from "./workspace-files-view";
 
 it("releases the old file stream on workspace switch and keeps cached listings isolated", async () => {
-  const client = createMockClient(createMockClientState());
+  const client = createTestClient({
+    listWorkspaces: () => ({ workspaces: [] }),
+    watchWorkspace: async function* ({ taskId }, options) {
+      const signal = options?.signal;
+      if (!signal) throw new Error("Files must own a cancellable stream");
+      streams.push({ taskId, signal });
+      try {
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else
+            signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        yield* [];
+      } finally {
+        finished.push(taskId);
+      }
+    },
+    listWorkspaceDirectory: async ({ taskId }) => ({
+      path: "",
+      entries: [
+        {
+          name: `${taskId}.rs`,
+          path: `${taskId}.rs`,
+          kind: "file",
+          isSymbolicLink: false,
+        },
+      ],
+    }),
+    getTaskWorkspace: async ({ taskId }) => ({
+      workspace: { rootPath: `/repo/${taskId}`, branchName: `task/${taskId}` },
+    }),
+  });
   const streams: Array<{ taskId: string; signal: AbortSignal }> = [];
   const finished: string[] = [];
-  client.fileSystem.watchWorkspace = async function* ({ taskId }, options) {
-    const signal = options?.signal;
-    if (!signal) throw new Error("Files must own a cancellable stream");
-    streams.push({ taskId, signal });
-    try {
-      await new Promise<void>((resolve) => {
-        if (signal.aborted) resolve();
-        else signal.addEventListener("abort", () => resolve(), { once: true });
-      });
-      yield* [];
-    } finally {
-      finished.push(taskId);
-    }
-  };
-  client.fileSystem.listWorkspaceDirectory = async ({ taskId }) => ({
-    path: "",
-    entries: [
-      {
-        name: `${taskId}.rs`,
-        path: `${taskId}.rs`,
-        kind: "file",
-        isSymbolicLink: false,
-      },
-    ],
-  });
-  client.task.getWorkspace = async ({ taskId }) => ({
-    workspace: { rootPath: `/repo/${taskId}`, branchName: `task/${taskId}` },
-  });
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });

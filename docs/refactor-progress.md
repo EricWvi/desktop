@@ -178,3 +178,9 @@
 - Files scope/access、批量失效与 watcher/reconnect 迁到数据归属；Explorer/Search 仍显式组合，不增加通用 view 容器。新增测试证明切换 workspace 和 unmount 会结束对应 stream，缓存保留各自 listing。
 - 原接口测试随实现移动；用真实 QueryClient/Observer 验证项目 main/task session 清理、分工作区 diff/file 隔离、rename 两端、rescan、插件失效矩阵、session gap refetch，以及真实与 mock run key/prefix 分离。
 - `task test` 全量通过：app-shell 141 个文件、1277 项 clean-stderr 测试，workflow-runtime 60 项，以及 Rust workspace、58 项 Tauri 和 7 项 E2E。原 Backend 外部发布产物测试仍有 1 项 ignored。
+
+### 阶段 5c-1：真实 client 的测试 transport seam（2026-09-06）
+
+- 新增按 catalog 推导 request/response/mode 的 `TestHandlers`，`createTestClient` 直接使用生成的生产 client；没有新增手写 namespace 镜像。未注册 unary、未知 operation、错误 mode 和 prototype 继承 handler 明确失败；stream 在消费时才解析 handler。
+- 6 项测试验证 DTO/bigint/options 原样传递、惰性 stream 与 iterator cleanup、未配置调用失败，以及 request/response mode 的编译期约束。Files scope-switch 回归改为只注册实际依赖的 4 个 operation，继续覆盖生产请求构造链路。
+- app-shell lint 和完整 clean-stderr 测试通过：142 个文件、1283 项测试。本提交只建立并试用 seam；剩余内存 adapter 和测试显式组合迁移仍待完成，旧 mock client 尚未删除。
