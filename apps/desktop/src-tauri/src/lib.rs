@@ -13,7 +13,7 @@ mod workspace_files;
 use crate::error::DesktopBootstrapError;
 use crate::state::{BundledBinaryPaths, DesktopRuntimeGuard, DesktopState};
 use crate::update::DesktopUpdateMode;
-use ora_backend::{Backend, BackendError, BackendPaths};
+use ora_backend::{Backend, BackendError, BackendPaths, Settings};
 use ora_logging::{
     FileLoggingConfig, LogLevel, LogOutput, LoggingConfig, RotationPolicy, init_logging, ora_error,
     ora_info, ora_warn, register_gitlancer_logger,
@@ -168,9 +168,10 @@ fn bootstrap_desktop(
     };
     let home_directory = backend_paths.home_directory.clone();
     let backend = Backend::open(backend_paths)?;
-    let (configured_log_level, resolved_log_level) =
-        tauri::async_runtime::block_on(load_desktop_log_level(&backend, startup_override))
-            .map_err(DesktopBootstrapError::RuntimePreference)?;
+    let (configured_log_level, resolved_log_level) = tauri::async_runtime::block_on(
+        load_desktop_log_level(backend.settings(), startup_override),
+    )
+    .map_err(DesktopBootstrapError::RuntimePreference)?;
     if resolved_log_level.effective_level != provisional_log_level {
         level_control.set_level(resolved_log_level.effective_level)?;
     }
@@ -187,7 +188,7 @@ fn bootstrap_desktop(
     let surfaces = surface::SurfaceService::new(app.clone(), backend.plugin_gateway());
     let update = update::UpdateService::start(
         app.clone(),
-        backend.clone(),
+        backend.settings().clone(),
         &home_directory,
         resolved_timezone.timezone,
         if cfg!(debug_assertions) {
@@ -199,7 +200,7 @@ fn bootstrap_desktop(
     .map_err(DesktopBootstrapError::Update)?;
     let runtime_log_level = RuntimeLogLevelManager::new(
         level_control,
-        backend.preferred_log_level_store(),
+        backend.settings().preferred_log_level_store(),
         configured_log_level,
         resolved_log_level.startup_override,
     );
@@ -330,10 +331,10 @@ fn resolve_desktop_log_level(
 
 /// Loads the shared preference before resolving the process-scoped Desktop override.
 async fn load_desktop_log_level(
-    backend: &Backend,
+    settings: &Settings,
     startup_override: Option<LogLevel>,
 ) -> Result<(LogLevel, ResolvedDesktopLogLevel), BackendError> {
-    let configured_level = backend.preferred_log_level().await?;
+    let configured_level = settings.preferred_log_level().await?;
     Ok((
         configured_level,
         resolve_desktop_log_level(startup_override, configured_level),
@@ -492,7 +493,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let first = Backend::open(test_backend_paths(temp_dir.path())).unwrap();
         assert_eq!(
-            load_desktop_log_level(&first, None).await.unwrap(),
+            load_desktop_log_level(first.settings(), None)
+                .await
+                .unwrap(),
             (
                 LogLevel::Info,
                 ResolvedDesktopLogLevel {
@@ -502,12 +505,16 @@ mod tests {
                 },
             )
         );
-        first.set_preferred_log_level(LogLevel::Warn).await.unwrap();
+        first
+            .settings()
+            .set_preferred_log_level(LogLevel::Warn)
+            .await
+            .unwrap();
         drop(first);
 
         let restarted = Backend::open(test_backend_paths(temp_dir.path())).unwrap();
         assert_eq!(
-            load_desktop_log_level(&restarted, Some(LogLevel::Trace))
+            load_desktop_log_level(restarted.settings(), Some(LogLevel::Trace))
                 .await
                 .unwrap(),
             (
@@ -543,7 +550,11 @@ mod tests {
             .unwrap();
         let reopened = Backend::open(test_backend_paths(temp_dir.path())).unwrap();
 
-        assert!(load_desktop_log_level(&reopened, None).await.is_err());
+        assert!(
+            load_desktop_log_level(reopened.settings(), None)
+                .await
+                .is_err()
+        );
     }
 
     /// Verifies the resolved level is preserved in Desktop's fixed output topology.

@@ -24,9 +24,12 @@ pub async fn get_developer_mode(
     request: GetDeveloperModeRequest,
 ) -> Result<DeveloperModeResponse, CommandError> {
     let _ = request;
-    let backend = state.backend.clone();
+    let settings_handle = state.backend.settings().clone();
     run_async_backend("get_developer_mode", async move {
-        backend.developer_mode().await.map(developer_mode_response)
+        settings_handle
+            .developer_mode()
+            .await
+            .map(developer_mode_response)
     })
     .await
 }
@@ -37,9 +40,9 @@ pub async fn set_developer_mode(
     state: State<'_, DesktopState>,
     request: SetDeveloperModeRequest,
 ) -> Result<DeveloperModeResponse, CommandError> {
-    let backend = state.backend.clone();
+    let settings_handle = state.backend.settings().clone();
     run_async_backend("set_developer_mode", async move {
-        backend
+        settings_handle
             .set_developer_mode(internal_developer_mode(request.enabled))
             .await
             .map(developer_mode_response)
@@ -117,9 +120,9 @@ pub async fn get_proxy_settings(
     request: GetProxySettingsRequest,
 ) -> Result<GetProxySettingsResponse, CommandError> {
     let _ = request;
-    let backend = state.backend.clone();
+    let settings_handle = state.backend.settings().clone();
     run_async_backend("get_proxy_settings", async move {
-        backend
+        settings_handle
             .network_proxy_settings()
             .map(proxy_settings_response)
     })
@@ -131,10 +134,10 @@ pub async fn set_proxy_settings(
     state: State<'_, DesktopState>,
     request: SetProxySettingsRequest,
 ) -> Result<SetProxySettingsResponse, CommandError> {
-    let backend = state.backend.clone();
+    let settings_handle = state.backend.settings().clone();
     run_async_backend("set_proxy_settings", async move {
         let settings = internal_network_proxy_settings(request.settings);
-        backend
+        settings_handle
             .set_network_proxy_settings(settings)
             .map(set_proxy_settings_response)
     })
@@ -148,9 +151,9 @@ pub async fn clear_proxy_settings(
     request: ClearProxySettingsRequest,
 ) -> Result<ClearProxySettingsResponse, CommandError> {
     let _ = request;
-    let backend = state.backend.clone();
+    let settings_handle = state.backend.settings().clone();
     run_async_backend("clear_proxy_settings", async move {
-        backend.clear_network_proxy_settings()?;
+        settings_handle.clear_network_proxy_settings()?;
         Ok(ClearProxySettingsResponse { settings: None })
     })
     .await
@@ -162,9 +165,9 @@ pub async fn check_proxy_settings(
     state: State<'_, DesktopState>,
     request: CheckProxySettingsRequest,
 ) -> Result<CheckProxySettingsResponse, CommandError> {
-    let backend = state.backend.clone();
+    let settings_handle = state.backend.settings().clone();
     run_async_backend("check_proxy_settings", async move {
-        backend
+        settings_handle
             .check_network_proxy_settings(
                 internal_network_proxy_settings(request.settings),
                 request.url,

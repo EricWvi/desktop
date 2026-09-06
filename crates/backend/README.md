@@ -14,9 +14,13 @@
 - `Backend::open` exposes the event hub through transport adapters as a best-effort invalidation stream and injects only its internal publisher into stateful components; the hub does not depend on Axum or Tauri.
 - The shared `ora-scheduler::Scheduler` owns actor-facing delayed work. Scheduler tasks enqueue internal commands, while actors remain the only code that calls ACP or writes session state.
 - Project, task, skill CRUD, atomic skill-folder import, and agent operations delegate to `ora-application`; aggregate deletion uses transactional database cascades.
-- Shared developer-mode, preferred-log-level, and network-proxy operations delegate to typed
-  `ora-application` use cases; raw SQLite keys and values remain inside `ora-db`, and request-time
-  repository work runs on the blocking pool.
+- `Backend::settings()` exposes the cloneable `Settings` interface for developer mode, preferred
+  log level, and network proxy use cases. Runtime logging receives only
+  `settings.preferred_log_level_store()`. Settings hides construction, repositories, raw keys,
+  and worktree configuration; Desktop never receives the whole runtime just to execute a preference
+  operation. Async preference calls dispatch SQLite work to the blocking pool. Internal synchronous
+  proxy reads also serve plugin retrieval policy. The settings tests open only SQLite and exercise
+  persistence/reopening and injected storage faults through this interface.
 - `WorkspaceDiffApi` composes the workspace-diff handlers with SQLite and Gitlancer, keyed by `WorkspaceId` for either an isolated task worktree or a project's main checkout. It resolves the workspace's live cwd and, when a `Worktree` row is recorded for it, uses the persisted creation commit as the stable diff baseline; a workspace with no such row has no baseline (only the `Unstaged`/`Staged` scopes apply) and its writes go through unverified.
 - Tauri remains a transport-only adapter.
 - Workspace diff reads, commits, and pushes preserve the same public error projection as the rest of the backend. Git and SQLite sources remain internal diagnostics and are rendered once by the adapter-owned request lifecycle.

@@ -14,17 +14,18 @@ mod plugin_configuration;
 mod plugin_gateway;
 mod project;
 mod proxy;
+mod repository_work;
 mod request_lifecycle;
 mod session;
 mod session_history;
 mod session_setup;
+mod settings;
 mod skill;
 mod skill_reconciliation;
 mod source_boundary;
 mod task;
 #[cfg(test)]
 mod test_clock;
-mod user_config;
 mod workflow;
 mod workspace_diff;
 
@@ -34,8 +35,8 @@ pub use bootstrap::{Backend, BackendBootstrapError, BackendPaths};
 pub use error::{BackendError, ErrorClassification};
 pub use plugin_gateway::{GatewayError, PluginGateway};
 pub use request_lifecycle::{RequestIdGenerator, RequestLifecycle, UuidRequestIdGenerator};
+pub use settings::{BackendPreferredLogLevelStore, Settings};
 pub use skill_reconciliation::SkillStorageReconciliationError;
-pub use user_config::BackendPreferredLogLevelStore;
 
 #[cfg(test)]
 mod local_agent_package_tests;

@@ -7,10 +7,11 @@ use crate::git_cleanup::KeyedResourceLocks;
 use crate::plugin::PluginApi;
 use crate::plugin_gateway::PluginGateway;
 use crate::project::ProjectApi;
+use crate::repository_work::spawn_repository_work;
 use crate::session::SessionApi;
+use crate::settings::Settings;
 use crate::skill::SkillApi;
 use crate::task::TaskApi;
-use crate::user_config::{BackendPreferredLogLevelStore, UserConfigApi};
 use crate::workflow::WorkflowApi;
 use crate::workflow::run::WorkflowRunApi;
 use crate::workflow::run::{
@@ -88,7 +89,7 @@ pub struct Backend {
     project: Arc<ProjectApi>,
     task: Arc<TaskApi>,
     workspace_diff: Arc<WorkspaceDiffApi>,
-    user_config: Arc<UserConfigApi>,
+    settings: Arc<Settings>,
     session: Arc<SessionApi>,
     agent_runtime: Arc<AgentRuntimeManager>,
     plugin: Arc<PluginApi>,
@@ -125,8 +126,8 @@ impl Backend {
         let pool = DatabaseBootstrapper::system()
             .bootstrap_repository_pool(&DatabaseLocation::path(&database_path), &catalog)
             .map_err(BackendBootstrapError::Database)?;
-        let user_config = Arc::new(UserConfigApi::new(pool.clone()));
-        let stored_worktree_root = user_config
+        let settings = Arc::new(Settings::new(pool.clone()));
+        let stored_worktree_root = settings
             .worktree_root()
             .map_err(BackendBootstrapError::UserConfig)?;
         let configured_worktree_root = match stored_worktree_root {
@@ -147,7 +148,6 @@ impl Backend {
             .map_err(BackendBootstrapError::SkillStorageReconciliation)?;
         let clock = SystemClock;
         let app_events = Arc::new(AppEventHub::new());
-        let user_config = Arc::new(UserConfigApi::new(pool.clone()));
         let plugin = Arc::new(
             PluginApi::open(
                 pool.clone(),
@@ -155,7 +155,7 @@ impl Backend {
                 paths.deno_path,
                 clock,
                 app_events.publisher(),
-                user_config.clone(),
+                settings.clone(),
             )
             .map_err(BackendBootstrapError::Plugin)?,
         );
@@ -244,7 +244,7 @@ impl Backend {
                 git_cleanup.clone(),
                 relative_path_base.clone(),
             )),
-            user_config,
+            settings,
             session: Arc::new(SessionApi::new(pool.clone())),
             agent_runtime,
             plugin,
@@ -712,69 +712,14 @@ impl Backend {
         self.pool.clone()
     }
 
-    /// Returns the authoritative shared developer-mode preference.
-    pub async fn developer_mode(&self) -> Result<ora_application::DeveloperMode, BackendError> {
-        self.user_config.developer_mode().await
-    }
-
-    /// Persists and returns the authoritative shared developer-mode preference.
-    pub async fn set_developer_mode(
-        &self,
-        mode: ora_application::DeveloperMode,
-    ) -> Result<ora_application::DeveloperMode, BackendError> {
-        self.user_config.set_developer_mode(mode).await
-    }
-
-    /// Returns the preferred runtime log level stored in shared user configuration.
-    pub async fn preferred_log_level(&self) -> Result<ora_logging::LogLevel, BackendError> {
-        self.user_config.preferred_log_level().await
-    }
-
-    /// Persists and returns the preferred runtime log level in shared user configuration.
-    pub async fn set_preferred_log_level(
-        &self,
-        level: ora_logging::LogLevel,
-    ) -> Result<ora_logging::LogLevel, BackendError> {
-        self.user_config.set_preferred_log_level(level).await
-    }
-
-    /// Returns the optional configured network proxy settings.
-    pub fn network_proxy_settings(
-        &self,
-    ) -> Result<Option<ora_application::NetworkProxySettings>, BackendError> {
-        self.user_config.network_proxy_settings()
-    }
-
-    /// Persists and returns the configured network proxy settings.
-    pub fn set_network_proxy_settings(
-        &self,
-        settings: ora_application::NetworkProxySettings,
-    ) -> Result<ora_application::NetworkProxySettings, BackendError> {
-        self.user_config.set_network_proxy_settings(settings)
-    }
-
-    /// Removes the configured network proxy settings.
-    pub fn clear_network_proxy_settings(&self) -> Result<(), BackendError> {
-        self.user_config.clear_network_proxy_settings()
-    }
-
-    /// Probes `url` through `settings` without persisting those settings.
-    pub async fn check_network_proxy_settings(
-        &self,
-        settings: ora_application::NetworkProxySettings,
-        url: String,
-    ) -> Result<ora_contracts::CheckProxySettingsResponse, BackendError> {
-        crate::proxy::check_proxy(&settings, &url).await
-    }
-
-    /// Returns the restricted preferred-level persistence capability for runtime logging.
-    pub fn preferred_log_level_store(&self) -> BackendPreferredLogLevelStore {
-        BackendPreferredLogLevelStore::new(self.user_config.clone())
+    /// Returns the settings interface without exposing storage or runtime internals.
+    pub fn settings(&self) -> &Settings {
+        &self.settings
     }
 
     /// Returns the worktree root row, preserving absence for first-run migration.
     pub fn persisted_worktree_root(&self) -> Result<Option<PathBuf>, BackendError> {
-        self.user_config.worktree_root()
+        self.settings.worktree_root()
     }
 
     /// Returns the active root used for new task worktrees.
@@ -807,7 +752,7 @@ impl Backend {
                 "worktree root must be an existing directory",
             ));
         }
-        self.user_config.set_worktree_root(&worktree_root)?;
+        self.settings.set_worktree_root(&worktree_root)?;
         let mut configured_root = self.worktree_root.write().map_err(|_poisoned| {
             BackendError::new(
                 ErrorClassification::Internal,
@@ -1521,25 +1466,6 @@ impl Backend {
     }
 }
 
-/// Runs one blocking repository operation off the async runtime's worker threads.
-///
-/// The SQLite work behind a delete genuinely blocks: acquiring a pooled
-/// connection waits when every slot is taken, and a cascading delete opens an
-/// immediate transaction that parks on the busy timeout while another writer
-/// holds the reservation. Parking an async worker for that long starves every
-/// other request the runtime is serving, so the wait belongs on the blocking
-/// pool even though the caller is asynchronous for unrelated reasons.
-pub(crate) async fn spawn_repository_work<T>(
-    work: impl FnOnce() -> Result<T, BackendError> + Send + 'static,
-) -> Result<T, BackendError>
-where
-    T: Send + 'static,
-{
-    tokio::task::spawn_blocking(work)
-        .await
-        .map_err(|source| BackendError::internal("repository operation did not complete", source))?
-}
-
 /// Creates one required runtime directory and preserves its exact failing path.
 fn ensure_directory(path: &Path) -> Result<(), BackendBootstrapError> {
     fs::create_dir_all(path).map_err(|source| BackendBootstrapError::DirectoryCreate {
@@ -1612,7 +1538,6 @@ fn prune_orphaned_baselines(pool: &RepositoryPool, baselines_root: &Path) {
 mod tests {
     use super::{Backend, BackendPaths};
     use crate::error::ErrorClassification;
-    use ora_application::DeveloperMode;
     use ora_contracts::CreateTaskRequest;
     use ora_contracts::{
         CreateAgentRequest, CreateProjectRequest, CreateSkillRequest, DeleteAgentRequest,
@@ -1620,7 +1545,6 @@ mod tests {
         GetTaskRequest, ListAgentsRequest, ListProjectsRequest, ListSkillsRequest,
         UpdateAgentRequest, UpdateProjectRequest, UpdateSkillRequest,
     };
-    use ora_logging::LogLevel;
     use ora_test_support::GitTestScaffold;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1652,33 +1576,6 @@ mod tests {
 
         assert!(database_path.is_file());
         assert!(worktree_root.is_dir());
-        assert_eq!(
-            (
-                backend.developer_mode().await.unwrap(),
-                backend.preferred_log_level().await.unwrap(),
-            ),
-            (DeveloperMode::Disabled, LogLevel::Info)
-        );
-        assert_eq!(
-            (
-                backend
-                    .set_developer_mode(DeveloperMode::Enabled)
-                    .await
-                    .unwrap(),
-                backend
-                    .set_preferred_log_level(LogLevel::Debug)
-                    .await
-                    .unwrap(),
-            ),
-            (DeveloperMode::Enabled, LogLevel::Debug)
-        );
-        assert_eq!(
-            (
-                backend.developer_mode().await.unwrap(),
-                backend.preferred_log_level().await.unwrap(),
-            ),
-            (DeveloperMode::Enabled, LogLevel::Debug)
-        );
 
         let project = backend
             .create_project(CreateProjectRequest {

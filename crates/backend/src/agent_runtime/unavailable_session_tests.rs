@@ -4,7 +4,7 @@ use super::{AgentRuntimeManager, AgentRuntimeSetup};
 use crate::app_event::AppEventHub;
 use crate::clock::SystemClock;
 use crate::plugin::PluginApi;
-use crate::user_config::UserConfigApi;
+use crate::settings::Settings;
 use agent_client_protocol_schema::v1::{ContentBlock, StopReason, TextContent};
 use ora_application::{ProjectRepository, SessionRepository};
 use ora_contracts::{LoadSessionEvent, LoadSessionRequest};
@@ -47,7 +47,7 @@ fn test_manager(root: &Path, pool: &RepositoryPool, scheduler: Scheduler) -> Age
             PathBuf::from("deno"),
             SystemClock,
             app_events.clone(),
-            Arc::new(UserConfigApi::new(pool.clone())),
+            Arc::new(Settings::new(pool.clone())),
         )
         .expect("open plugin host"),
     );

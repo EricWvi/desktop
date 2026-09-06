@@ -6,7 +6,7 @@ use crate::marketplace_sources::{
     ConfiguredMarketplaceSource, MarketplaceSourceStore, MarketplaceSourceStoreError,
 };
 use crate::proxy;
-use crate::user_config::UserConfigApi;
+use crate::settings::Settings;
 use gitlancer::{CliGitRunner, Git};
 use ora_application::Clock;
 use ora_contracts::{
@@ -168,7 +168,7 @@ pub(crate) struct AgentPluginAttachment {
 pub(crate) struct PluginApi {
     pub(crate) lifecycle: BackendPluginLifecycle,
     marketplace_sources: MarketplaceSourceStore,
-    user_config: Arc<UserConfigApi>,
+    settings: Arc<Settings>,
     registry_index_path: PathBuf,
     home_directory: PathBuf,
     installer: Installer<ReqwestDownloader>,
@@ -196,7 +196,7 @@ impl PluginApi {
         deno_path: PathBuf,
         clock: SystemClock,
         publisher: AppEventPublisher,
-        user_config: Arc<UserConfigApi>,
+        settings: Arc<Settings>,
     ) -> Result<Self, BackendError> {
         let plugins_directory = home_directory.join("plugins");
         let marketplace_sources = MarketplaceSourceStore::open(
@@ -229,7 +229,7 @@ impl PluginApi {
         Ok(Self {
             lifecycle,
             marketplace_sources,
-            user_config,
+            settings,
             registry_index_path,
             home_directory,
             installer,
@@ -504,7 +504,7 @@ impl PluginApi {
     ) -> Result<Vec<(ora_plugin_registry::RegistrySource, bool, Option<S3Config>)>, BackendError>
     {
         let configured = self.enabled_marketplace_sources()?;
-        let proxy_settings = self.user_config.network_proxy_settings()?;
+        let proxy_settings = self.settings.network_proxy_settings()?;
         let mut registry_sources = Vec::with_capacity(configured.len());
 
         for (source, mut registry_source) in configured.iter().zip(self.registry_sources()?) {
@@ -868,7 +868,7 @@ impl PluginApi {
         if !use_proxy {
             return Ok(ProxyConfig::default());
         }
-        let proxy_settings = self.user_config.network_proxy_settings()?;
+        let proxy_settings = self.settings.network_proxy_settings()?;
         proxy::download_proxy(proxy_settings.as_ref())?.ok_or_else(|| {
             BackendError::invalid_proxy_settings(
                 "a marketplace source uses the proxy but no proxy is configured",

@@ -41,6 +41,11 @@ Task workspace lookup is part of that shared contract surface. `get_task_workspa
 
 Developer preferences use four unary commands in a separate settings command module: `get_developer_mode`, `set_developer_mode`, `get_runtime_log_level`, and `set_runtime_log_level`. They use the same lifecycle and error projection as other Desktop commands; no HTTP endpoint is involved.
 
+Settings commands clone `backend.settings()` rather than the entire Backend. The same narrow
+interface supplies the updater's configured proxy and the persisted startup logging preference;
+the runtime log-level manager receives only its restricted preferred-level store. SQLite handles
+and worktree-root persistence are not part of the public settings interface.
+
 Backend construction immediately attempts one supervised connection per installed agent plugin; there is no other source of agents. Plugin processes are started and stopped by the plugin lifecycle, which the agent runtime attaches to rather than spawning its own. Sessions share the connection selected by their current `agentCli` while retaining their own ACP session id and Task worktree `cwd`. `switch_session_agent` moves a live conversation to another agent and `resume_session_history` recovers one whose history writes failed. Each agent retries independently; failures leave the Desktop shell and healthy agents available, while operations targeting an unavailable agent report `agent_runtime_unavailable`. Agent process discovery is owned entirely by each plugin — see [ACP Agent Runtime](agent-runtime.md).
 
 Plugins of kind `ui` contribute surfaces: remote web sites shown in isolated native webviews. Desktop hosts them in `apps/desktop/src-tauri/src/surface/` on top of the `ora-surface` registry, exposes the `surface_*` commands to the main webview, emits `surface://event`, writes surface downloads into `<data-dir>/plugins/data/<namespace>/<name>/downloads/`, starts the plugin process on demand, and stops it 30 s after its last surface closes. Plugin processes have no filesystem access of their own; they read their data directory back through the `ora/storage/*` host methods served by `ora-plugin-lifecycle`. Disabling, stopping, or uninstalling a plugin closes its surfaces first through the lifecycle's `SurfaceCloser`. See [Plugin Surfaces](surface.md).

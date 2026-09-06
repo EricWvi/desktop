@@ -3135,6 +3135,7 @@ dependencies = [
  "ora-user-config",
  "ora-utils",
  "pretty_assertions",
+ "rusqlite",
  "semver",
  "serde",
  "serde_json",

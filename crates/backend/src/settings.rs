@@ -1,5 +1,6 @@
+//! Typed settings use cases; persistence and worktree configuration remain internal.
+
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use ora_application::{ApplicationError, DeveloperMode, NetworkProxySettings, UserConfigService};
 use ora_db::{RepositoryPool, SqliteUserConfigRepository};
@@ -8,11 +9,11 @@ use ora_runtime_settings::PreferredLogLevelStore;
 use ora_user_config::{ConfigKey, UserConfigStore};
 
 use crate::BackendError;
-use crate::bootstrap::spawn_repository_work;
+use crate::repository_work::spawn_repository_work;
 
-/// Owns Backend's concrete typed user-configuration composition.
+/// Provides persisted preferences without exposing repositories or application runtime ownership.
 #[derive(Clone)]
-pub(crate) struct UserConfigApi {
+pub struct Settings {
     service: UserConfigService<SqliteUserConfigRepository>,
     store: UserConfigStore<SqliteUserConfigRepository>,
 }
@@ -20,29 +21,25 @@ pub(crate) struct UserConfigApi {
 /// Gives runtime logging only the Backend-owned preferred-level capability it requires.
 #[derive(Clone)]
 pub struct BackendPreferredLogLevelStore {
-    user_config: Arc<UserConfigApi>,
-}
-
-impl BackendPreferredLogLevelStore {
-    pub(crate) fn new(user_config: Arc<UserConfigApi>) -> Self {
-        Self { user_config }
-    }
+    settings: Settings,
 }
 
 impl PreferredLogLevelStore for BackendPreferredLogLevelStore {
     type Error = BackendError;
 
+    /// Reads only the persistence capability required by runtime logging.
     async fn load_preferred_level(&self) -> Result<LogLevel, Self::Error> {
-        self.user_config.preferred_log_level().await
+        self.settings.preferred_log_level().await
     }
 
+    /// Keeps runtime filter changes independent of the complete Backend handle.
     async fn save_preferred_level(&self, level: LogLevel) -> Result<(), Self::Error> {
-        self.user_config.set_preferred_log_level(level).await?;
+        self.settings.set_preferred_log_level(level).await?;
         Ok(())
     }
 }
 
-impl UserConfigApi {
+impl Settings {
     pub(crate) fn new(pool: RepositoryPool) -> Self {
         let repository = SqliteUserConfigRepository::new(pool);
         Self {
@@ -66,12 +63,14 @@ impl UserConfigApi {
             .map_err(user_config_repository_error)
     }
 
-    pub(crate) async fn developer_mode(&self) -> Result<DeveloperMode, BackendError> {
+    /// Loads the preference without blocking an async worker on SQLite.
+    pub async fn developer_mode(&self) -> Result<DeveloperMode, BackendError> {
         let service = self.service.clone();
         spawn_repository_work(move || service.developer_mode().map_err(BackendError::from)).await
     }
 
-    pub(crate) async fn set_developer_mode(
+    /// Persists and returns the authoritative developer-mode preference.
+    pub async fn set_developer_mode(
         &self,
         mode: DeveloperMode,
     ) -> Result<DeveloperMode, BackendError> {
@@ -80,16 +79,15 @@ impl UserConfigApi {
             .await
     }
 
-    pub(crate) async fn preferred_log_level(&self) -> Result<LogLevel, BackendError> {
+    /// Loads the preferred level; the process-wide effective filter belongs to runtime settings.
+    pub async fn preferred_log_level(&self) -> Result<LogLevel, BackendError> {
         let service = self.service.clone();
         spawn_repository_work(move || service.preferred_log_level().map_err(BackendError::from))
             .await
     }
 
-    pub(crate) async fn set_preferred_log_level(
-        &self,
-        level: LogLevel,
-    ) -> Result<LogLevel, BackendError> {
+    /// Persists the preferred level without changing the process-wide logging filter itself.
+    pub async fn set_preferred_log_level(&self, level: LogLevel) -> Result<LogLevel, BackendError> {
         let service = self.service.clone();
         spawn_repository_work(move || {
             service
@@ -99,16 +97,14 @@ impl UserConfigApi {
         .await
     }
     /// Loads the optional configured network proxy settings.
-    pub(crate) fn network_proxy_settings(
-        &self,
-    ) -> Result<Option<NetworkProxySettings>, BackendError> {
+    pub fn network_proxy_settings(&self) -> Result<Option<NetworkProxySettings>, BackendError> {
         self.service
             .network_proxy_settings()
             .map_err(BackendError::from)
     }
 
     /// Persists and returns the network proxy settings.
-    pub(crate) fn set_network_proxy_settings(
+    pub fn set_network_proxy_settings(
         &self,
         settings: NetworkProxySettings,
     ) -> Result<NetworkProxySettings, BackendError> {
@@ -118,13 +114,33 @@ impl UserConfigApi {
     }
 
     /// Removes the configured network proxy.
-    pub(crate) fn clear_network_proxy_settings(&self) -> Result<(), BackendError> {
+    pub fn clear_network_proxy_settings(&self) -> Result<(), BackendError> {
         self.service
             .clear_network_proxy_settings()
             .map_err(BackendError::from)
     }
+
+    /// Probes `url` through the supplied proxy without persisting form edits.
+    pub async fn check_network_proxy_settings(
+        &self,
+        settings: NetworkProxySettings,
+        url: String,
+    ) -> Result<ora_contracts::CheckProxySettingsResponse, BackendError> {
+        crate::proxy::check_proxy(&settings, &url).await
+    }
+
+    /// Restricts runtime logging to its preferred-level persistence capability.
+    pub fn preferred_log_level_store(&self) -> BackendPreferredLogLevelStore {
+        BackendPreferredLogLevelStore {
+            settings: self.clone(),
+        }
+    }
 }
 
+/// Keeps storage diagnostics internal while preserving the common public error projection.
 fn user_config_repository_error(error: ora_application::RepositoryError) -> BackendError {
     BackendError::from(ApplicationError::UserConfigRepository { source: error })
 }
+
+#[cfg(test)]
+mod tests;

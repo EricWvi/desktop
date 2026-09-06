@@ -9,7 +9,7 @@
 | 0：基线         | 已盘点 | 本文的登记点、command 与行为验证索引              |
 | 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成 |
 | 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                |
-| 3：Backend 试点 | 待实施 | settings 窄 interface                             |
+| 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
 | 4：Backend 迁移 | 待实施 | 领域操作、生命周期协调和启动装配                  |
 | 5：前端归属     | 待实施 | feature 资源、查询和按需测试 transport            |
 | 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`              |
@@ -94,3 +94,13 @@
 - 注册 guard 在领域创建前取得 id；取消只发信号，释放资源后才允许复用 id，避免旧任务清掉新注册。退出时统一取消并拒绝新注册；创建中取消等待创建安全结束后释放资源。
 - 新增 catalog 完整性、错误模式、重复 handler、typed stream 增删和实际 plugin grant 校验；Rust 覆盖预取消、创建中取消、创建失败的 requestId、重复 id、shutdown。Frontend 覆盖创建中发出取消、终止错误及 requestId、未知 operation、预取消不启动 IPC；保留单次消费、顺序、end 与溢出验证。
 - 验证：xtask Clippy 和 20 项测试通过；Tauri Clippy 和 58 项测试通过；Desktop frontend 41 项测试通过。最终 `task test` 全量通过，包含 4 项 E2E。
+
+### 阶段 3：settings 试点（2026-09-06）
+
+- 原私有 `UserConfigApi` 成为明确导出的 `Settings`，仅开放设置用例。构造、SQLite、原始配置键和 worktree root 持久化保持内部可见；没有新增 trait 或把 repository 暴露给 Desktop。
+- 删除根 `Backend` 的 9 个设置入口，以一个 `settings()` 入口替代；proxy probe 和日志存储 capability 由 settings 拥有。请求执行和 updater 不再持有整个 Backend，runtime logging 仍只得到受限的 preferred-level store。
+- 去掉启动中同一配置 module 的重复构造；通用的 Backend repository 执行机制独立于 bootstrap，避免领域 module 反向依赖启动装配。未改数据库或目录布局。
+- 将完整 runtime CRUD 测试里的设置断言迁到 `settings/tests.rs`，补上重新打开、真实 SQLite 写失败及读失败测试；3 项通过。原 Desktop 重开/启动覆盖保留，且已迁移到窄 interface。
+- 试点净收益：不是多套一层转发，而是移除根转发和不必要的 runtime 所有权，设置测试只需 SQLite。可以据此扩大阶段 4。
+- 额外尝试的 `cargo clippy -p ora-backend --all-targets -- -D warnings` 被现有测试大量使用 `unwrap`/`expect` 阻挡（仓库标准 lint 不包含这些测试目标）；不顺带改写无关测试，最终按 `task test` 的标准门禁验收。
+- 最终 `task test` 全量通过：含 208 项 Backend 测试、58 项 Tauri 测试和 4 项 E2E；标准 Rust/Frontend lint 均通过。

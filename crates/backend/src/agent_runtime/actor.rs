@@ -1029,7 +1029,7 @@ mod tests {
     use crate::clock::SystemClock;
     use crate::plugin::PluginApi;
     use crate::session_setup::{AgentSessionBarriers, SessionMcpHost};
-    use crate::user_config::UserConfigApi;
+    use crate::settings::Settings;
     use ora_db::{
         DatabaseBootstrapper, DatabaseLocation, RepositoryPool, default_migration_catalog,
     };
@@ -1063,7 +1063,7 @@ mod tests {
                 PathBuf::from("deno"),
                 SystemClock,
                 AppEventHub::new().publisher(),
-                Arc::new(UserConfigApi::new(pool.clone())),
+                Arc::new(Settings::new(pool.clone())),
             )
             .expect("open plugin host"),
         )

@@ -3,7 +3,7 @@
 use crate::app_event::AppEventHub;
 use crate::clock::SystemClock;
 use crate::plugin::PluginApi;
-use crate::user_config::UserConfigApi;
+use crate::settings::Settings;
 use ora_contracts::{ImportPluginRequest, InstallOutcome, ListInstalledPluginsRequest};
 use ora_db::{DatabaseBootstrapper, DatabaseLocation, RepositoryPool, default_migration_catalog};
 use ora_logging::with_trace_logging;
@@ -35,7 +35,7 @@ fn test_plugin_api(root: &Path, pool: &RepositoryPool) -> PluginApi {
         std::path::PathBuf::from("deno"),
         SystemClock,
         AppEventHub::new().publisher(),
-        Arc::new(UserConfigApi::new(pool.clone())),
+        Arc::new(Settings::new(pool.clone())),
     )
     .expect("open plugin host")
 }

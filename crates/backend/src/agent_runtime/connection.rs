@@ -849,7 +849,7 @@ mod tests {
     use crate::app_event::AppEventHub;
     use crate::clock::SystemClock;
     use crate::plugin::PluginApi;
-    use crate::user_config::UserConfigApi;
+    use crate::settings::Settings;
     use ora_contracts::{PublicError, ScanPluginsRequest};
     use ora_db::{DatabaseBootstrapper, DatabaseLocation, default_migration_catalog};
     use ora_domain::{AgentRef, PluginId};
@@ -1001,7 +1001,7 @@ mod tests {
                 PathBuf::from("deno"),
                 SystemClock,
                 AppEventHub::new().publisher(),
-                Arc::new(UserConfigApi::new(pool.clone())),
+                Arc::new(Settings::new(pool.clone())),
             )
             .expect("open plugin host"),
         );
