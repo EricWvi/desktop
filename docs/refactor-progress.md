@@ -8,7 +8,7 @@
 | --------------- | ------ | ------------------------------------------------- |
 | 0：基线         | 已盘点 | 本文的登记点、command 与行为验证索引              |
 | 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成 |
-| 2：Desktop      | 待实施 | 领域命令、Desktop binding、权限和 stream 接线     |
+| 2：Desktop      | 进行中 | 领域命令已拆分；binding 与 stream 接线待完成      |
 | 3：Backend 试点 | 待实施 | settings 窄 interface                             |
 | 4：Backend 迁移 | 待实施 | 领域操作、生命周期协调和启动装配                  |
 | 5：前端归属     | 待实施 | feature 资源、查询和按需测试 transport            |
@@ -79,3 +79,10 @@
 - `task export-contracts` 后执行 `task check:contracts`：通过。检查在临时目录生成，能够识别未跟踪的新增/失效产物，不修复工作树。
 - `task test`：完整通过，包括 frontend、Rust workspace、Tauri 与 4 项 Desktop E2E。测试入口现在检查生成产物，而不是先覆盖产物再验证。
 - 已删除手写 client 成员表、类型名到文件名映射和中央 stream 模式推断。`client-runtime.ts` 只保留映射类型及通用调用逻辑；DTO 与静态 factory 由生成器输出。
+
+### 阶段 2a：命令归属（2026-09-06）
+
+- `commands.rs` 从 1576 行降至 124 行，仅保留请求执行、命令宏和领域组合；具体实现位于 `commands/`。
+- task/settings 原有入口已迁入同一领域目录；删除两套重复请求执行逻辑，文件读取也使用可注入 context 的通用阻塞执行方法。
+- workspace listing/diff/location、Effect status 和 workflow export 按职责归属；旧路径引用同步更新。command 名称、DTO 与 capability 集合未改变。
+- `task test:tauri` 通过：包含 Clippy、53 项 Desktop 测试；最终阶段 2 仍需验证生成 binding、stream 竞争及全量测试。

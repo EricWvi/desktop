@@ -1,6 +1,6 @@
 //! Desktop adapters for developer preferences and process-wide runtime logging.
 
-use std::future::Future;
+use super::run_async_backend;
 
 use ora_backend::{BackendError, RequestLifecycle, UuidRequestIdGenerator};
 use ora_contracts::{
@@ -17,31 +17,6 @@ use tracing::Instrument;
 use crate::error::CommandError;
 use crate::state::DesktopState;
 
-/// Executes one asynchronous settings operation with the standard Tauri request lifecycle.
-async fn run_async_command<Response, Call>(
-    operation_name: &'static str,
-    call: Call,
-) -> Result<Response, CommandError>
-where
-    Call: Future<Output = Result<Response, BackendError>>,
-{
-    let lifecycle = RequestLifecycle::start(operation_name, &UuidRequestIdGenerator);
-    let request_span =
-        ora_logging::span_with_request_id("tauri_command", &lifecycle.request_id().to_string());
-
-    async move {
-        match call.await {
-            Ok(response) => {
-                lifecycle.complete_success();
-                Ok(response)
-            }
-            Err(error) => Err(CommandError::from_backend_with_lifecycle(error, &lifecycle)),
-        }
-    }
-    .instrument(request_span)
-    .await
-}
-
 /// Returns the authoritative persisted developer-mode preference.
 #[tauri::command]
 pub async fn get_developer_mode(
@@ -50,7 +25,7 @@ pub async fn get_developer_mode(
 ) -> Result<DeveloperModeResponse, CommandError> {
     let _ = request;
     let backend = state.backend.clone();
-    run_async_command("get_developer_mode", async move {
+    run_async_backend("get_developer_mode", async move {
         backend.developer_mode().await.map(developer_mode_response)
     })
     .await
@@ -63,7 +38,7 @@ pub async fn set_developer_mode(
     request: SetDeveloperModeRequest,
 ) -> Result<DeveloperModeResponse, CommandError> {
     let backend = state.backend.clone();
-    run_async_command("set_developer_mode", async move {
+    run_async_backend("set_developer_mode", async move {
         backend
             .set_developer_mode(internal_developer_mode(request.enabled))
             .await
@@ -80,7 +55,7 @@ pub async fn get_runtime_log_level(
 ) -> Result<RuntimeLogLevelStateResponse, CommandError> {
     let _ = request;
     let manager = state.runtime_log_level.clone();
-    run_async_command("get_runtime_log_level", async move {
+    run_async_backend("get_runtime_log_level", async move {
         manager
             .state()
             .await
@@ -143,7 +118,7 @@ pub async fn get_proxy_settings(
 ) -> Result<GetProxySettingsResponse, CommandError> {
     let _ = request;
     let backend = state.backend.clone();
-    run_async_command("get_proxy_settings", async move {
+    run_async_backend("get_proxy_settings", async move {
         backend
             .network_proxy_settings()
             .map(proxy_settings_response)
@@ -157,7 +132,7 @@ pub async fn set_proxy_settings(
     request: SetProxySettingsRequest,
 ) -> Result<SetProxySettingsResponse, CommandError> {
     let backend = state.backend.clone();
-    run_async_command("set_proxy_settings", async move {
+    run_async_backend("set_proxy_settings", async move {
         let settings = internal_network_proxy_settings(request.settings);
         backend
             .set_network_proxy_settings(settings)
@@ -174,7 +149,7 @@ pub async fn clear_proxy_settings(
 ) -> Result<ClearProxySettingsResponse, CommandError> {
     let _ = request;
     let backend = state.backend.clone();
-    run_async_command("clear_proxy_settings", async move {
+    run_async_backend("clear_proxy_settings", async move {
         backend.clear_network_proxy_settings()?;
         Ok(ClearProxySettingsResponse { settings: None })
     })
@@ -188,7 +163,7 @@ pub async fn check_proxy_settings(
     request: CheckProxySettingsRequest,
 ) -> Result<CheckProxySettingsResponse, CommandError> {
     let backend = state.backend.clone();
-    run_async_command("check_proxy_settings", async move {
+    run_async_backend("check_proxy_settings", async move {
         backend
             .check_network_proxy_settings(
                 internal_network_proxy_settings(request.settings),

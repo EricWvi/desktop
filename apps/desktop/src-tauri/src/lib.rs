@@ -3,11 +3,9 @@ mod diagnostic_logs;
 mod error;
 mod open_external;
 mod open_location;
-mod settings_commands;
 mod state;
 mod stream_forwarding;
 mod surface;
-mod task_commands;
 mod update;
 mod workspace_files;
 

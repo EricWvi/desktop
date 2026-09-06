@@ -1,5 +1,12 @@
 # Desktop Runtime
 
+Desktop command implementations live in `apps/desktop/src-tauri/src/commands/` by owning domain.
+`commands.rs` contains only explicit module composition, command macros, and the shared synchronous
+and asynchronous request execution mechanisms. Filesystem reads inject their Backend/file-reader
+pair into the same executor; task and settings commands do not maintain private copies of that
+lifecycle. Workspace listing, diff, and location operations share the workspace command module,
+while Effect status belongs to its own module rather than plugin command implementation.
+
 `apps/desktop/src-tauri` is the root Cargo workspace member that hosts Ora's persisted operations and ACP streaming capabilities through Tauri commands.
 
 ## Shared Backend and Commands
