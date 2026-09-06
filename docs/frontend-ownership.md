@@ -86,6 +86,19 @@ The transport rejects omitted/unknown operations and wrong response modes. Strea
 on first consumption; iterator exit forwards cleanup to the handler. DTOs, bigint values, and
 AbortSignal options cross this seam unchanged.
 
-The Files scope-switch test uses this interface with exactly four handlers. Migration of the
-remaining full mock-client fixtures into explicit domain adapters is in progress; the old
-`test/mock-client.ts` is not a supported pattern for new tests and will be removed in stage 5c.
+`test/memory/` owns domain-specific state, constructors, and operation handlers. Stateful
+workspace/session, plugin, definition, settings, and persisted-run adapters register typed
+operations directly. The explicit `emptyFilesHandlers`, `readyEffectHandlers`, identity, and
+app-event fixtures describe their synthetic behavior in their names/modules; they are not global
+defaults. A test can use one domain without implicitly configuring any other:
+
+```typescript
+const state = createWorkspaceMemory();
+const client = createTestClient(workspaceHandlers(state));
+```
+
+The Files scope-switch test instead registers exactly four individual handlers. Project/task,
+Agent/Skill, and plugin-list hook tests now select their adapters explicitly. The old
+`test/mock-client.ts` contains only a transitional all-domain composer for remaining callers; it
+has no hand-maintained client methods or state-field declarations. It is not a supported pattern
+for new tests and will be removed once the remaining test fixtures migrate in stage 5c.

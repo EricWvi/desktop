@@ -10,10 +10,9 @@ import {
   useUpdateSkill,
   useDeleteSkill,
 } from "./use-atom-mutations";
-import {
-  createMockClient,
-  createMockClientState,
-} from "../../test/mock-client";
+import { createTestClient } from "../../test/contracts-transport";
+import { createAgentMemory, agentHandlers } from "../../test/memory/agents";
+import { createSkillMemory, skillHandlers } from "../../test/memory/skills";
 import { renderHookWithClient } from "../../test/hook-harness";
 import { agentKeys } from "../data/agents";
 import { skillKeys } from "../data/skills";
@@ -36,9 +35,9 @@ const SKILL_X: Skill = {
 
 describe("useAgents", () => {
   it("returns the agent list from the client", async () => {
-    const state = createMockClientState();
+    const state = createAgentMemory();
     state.agents = [AGENT_A];
-    const client = createMockClient(state);
+    const client = createTestClient(agentHandlers(state));
     const { result } = renderHookWithClient(() => useAgents(), client);
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([AGENT_A]);
@@ -47,9 +46,9 @@ describe("useAgents", () => {
 
 describe("useSkills", () => {
   it("returns the skill list from the client", async () => {
-    const state = createMockClientState();
+    const state = createSkillMemory();
     state.skills = [SKILL_X];
-    const client = createMockClient(state);
+    const client = createTestClient(skillHandlers(state));
     const { result } = renderHookWithClient(() => useSkills(), client);
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([SKILL_X]);
@@ -58,8 +57,8 @@ describe("useSkills", () => {
 
 describe("useCreateAgent", () => {
   it("creates an agent and invalidates the agent list", async () => {
-    const state = createMockClientState();
-    const client = createMockClient(state);
+    const state = createAgentMemory();
+    const client = createTestClient(agentHandlers(state));
     const agents = renderHookWithClient(() => useAgents(), client);
     const mutation = renderHookWithClient(
       () => useCreateAgent(),
@@ -86,9 +85,9 @@ describe("useCreateAgent", () => {
 
 describe("useUpdateAgent", () => {
   it("updates the agent fields", async () => {
-    const state = createMockClientState();
+    const state = createAgentMemory();
     state.agents = [AGENT_A];
-    const client = createMockClient(state);
+    const client = createTestClient(agentHandlers(state));
     const agents = renderHookWithClient(() => useAgents(), client);
     const mutation = renderHookWithClient(
       () => useUpdateAgent(),
@@ -116,9 +115,9 @@ describe("useUpdateAgent", () => {
 
 describe("useDeleteAgent", () => {
   it("deletes the agent", async () => {
-    const state = createMockClientState();
+    const state = createAgentMemory();
     state.agents = [AGENT_A];
-    const client = createMockClient(state);
+    const client = createTestClient(agentHandlers(state));
     const agents = renderHookWithClient(() => useAgents(), client);
     const mutation = renderHookWithClient(
       () => useDeleteAgent(),
@@ -136,8 +135,8 @@ describe("useDeleteAgent", () => {
 
 describe("useCreateSkill", () => {
   it("creates a skill and invalidates the skill list", async () => {
-    const state = createMockClientState();
-    const client = createMockClient(state);
+    const state = createSkillMemory();
+    const client = createTestClient(skillHandlers(state));
     const skills = renderHookWithClient(() => useSkills(), client);
     const mutation = renderHookWithClient(
       () => useCreateSkill(),
@@ -164,9 +163,9 @@ describe("useCreateSkill", () => {
 
 describe("useUpdateSkill", () => {
   it("updates the skill fields", async () => {
-    const state = createMockClientState();
+    const state = createSkillMemory();
     state.skills = [SKILL_X];
-    const client = createMockClient(state);
+    const client = createTestClient(skillHandlers(state));
     const skills = renderHookWithClient(() => useSkills(), client);
     const mutation = renderHookWithClient(
       () => useUpdateSkill(),
@@ -196,9 +195,9 @@ describe("useUpdateSkill", () => {
 
 describe("useDeleteSkill", () => {
   it("deletes the skill", async () => {
-    const state = createMockClientState();
+    const state = createSkillMemory();
     state.skills = [SKILL_X];
-    const client = createMockClient(state);
+    const client = createTestClient(skillHandlers(state));
     const skills = renderHookWithClient(() => useSkills(), client);
     const mutation = renderHookWithClient(
       () => useDeleteSkill(),

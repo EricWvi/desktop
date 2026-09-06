@@ -184,3 +184,11 @@
 - 新增按 catalog 推导 request/response/mode 的 `TestHandlers`，`createTestClient` 直接使用生成的生产 client；没有新增手写 namespace 镜像。未注册 unary、未知 operation、错误 mode 和 prototype 继承 handler 明确失败；stream 在消费时才解析 handler。
 - 6 项测试验证 DTO/bigint/options 原样传递、惰性 stream 与 iterator cleanup、未配置调用失败，以及 request/response mode 的编译期约束。Files scope-switch 回归改为只注册实际依赖的 4 个 operation，继续覆盖生产请求构造链路。
 - app-shell lint 和完整 clean-stderr 测试通过：142 个文件、1283 项测试。本提交只建立并试用 seam；剩余内存 adapter 和测试显式组合迁移仍待完成，旧 mock client 尚未删除。
+
+### 阶段 5c-2：领域内存 adapter（2026-09-06）
+
+- 原 1247 行完整 mock client 的 CRUD、配置冲突、workflow 版本/run 投影、默认 model fixture 等行为迁入 `test/memory/` 对应领域。state 字段与构造也随归属移动；所有 handler 根据生成 catalog 检查 request、response 和 stream 模式。
+- 原 mock client 现在仅是约 100 行的临时组合器，返回真实生成 client；既有全量测试也经过生产请求构造。原来只会抛 `not implemented` 的占位 handler 不再注册，由 transport 报告未配置。
+- workspace 查询、Agent/Skill mutation、installed/available plugin 查询测试已分别显式选择需要的领域 adapter。原 workspace 错误测试的 `unknown` 双重强转和 client monkey patch 改为类型化的单 operation handler。
+- 新增经生产 client 的 workspace adapter CRUD/隔离测试，确认选择 workspace 不会隐式配置 session 或 app-event stream。app-shell lint 和完整 clean-stderr 测试通过：143 个文件、1285 项测试。
+- 阶段 5c 仍未完成：其余测试的全领域组合器调用及 client override 需要迁移，最终删除 `test/mock-client.ts`，不能把当前过渡形态当作完成。
