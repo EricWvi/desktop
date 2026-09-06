@@ -185,7 +185,7 @@ fn bootstrap_desktop(
     let workspace_files = Arc::new(workspace_files::WorkspaceFileApi::new(
         binary_paths.ripgrep_path().to_path_buf(),
     ));
-    let surfaces = surface::SurfaceService::new(app.clone(), backend.plugin_gateway());
+    let surfaces = surface::SurfaceService::new(app.clone(), backend.plugins().gateway());
     let update = update::UpdateService::start(
         app.clone(),
         backend.settings().clone(),

@@ -1,3 +1,6 @@
+mod operations;
+pub use operations::Plugins;
+
 use crate::app_event::AppEventPublisher;
 use crate::clock::SystemClock;
 use crate::effect_worker::EffectWorkerHandle;

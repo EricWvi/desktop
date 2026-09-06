@@ -26,49 +26,49 @@ backend_command!(
     list_installed_plugins,
     ListInstalledPluginsRequest,
     ListInstalledPluginsResponse,
-    list_installed_plugins,
+    plugins.list_installed,
     "Lists the cached installed-plugin lifecycle snapshot."
 );
 backend_command!(
     get_plugin_configuration,
     GetPluginConfigurationRequest,
     GetPluginConfigurationResponse,
-    get_plugin_configuration,
+    plugins.get_configuration,
     "Loads one typed Plugin Configuration editor snapshot."
 );
 backend_command!(
     save_plugin_configuration,
     SavePluginConfigurationRequest,
     SavePluginConfigurationResponse,
-    save_plugin_configuration,
+    plugins.save_configuration,
     "Persists one revision-checked Plugin Configuration replacement."
 );
 backend_command!(
     reset_plugin_configuration,
     ResetPluginConfigurationRequest,
     ResetPluginConfigurationResponse,
-    reset_plugin_configuration,
+    plugins.reset_configuration,
     "Resets explicit overrides or recovers a damaged Plugin Configuration."
 );
 backend_command!(
     list_available_plugins,
     ListAvailablePluginsRequest,
     ListAvailablePluginsResponse,
-    list_available_plugins,
+    plugins.list_available,
     "Lists the cached marketplace registry index."
 );
 backend_command!(
     sync_available_plugins,
     SyncAvailablePluginsRequest,
     SyncAvailablePluginsResponse,
-    sync_available_plugins,
+    plugins.sync_available,
     "Pulls the marketplace source and rebuilds the cached registry index."
 );
 backend_command!(
     read_plugin_readme,
     ReadPluginReadmeRequest,
     ReadPluginReadmeResponse,
-    read_plugin_readme,
+    plugins.read_readme,
     "Reads one marketplace plugin's published README for its detail page."
 );
 
@@ -76,56 +76,56 @@ backend_command!(
     list_marketplace_sources,
     ListMarketplaceSourcesRequest,
     ListMarketplaceSourcesResponse,
-    list_marketplace_sources,
+    plugins.list_sources,
     "Lists the configured marketplace source repositories."
 );
 backend_command!(
     add_marketplace_source,
     AddMarketplaceSourceRequest,
     AddMarketplaceSourceResponse,
-    add_marketplace_source,
+    plugins.add_source,
     "Adds one marketplace source repository."
 );
 backend_command!(
     delete_marketplace_source,
     DeleteMarketplaceSourceRequest,
     DeleteMarketplaceSourceResponse,
-    delete_marketplace_source,
+    plugins.delete_source,
     "Removes one marketplace source repository."
 );
 backend_command!(
     update_marketplace_source,
     UpdateMarketplaceSourceRequest,
     UpdateMarketplaceSourceResponse,
-    update_marketplace_source,
+    plugins.update_source,
     "Updates one marketplace source's URL, branch, proxy policy, or enabled state."
 );
 async_backend_command!(
     scan_plugins,
     ScanPluginsRequest,
     ScanPluginsResponse,
-    scan_plugins,
+    plugins.scan,
     "Explicitly scans and reconciles installed plugins."
 );
 async_backend_command!(
     activate_plugin,
     ActivatePluginRequest,
     ActivatePluginResponse,
-    activate_plugin,
+    plugins.activate,
     "Activates one installed plugin."
 );
 async_backend_command!(
     stop_plugin,
     StopPluginRequest,
     StopPluginResponse,
-    stop_plugin,
+    plugins.stop,
     "Stops one plugin process."
 );
 async_backend_command!(
     uninstall_plugin,
     UninstallPluginRequest,
     UninstallPluginResponse,
-    uninstall_plugin,
+    plugins.uninstall,
     "Stops and removes one installed plugin."
 );
 /// Installs one marketplace plugin and emits throttled byte-level download progress.
@@ -161,7 +161,8 @@ pub async fn install_plugin(
         "install_plugin",
         state
             .backend
-            .install_plugin_with_progress(request, progress),
+            .plugins()
+            .install_with_progress(request, progress),
     )
     .await
 }
@@ -169,13 +170,13 @@ async_backend_command!(
     update_plugin,
     UpdatePluginRequest,
     UpdatePluginResponse,
-    update_plugin,
+    plugins.update,
     "Updates one installed plugin to the version its marketplace source publishes."
 );
 async_backend_command!(
     import_plugin,
     ImportPluginRequest,
     ImportPluginResponse,
-    import_plugin,
+    plugins.import,
     "Imports one local .orax release archive; the installed plugin is immediately available."
 );

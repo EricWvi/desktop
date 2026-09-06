@@ -128,3 +128,10 @@
 - Desktop workspace/files 命令只注入 cloneable workspace handle；泛用文件浏览、搜索和 watcher 创建仍在 Desktop/`ora-fs`，没有迁移到 Backend。
 - handle clone 共享原来的 root `RwLock`、SQLite pool 和 cleanup use leases，不新建锁/worker。`workspace.rs` 生产部分约 330 行；既有 main-checkout、task worktree 和 diff/commit/push 测试随 module 移动。
 - 验证：Backend 210 项通过、1 项原有测试 ignored；标准 Rust lint、58 项 Tauri、4 项 E2E 和生成漂移检查通过。
+
+### 阶段 4d：插件操作与 runtime 协调（2026-09-06）
+
+- 20 个根入口（含 gateway 与下载进度变体）迁至 `Plugins`。安装、导入、更新、删除和扫描后的 agent-set 同步仍由同一 `AgentRuntimeManager` 完成，调用者只执行一个领域用例。
+- 新协调代码放在约 210 行的 `plugin/operations.rs`。原大型 `PluginApi` 保持 crate-private，继续作为 runtime/Effect/configuration/gateway 共用的 host implementation；没有复制 lifecycle、锁、registry 或 generation 规则。
+- 安装冲突与 README 测试迁至该 module，并通过公开 `Plugins` interface 执行；Tavily/configuration 场景从 bootstrap 随职责移动。需要外部发布产物的一项测试仍 ignored，其他依赖 `.tmp` 产物或 `ORA_E2E_PLUGIN_DATA` 的场景保留原条件，不将缺少 fixture 时的早退当成完整集成证据。
+- 验证：Backend 210 项通过、1 项 ignored；标准 Rust lint、58 项 Tauri、4 项 E2E 与生成漂移检查通过。本次未配置 live plugin-home fixture。

@@ -36,6 +36,7 @@ pub use agent_runtime::SessionEventStream;
 pub use app_event::AppEventHub;
 pub use bootstrap::{Backend, BackendBootstrapError, BackendPaths};
 pub use error::{BackendError, ErrorClassification};
+pub use plugin::Plugins;
 pub use plugin_gateway::{GatewayError, PluginGateway};
 pub use project::ProjectApi;
 pub use request_lifecycle::{RequestIdGenerator, RequestLifecycle, UuidRequestIdGenerator};
@@ -48,5 +49,3 @@ pub use workspace::WorkspaceApi;
 
 #[cfg(test)]
 mod local_agent_package_tests;
-#[cfg(test)]
-mod plugin_install_tests;

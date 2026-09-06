@@ -4,8 +4,7 @@ use crate::app_event::AppEventHub;
 use crate::clock::SystemClock;
 use crate::error::BackendError;
 use crate::git_cleanup::KeyedResourceLocks;
-use crate::plugin::PluginApi;
-use crate::plugin_gateway::PluginGateway;
+use crate::plugin::{PluginApi, Plugins};
 use crate::project::ProjectApi;
 use crate::repository_work::spawn_repository_work;
 use crate::session::SessionApi;
@@ -24,7 +23,6 @@ use ora_db::SqliteWorkflowRunEngineRepository;
 use ora_db::{DatabaseBootstrapper, DatabaseLocation, RepositoryPool, default_migration_catalog};
 use ora_logging::{ora_error, ora_warn};
 use ora_scheduler::Scheduler;
-use ora_utils::http::ProgressCallback;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -90,7 +88,7 @@ pub struct Backend {
     settings: Arc<Settings>,
     session: Arc<SessionApi>,
     agent_runtime: Arc<AgentRuntimeManager>,
-    plugin: Arc<PluginApi>,
+    plugin: Plugins,
     skill: Arc<SkillApi>,
     agent: Arc<AgentApi>,
     workflow: Arc<WorkflowApi>,
@@ -246,8 +244,8 @@ impl Backend {
             ),
             settings,
             session: Arc::new(SessionApi::new(pool.clone())),
+            plugin: Plugins::new(plugin, agent_runtime.clone()),
             agent_runtime,
-            plugin,
             skill: Arc::new(SkillApi::new(
                 pool.clone(),
                 skills_root.clone(),
@@ -267,43 +265,6 @@ impl Backend {
         })
     }
 
-    /// Returns the plugin data-plane gateway the desktop surface layer drives.
-    pub fn plugin_gateway(&self) -> Arc<PluginGateway> {
-        Arc::new(PluginGateway::new(Arc::clone(&self.plugin)))
-    }
-
-    /// Returns the cached installed-plugin snapshot without rescanning the filesystem.
-    pub fn list_installed_plugins(
-        &self,
-        request: ListInstalledPluginsRequest,
-    ) -> Result<ListInstalledPluginsResponse, BackendError> {
-        Ok(self.plugin.list(request))
-    }
-
-    /// Returns one typed Plugin Configuration editor snapshot.
-    pub fn get_plugin_configuration(
-        &self,
-        request: GetPluginConfigurationRequest,
-    ) -> Result<GetPluginConfigurationResponse, BackendError> {
-        self.plugin.get_configuration(request)
-    }
-
-    /// Persists one revision-checked Plugin Configuration replacement.
-    pub fn save_plugin_configuration(
-        &self,
-        request: SavePluginConfigurationRequest,
-    ) -> Result<SavePluginConfigurationResponse, BackendError> {
-        self.plugin.save_configuration(request)
-    }
-
-    /// Executes an explicit Reset All or damaged-data recovery operation.
-    pub fn reset_plugin_configuration(
-        &self,
-        request: ResetPluginConfigurationRequest,
-    ) -> Result<ResetPluginConfigurationResponse, BackendError> {
-        self.plugin.reset_configuration(request)
-    }
-
     /// Returns one Effect Target selected by opaque id or Workspace plus Agent identity.
     pub fn get_effect_target_status(
         &self,
@@ -312,153 +273,6 @@ impl Backend {
         EffectService::new(ora_db::SqliteEffectRepository::new(self.pool.clone()))
             .get_target_status(request)
             .map_err(|error| BackendError::internal("failed to load Effect Target status", error))
-    }
-
-    /// Returns the cached marketplace registry index used to populate plugin discovery.
-    pub fn list_available_plugins(
-        &self,
-        request: ListAvailablePluginsRequest,
-    ) -> Result<ListAvailablePluginsResponse, BackendError> {
-        self.plugin.list_available_plugins(request)
-    }
-
-    /// Returns every configured marketplace source in precedence order.
-    pub fn list_marketplace_sources(
-        &self,
-        request: ListMarketplaceSourcesRequest,
-    ) -> Result<ListMarketplaceSourcesResponse, BackendError> {
-        self.plugin.list_marketplace_sources(request)
-    }
-
-    /// Adds one marketplace source after validating and persisting it.
-    pub fn add_marketplace_source(
-        &self,
-        request: AddMarketplaceSourceRequest,
-    ) -> Result<AddMarketplaceSourceResponse, BackendError> {
-        self.plugin.add_marketplace_source(request)
-    }
-
-    /// Removes one marketplace source by URL after persisting the new ordering.
-    pub fn delete_marketplace_source(
-        &self,
-        request: DeleteMarketplaceSourceRequest,
-    ) -> Result<DeleteMarketplaceSourceResponse, BackendError> {
-        self.plugin.delete_marketplace_source(request)
-    }
-
-    /// Replaces the editable fields of one marketplace source after persisting them.
-    pub fn update_marketplace_source(
-        &self,
-        request: UpdateMarketplaceSourceRequest,
-    ) -> Result<UpdateMarketplaceSourceResponse, BackendError> {
-        self.plugin.update_marketplace_source(request)
-    }
-
-    /// Pulls the marketplace source and rebuilds the cache used by plugin discovery.
-    pub fn sync_available_plugins(
-        &self,
-        request: SyncAvailablePluginsRequest,
-    ) -> Result<SyncAvailablePluginsResponse, BackendError> {
-        self.plugin.sync_available_plugins(request)
-    }
-
-    /// Reads the README one marketplace listing publishes for its detail page.
-    pub fn read_plugin_readme(
-        &self,
-        request: ReadPluginReadmeRequest,
-    ) -> Result<ReadPluginReadmeResponse, BackendError> {
-        self.plugin.read_plugin_readme(request)
-    }
-
-    /// Explicitly rescans packages and reconciles process-local runtime state.
-    pub async fn scan_plugins(
-        &self,
-        request: ScanPluginsRequest,
-    ) -> Result<ScanPluginsResponse, BackendError> {
-        let response = self.plugin.scan(request).await?;
-        self.agent_runtime.sync_plugin_agents();
-        Ok(response)
-    }
-
-    /// Starts one installed plugin and returns its immediate starting state.
-    pub async fn activate_plugin(
-        &self,
-        request: ActivatePluginRequest,
-    ) -> Result<ActivatePluginResponse, BackendError> {
-        self.plugin
-            .activate(request)
-            .await
-            .map_err(BackendError::from)
-    }
-
-    /// Stops one plugin process while leaving the installed plugin available.
-    pub async fn stop_plugin(
-        &self,
-        request: StopPluginRequest,
-    ) -> Result<StopPluginResponse, BackendError> {
-        self.plugin.stop(request).await.map_err(BackendError::from)
-    }
-
-    /// Stops and removes one plugin package plus its process-local state.
-    pub async fn uninstall_plugin(
-        &self,
-        request: UninstallPluginRequest,
-    ) -> Result<UninstallPluginResponse, BackendError> {
-        let response = self.plugin.uninstall(request).await?;
-        self.agent_runtime.sync_plugin_agents();
-        Ok(response)
-    }
-
-    /// Installs a marketplace plugin by resolving its release manifest from the synced source and
-    /// downloading, verifying, and extracting its package through the network-backed installer.
-    ///
-    /// The agent set is reconciled afterwards so the newly installed package supplies a reachable
-    /// agent in this process rather than only after the next restart.
-    pub async fn install_plugin(
-        &self,
-        request: InstallPluginRequest,
-    ) -> Result<InstallPluginResponse, BackendError> {
-        let response = self.plugin.install(request).await?;
-        self.agent_runtime.sync_plugin_agents();
-        Ok(response)
-    }
-
-    /// Installs a marketplace plugin while forwarding download progress to a host callback.
-    pub async fn install_plugin_with_progress(
-        &self,
-        request: InstallPluginRequest,
-        progress: ProgressCallback,
-    ) -> Result<InstallPluginResponse, BackendError> {
-        let response = self.plugin.install_with_progress(request, progress).await?;
-        self.agent_runtime.sync_plugin_agents();
-        Ok(response)
-    }
-
-    /// Updates one installed marketplace plugin to the version its source publishes and
-    /// reconciles the agent set afterwards.
-    ///
-    /// The agent set is reconciled so a replaced agent package supplies a reachable agent in this
-    /// process rather than only after the next restart.
-    pub async fn update_plugin(
-        &self,
-        request: UpdatePluginRequest,
-    ) -> Result<UpdatePluginResponse, BackendError> {
-        let response = self.plugin.update(request).await?;
-        self.agent_runtime.sync_plugin_agents();
-        Ok(response)
-    }
-
-    /// Imports one local release archive and reconciles the agent set afterwards.
-    ///
-    /// The agent set is reconciled so the imported package supplies a reachable agent in this
-    /// process rather than only after the next restart.
-    pub async fn import_plugin(
-        &self,
-        request: ImportPluginRequest,
-    ) -> Result<ImportPluginResponse, BackendError> {
-        let response = self.plugin.import(request).await?;
-        self.agent_runtime.sync_plugin_agents();
-        Ok(response)
     }
 
     /// Starts a workflow run against its frozen snapshot graph.
@@ -737,6 +551,11 @@ impl Backend {
     /// Shares workspace lookup, path configuration, and Git review with the existing use leases.
     pub fn workspaces(&self) -> WorkspaceApi {
         self.workspace.clone()
+    }
+
+    /// Shares plugin use cases together with the runtime reconciliation each mutation requires.
+    pub fn plugins(&self) -> Plugins {
+        self.plugin.clone()
     }
 
     // =============================================================================
@@ -1296,363 +1115,5 @@ mod tests {
             fs::read_to_string(skills_root.join("review").join("SKILL.md")).expect("read manifest");
         assert!(manifest.contains("description: Reviews pull requests"));
         assert!(!home_directory.join("atoms").exists());
-    }
-
-    /// Verifies a local Tavily MCP `.orax` import, configuration editor snapshot, and `store.json`
-    /// persistence for the `apiKey` setting.
-    #[tokio::test]
-    async fn tavily_mcp_local_import_and_configuration() {
-        use ora_contracts::{
-            GetPluginConfigurationRequest, ImportPluginRequest, InstalledPluginContribution,
-            ListInstalledPluginsRequest, PluginConfigurationCompleteness,
-            PluginConfigurationSummary, PluginSettingValue, SavePluginConfigurationRequest,
-        };
-        use pretty_assertions::assert_eq;
-        use std::collections::BTreeMap;
-        use std::fs;
-        use std::path::PathBuf;
-
-        const PLUGIN_ID: &str = "official/ora-space.tavily-search";
-        const TEST_API_KEY: &str = "tvly-test-e2e-key";
-
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../");
-        let orax_archive = workspace_root.join(".tmp/ora-space.tavily-search-v0.1.0.orax");
-        if !orax_archive.is_file() {
-            eprintln!(
-                "skipping Tavily MCP import E2E: missing {}",
-                orax_archive.display()
-            );
-            return;
-        }
-
-        let temporary = TempDir::new().expect("create temporary backend directory");
-        let data_directory = temporary.path().to_path_buf();
-        let backend = Backend::open(backend_paths(&data_directory, &data_directory))
-            .expect("open shared backend");
-
-        backend
-            .import_plugin(ImportPluginRequest {
-                path: orax_archive.to_string_lossy().into_owned(),
-            })
-            .await
-            .expect("import Tavily MCP release");
-
-        let installed = backend
-            .list_installed_plugins(ListInstalledPluginsRequest {})
-            .expect("list installed plugins")
-            .plugins
-            .into_iter()
-            .find(|plugin| plugin.id == PLUGIN_ID)
-            .expect("Tavily MCP plugin is installed");
-        assert_eq!(
-            installed.contribution,
-            InstalledPluginContribution::Mcp,
-            "installed plugin contribution"
-        );
-        assert_eq!(
-            installed.configuration,
-            PluginConfigurationSummary::Available {
-                completeness: PluginConfigurationCompleteness::Incomplete,
-            },
-            "configuration is incomplete before apiKey is saved"
-        );
-
-        let configuration = backend
-            .get_plugin_configuration(GetPluginConfigurationRequest {
-                plugin_id: PLUGIN_ID.to_string(),
-            })
-            .expect("load plugin configuration editor")
-            .configuration;
-        let api_key_setting = configuration
-            .settings
-            .iter()
-            .find(|setting| setting.declaration.id == "apiKey")
-            .expect("apiKey setting is declared");
-        assert_eq!(api_key_setting.declaration.title, "API key");
-
-        let saved = backend
-            .save_plugin_configuration(SavePluginConfigurationRequest {
-                preserve_setting_ids: Vec::new(),
-                plugin_id: PLUGIN_ID.to_string(),
-                expected_revision: configuration.revision,
-                declaration_fingerprint: configuration.declaration_fingerprint.clone(),
-                values: BTreeMap::from([(
-                    "apiKey".to_string(),
-                    PluginSettingValue::String(TEST_API_KEY.to_string()),
-                )]),
-            })
-            .expect("save Tavily apiKey setting")
-            .configuration;
-        assert_eq!(
-            saved.summary,
-            PluginConfigurationSummary::Available {
-                completeness: PluginConfigurationCompleteness::Complete,
-            }
-        );
-
-        let store_json = fs::read_to_string(
-            data_directory.join("plugins/data/official/ora-space.tavily-search/store.json"),
-        )
-        .expect("read persisted store.json");
-        assert!(
-            store_json.contains(TEST_API_KEY),
-            "store.json should contain the saved apiKey value"
-        );
-    }
-
-    /// Verifies marketplace registry resolution for the Tavily MCP listing without downloading
-    /// the release archive.
-    #[test]
-    fn tavily_mcp_marketplace_manifest_resolves_from_staged_registry() {
-        use gitlancer::BranchName;
-        use ora_domain::{PluginId, PluginNamespace};
-        use ora_plugin_registry::{RegistryIndex, RegistrySource};
-        use pretty_assertions::assert_eq;
-        use std::fs;
-        use std::path::PathBuf;
-
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../");
-        let marketplace_registry = workspace_root.join(".tmp/marketplace/registry");
-        if !marketplace_registry.is_dir() {
-            eprintln!(
-                "skipping Tavily MCP marketplace manifest E2E: missing {}",
-                marketplace_registry.display()
-            );
-            return;
-        }
-
-        let temporary = TempDir::new().expect("create temporary backend directory");
-        let marketplace_checkout = temporary
-            .path()
-            .join("plugins/sources/github.com/ora-space/marketplace");
-        fs::create_dir_all(&marketplace_checkout).expect("create marketplace checkout");
-        copy_dir_recursive(
-            &marketplace_registry,
-            &marketplace_checkout.join("registry"),
-        )
-        .expect("stage marketplace registry");
-
-        let source = RegistrySource::new(
-            "https://github.com/ora-space/marketplace",
-            PluginNamespace::official(),
-            BranchName::new("main"),
-            &marketplace_checkout,
-        );
-        let plugin_id = PluginId::parse("official/ora-space.tavily-search").expect("plugin id");
-        let manifest = RegistryIndex::resolve_manifest_all(&[&source], &plugin_id)
-            .expect("resolve marketplace manifest")
-            .expect("Tavily listing is present in staged registry");
-        assert_eq!(
-            manifest.url().map(|locator| locator.as_str().to_string()),
-            Some(
-                "https://github.com/ora-space/tavily-search-mcp/releases/download/v0.1.0/ora-space.tavily-search-v0.1.0.orax"
-                    .to_string()
-            )
-        );
-        assert_eq!(
-            manifest.sha256().map(|digest| digest.to_string()),
-            Some("a8b58b0fc0a7c85fe774620682703149b4b6acbaa99303f399309558da282130".to_string())
-        );
-    }
-
-    /// Downloads and installs Tavily from a staged marketplace registry. Requires the release URL
-    /// to be reachable without authentication.
-    #[tokio::test]
-    #[ignore = "requires ora-space/tavily-search-mcp release assets to be publicly downloadable"]
-    async fn tavily_mcp_marketplace_install_and_configuration() {
-        use ora_contracts::{
-            GetPluginConfigurationRequest, InstallPluginRequest, ListInstalledPluginsRequest,
-            PluginConfigurationCompleteness, PluginConfigurationSummary, PluginSettingValue,
-            SavePluginConfigurationRequest,
-        };
-        use pretty_assertions::assert_eq;
-        use std::collections::BTreeMap;
-        use std::fs;
-        use std::path::PathBuf;
-
-        const PLUGIN_ID: &str = "official/ora-space.tavily-search";
-        const TEST_API_KEY: &str = "tvly-test-marketplace-e2e";
-
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../");
-        let marketplace_registry = workspace_root.join(".tmp/marketplace/registry");
-        if !marketplace_registry.is_dir() {
-            eprintln!(
-                "skipping Tavily MCP marketplace E2E: missing {}",
-                marketplace_registry.display()
-            );
-            return;
-        }
-
-        let temporary = TempDir::new().expect("create temporary backend directory");
-        let data_directory = temporary.path().to_path_buf();
-        let marketplace_checkout =
-            data_directory.join("plugins/sources/github.com/ora-space/marketplace");
-        fs::create_dir_all(&marketplace_checkout).expect("create marketplace checkout");
-        copy_dir_recursive(
-            &marketplace_registry,
-            &marketplace_checkout.join("registry"),
-        )
-        .expect("stage marketplace registry");
-
-        let backend = Backend::open(backend_paths(&data_directory, &data_directory))
-            .expect("open shared backend");
-
-        backend
-            .install_plugin(InstallPluginRequest {
-                plugin_id: PLUGIN_ID.to_string(),
-            })
-            .await
-            .unwrap_or_else(|error| {
-                panic!(
-                    "install Tavily MCP from staged marketplace registry: {error:?}. \
-                     If the release URL returns 404, ensure ora-space/tavily-search-mcp is public."
-                );
-            });
-
-        let installed = backend
-            .list_installed_plugins(ListInstalledPluginsRequest {})
-            .expect("list installed plugins")
-            .plugins
-            .into_iter()
-            .find(|plugin| plugin.id == PLUGIN_ID)
-            .expect("Tavily MCP plugin is installed after marketplace install");
-        assert_eq!(
-            installed.configuration,
-            PluginConfigurationSummary::Available {
-                completeness: PluginConfigurationCompleteness::Incomplete,
-            }
-        );
-
-        let configuration = backend
-            .get_plugin_configuration(GetPluginConfigurationRequest {
-                plugin_id: PLUGIN_ID.to_string(),
-            })
-            .expect("load plugin configuration editor")
-            .configuration;
-        backend
-            .save_plugin_configuration(SavePluginConfigurationRequest {
-                preserve_setting_ids: Vec::new(),
-                plugin_id: PLUGIN_ID.to_string(),
-                expected_revision: configuration.revision,
-                declaration_fingerprint: configuration.declaration_fingerprint.clone(),
-                values: BTreeMap::from([(
-                    "apiKey".to_string(),
-                    PluginSettingValue::String(TEST_API_KEY.to_string()),
-                )]),
-            })
-            .expect("save Tavily apiKey after marketplace install");
-
-        let store_json = fs::read_to_string(
-            data_directory.join("plugins/data/official/ora-space.tavily-search/store.json"),
-        )
-        .expect("read persisted store.json");
-        assert!(
-            store_json.contains(TEST_API_KEY),
-            "store.json should contain the saved apiKey value"
-        );
-    }
-
-    /// When `ORA_E2E_PLUGIN_DATA` points at a live Desktop plugin home, verifies Tavily settings
-    /// persistence against the real on-disk layout.
-    #[tokio::test]
-    async fn tavily_mcp_save_configuration_in_desktop_plugin_home() {
-        use ora_contracts::{
-            GetPluginConfigurationRequest, ListInstalledPluginsRequest,
-            PluginConfigurationCompleteness, PluginConfigurationSummary, PluginSettingValue,
-            SavePluginConfigurationRequest,
-        };
-        use std::collections::BTreeMap;
-        use std::fs;
-        use std::path::PathBuf;
-
-        const PLUGIN_ID: &str = "official/ora-space.tavily-search";
-        const TEST_API_KEY: &str = "tvly-desktop-e2e-key";
-
-        let Ok(data_directory) = std::env::var("ORA_E2E_PLUGIN_DATA") else {
-            return;
-        };
-        let data_directory = PathBuf::from(data_directory);
-        let plugin_data_directory = data_directory.clone();
-        if !data_directory.is_dir() {
-            eprintln!(
-                "skipping desktop-home Tavily E2E: {} is not a directory",
-                data_directory.display()
-            );
-            return;
-        }
-
-        let temporary = TempDir::new().expect("create temporary backend directory");
-        let backend = Backend::open(backend_paths(temporary.path(), &data_directory))
-            .expect("open shared backend");
-
-        let installed = backend
-            .list_installed_plugins(ListInstalledPluginsRequest {})
-            .expect("list installed plugins")
-            .plugins
-            .into_iter()
-            .find(|plugin| plugin.id == PLUGIN_ID)
-            .expect("Tavily MCP plugin is installed in desktop plugin home");
-        assert!(
-            matches!(
-                installed.configuration,
-                PluginConfigurationSummary::Available {
-                    completeness: PluginConfigurationCompleteness::Incomplete,
-                } | PluginConfigurationSummary::Available {
-                    completeness: PluginConfigurationCompleteness::Complete,
-                }
-            ),
-            "configuration should be available after the dotted-name store-path fix"
-        );
-
-        let configuration = backend
-            .get_plugin_configuration(GetPluginConfigurationRequest {
-                plugin_id: PLUGIN_ID.to_string(),
-            })
-            .expect("load plugin configuration editor")
-            .configuration;
-        if matches!(
-            configuration.summary,
-            PluginConfigurationSummary::Available {
-                completeness: PluginConfigurationCompleteness::Complete,
-            }
-        ) {
-            return;
-        }
-        backend
-            .save_plugin_configuration(SavePluginConfigurationRequest {
-                preserve_setting_ids: Vec::new(),
-                plugin_id: PLUGIN_ID.to_string(),
-                expected_revision: configuration.revision,
-                declaration_fingerprint: configuration.declaration_fingerprint.clone(),
-                values: BTreeMap::from([(
-                    "apiKey".to_string(),
-                    PluginSettingValue::String(TEST_API_KEY.to_string()),
-                )]),
-            })
-            .expect("save Tavily apiKey in desktop plugin home");
-
-        let store_json = fs::read_to_string(
-            plugin_data_directory.join("plugins/data/official/ora-space.tavily-search/store.json"),
-        )
-        .expect("read persisted store.json");
-        assert!(
-            store_json.contains(TEST_API_KEY),
-            "store.json should contain the saved apiKey value"
-        );
-    }
-
-    /// Recursively copies one directory tree for marketplace registry staging in tests.
-    fn copy_dir_recursive(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-        fs::create_dir_all(to)?;
-        for entry in fs::read_dir(from)? {
-            let entry = entry?;
-            let destination = to.join(entry.file_name());
-            if entry.file_type()?.is_dir() {
-                copy_dir_recursive(&entry.path(), &destination)?;
-            } else {
-                fs::copy(entry.path(), destination)?;
-            }
-        }
-        Ok(())
     }
 }

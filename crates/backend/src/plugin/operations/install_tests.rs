@@ -1,5 +1,7 @@
 //! Covers Hook install outcomes after the host dropped plugin enablement.
 
+use super::Plugins;
+use crate::agent_runtime::{AgentRuntimeManager, AgentRuntimeSetup};
 use crate::app_event::AppEventHub;
 use crate::clock::SystemClock;
 use crate::plugin::PluginApi;
@@ -7,6 +9,7 @@ use crate::settings::Settings;
 use ora_contracts::{ImportPluginRequest, InstallOutcome, ListInstalledPluginsRequest};
 use ora_db::{DatabaseBootstrapper, DatabaseLocation, RepositoryPool, default_migration_catalog};
 use ora_logging::with_trace_logging;
+use ora_scheduler::Scheduler;
 use pretty_assertions::assert_eq;
 use std::fs::File;
 use std::io::Write;
@@ -27,17 +30,34 @@ fn test_pool(root: &Path) -> RepositoryPool {
         .expect("create repository pool")
 }
 
-/// Opens a PluginApi bound to `root` so import can exercise `finalize_new_install`.
-fn test_plugin_api(root: &Path, pool: &RepositoryPool) -> PluginApi {
-    PluginApi::open(
-        pool.clone(),
-        root.to_path_buf(),
-        std::path::PathBuf::from("deno"),
-        SystemClock,
-        AppEventHub::new().publisher(),
-        Arc::new(Settings::new(pool.clone())),
-    )
-    .expect("open plugin host")
+/// Exercises the public plugin interface with its real host and shared runtime coordinator.
+fn test_plugin_api(root: &Path, pool: &RepositoryPool) -> Plugins {
+    let events = AppEventHub::new();
+    let host = Arc::new(
+        PluginApi::open(
+            pool.clone(),
+            root.to_path_buf(),
+            std::path::PathBuf::from("deno"),
+            SystemClock,
+            events.publisher(),
+            Arc::new(Settings::new(pool.clone())),
+        )
+        .expect("open plugin host"),
+    );
+    let runtime = Arc::new(
+        AgentRuntimeManager::new(AgentRuntimeSetup {
+            plugin_host: host.clone(),
+            pool: pool.clone(),
+            home_directory: root.to_path_buf(),
+            relative_path_base: root.to_path_buf(),
+            sessions_root: root.join("sessions"),
+            clock: SystemClock,
+            scheduler: Scheduler::new(chrono_tz::Asia::Shanghai),
+            app_events: events.publisher(),
+        })
+        .expect("agent runtime"),
+    );
+    Plugins::new(host, runtime)
 }
 
 /// Writes a processless Hook `.orax` whose command alias is `rtk` and whose artifact matches
@@ -93,7 +113,7 @@ fn read_plugin_readme_resolves_from_the_marketplace_checkout() {
         .expect("write listing README");
 
         let response = api
-            .read_plugin_readme(ora_contracts::ReadPluginReadmeRequest {
+            .read_readme(ora_contracts::ReadPluginReadmeRequest {
                 plugin_id: "official/ora-space.weather".to_string(),
             })
             .expect("read readme");
@@ -114,14 +134,14 @@ fn read_plugin_readme_resolves_from_the_marketplace_checkout() {
         .expect("write silent manifest");
 
         let silent = api
-            .read_plugin_readme(ora_contracts::ReadPluginReadmeRequest {
+            .read_readme(ora_contracts::ReadPluginReadmeRequest {
                 plugin_id: "official/ora-space.silent".to_string(),
             })
             .expect("read silent readme");
         assert_eq!(silent.readme, None);
 
         let unknown = api
-            .read_plugin_readme(ora_contracts::ReadPluginReadmeRequest {
+            .read_readme(ora_contracts::ReadPluginReadmeRequest {
                 plugin_id: "official/absent".to_string(),
             })
             .expect_err("unknown id");
@@ -181,7 +201,9 @@ fn importing_a_second_hook_with_the_same_command_reports_a_conflict_without_disa
                     }
                 );
 
-                let listed = api.list(ListInstalledPluginsRequest {});
+                let listed = api
+                    .list_installed(ListInstalledPluginsRequest {})
+                    .expect("installed snapshot");
                 let ids: Vec<&str> = listed
                     .plugins
                     .iter()
