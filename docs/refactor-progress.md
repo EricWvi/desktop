@@ -12,7 +12,7 @@
 | 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
 | 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除          |
 | 5：前端归属     | 已完成 | 翻译、共享查询与 typed 测试 transport 均已迁移    |
-| 6：验收         | 进行中 | 前端与 Rust 门禁已接入；增删演练与最终验收待实施  |
+| 6：验收         | 已完成 | 门禁、两次实际增删演练与最终全量验收均通过        |
 
 ## 人工登记点
 
@@ -228,3 +228,16 @@
 - unary 演练额外运行 Desktop TypeScript 检查时，发现阶段 2 新增的取消测试使用了 ES2024 的 `Promise.withResolvers`，不符合仓库 ES2023 lib。既有 Desktop lint 只运行 ESLint，因此此前完整 `task test` 没有覆盖这个编译入口。
 - 测试改为显式可完成的 ES2023 Promise，保持“创建中取消”的异步边界不变；Desktop lint 加入 app 和 node 两份 tsconfig 的类型检查，不提高产品运行目标，也不依赖临时的 lib 覆盖参数。
 - 修正后的 Desktop lint 和 41 项 transport/platform 测试通过。演练从包含此修正的干净基线重新执行；最终全量验收将包含新增类型门禁。
+
+### 阶段 6c：临时增删演练与操作指南（2026-09-06）
+
+- 基于 `1723a13` 的独立工作树实际增加并删除 Settings unary 和 Files stream。分别只修改 5/4 个所属实现与声明文件；四类手写事实不变，6/5 个接线产物全部生成，测试另外计数。
+- 两次新增的重复生成均一致，真实 client/DTO/options 测试、Desktop 类型/lint 和 58 项 Tauri 测试均通过；unary 另有真实 SQLite interface 测试，stream 另有冷消费和共享 cancel 路由测试。没有把 mock transport 验证夸大为原生端到端覆盖。
+- 删除手写部分后，检查分别检测到 6/5 个残留产物并失败；重新生成后均通过，工作树状态为空，恢复到 105 unary、5 stream、130 项主 Webview 授权。根 Backend 与通用生命周期实现未修改，其他 Webview 未扩大权限。
+- 临时工作树与 probe 功能已清理，未删除用户数据。详细计数与复现证据见 `docs/refactor-acceptance.md`；feature 所有权、契约、授权、缓存、订阅、测试和文档清单见 `docs/feature-change-guide.md`。
+
+### 最终验收（2026-09-06）
+
+- 最终主工作树 `task test` 全量通过，包含新接入的 Desktop app/node 类型检查、feature/Rust 规模门禁、生成检查、tooling、全部前端和 Rust workspace lint/测试、58 项 Tauri 和 7 项 E2E。app-shell 为 143 个文件、1285 项 clean-stderr 测试；Backend 为 220 项通过、1 项原有外部发布产物测试 ignored。
+- 搜索确认旧 query-key/mock-client 入口及 probe operation 未留在产品源码；根 Backend 仅保留启动与领域 handle。方案阶段 0–6 完成，不保留临时兼容链路；7 个既有超限 Rust 模块按方案记录为后续受控债务，不宣称整个仓库已无架构债务。
+- 本次仍跳过根决策检查，未修改 specs/memories、用户数据布局或远端仓库。
