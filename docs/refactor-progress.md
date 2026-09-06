@@ -12,7 +12,7 @@
 | 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
 | 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除          |
 | 5：前端归属     | 已完成 | 翻译、共享查询与 typed 测试 transport 均已迁移    |
-| 6：验收         | 进行中 | 前端私有接口检查已接入；Rust 规模检查与演练待实施 |
+| 6：验收         | 进行中 | 前端与 Rust 门禁已接入；增删演练与最终验收待实施  |
 
 ## 人工登记点
 
@@ -214,3 +214,11 @@
 - 共享 agent catalog、review 尺寸规则、composer quote action 移到 state 归属；编辑和执行视图共用的 zoom 约束移到 workflow-node-chrome。调用者和测试/mock 路径同步迁移，不保留旧路径转发。
 - `check:features` 使用 TypeScript resolver 和真实导出符号，覆盖静态/type/alias/re-export、动态/CommonJS 和 mock 访问；state 禁止依赖 feature，纯翻译只向单一 i18n 组合开放。门禁接入 `lint:frontend`，继而进入 `task test`。
 - 6 项门禁正反例测试、tooling 检查和 app-shell lint 通过；143 个文件、1285 项 clean-stderr 测试通过。Rust 规模门禁、临时工作树增删演练和最终全量验收仍待完成。
+
+### 阶段 6b：Rust 规模与存量债务门禁（2026-09-06）
+
+- `ora-utils::rust_source` 按语法 span 排除测试，保留测试声明之后的生产代码；支持复合 cfg、cfg_attr、inline/外部 module、显式路径和 Unicode/BOM/shebang。重依赖仅在 `rust-source` feature 开启，不引入 Ora 领域或其他 Ora crate 依赖。
+- xtask 结合 Cargo targets 与全部已跟踪/非忽略的新 Rust 文件追踪生产和测试引用；integration target、测试专用文件及后代被排除，生产/测试共享文件仍计入，未引用文件保守计入。路径判断复用 ora-utils containment/normalization，不改动产品磁盘布局。
+- 按“不含测试与空行、包含注释”统计，初始 671 个文件中 80 个为测试专用；30 个超过 500 行目标，7 个超过 800 行硬门槛。仅这 7 个已有文件记录 owning crate、精确上限和具体拆分计划；增长、未登记超限、缩减后未下调基线及过时例外都会失败。
+- `check:rust-size` 接入 Rust lint；12 项解析测试、5 项引用图测试、4 项基线策略测试及定向 Clippy 通过。长期规则和存量责任见 `docs/architecture-checks.md`。
+- 集成门禁后的 `task test` 全量通过：tooling、frontend lint/测试（app-shell 1285 项）、Rust workspace、58 项 Tauri 和 7 项 E2E；原 Backend 外部发布产物测试仍有 1 项 ignored。阶段 6 的临时增删演练仍待完成。

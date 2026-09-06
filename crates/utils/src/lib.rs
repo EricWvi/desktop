@@ -22,6 +22,8 @@ pub mod http;
 pub mod jsonc;
 pub mod path;
 pub mod process;
+#[cfg(feature = "rust-source")]
+pub mod rust_source;
 mod slug;
 #[cfg(feature = "validation")]
 pub mod svg;
