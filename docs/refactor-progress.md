@@ -4,15 +4,15 @@
 
 ## 进度
 
-| 阶段            | 状态   | 交付                                              |
-| --------------- | ------ | ------------------------------------------------- |
-| 0：基线         | 已盘点 | 本文的登记点、command 与行为验证索引              |
-| 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成 |
-| 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                |
-| 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试               |
-| 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除          |
-| 5：前端归属     | 待实施 | feature 资源、查询和按需测试 transport            |
-| 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`              |
+| 阶段            | 状态   | 交付                                                |
+| --------------- | ------ | --------------------------------------------------- |
+| 0：基线         | 已盘点 | 本文的登记点、command 与行为验证索引                |
+| 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成   |
+| 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                  |
+| 3：Backend 试点 | 已完成 | settings 窄 interface、独立存储测试                 |
+| 4：Backend 迁移 | 已完成 | 领域用例与生命周期已迁移，旧根转发已删除            |
+| 5：前端归属     | 进行中 | feature 翻译资源已迁移；查询与测试 transport 待迁移 |
+| 6：验收         | 待实施 | 增删演练、架构约束、完整 `task test`                |
 
 ## 人工登记点
 
@@ -160,3 +160,11 @@
 - Skill package 更新保留附加文件的测试随职责移到 Skill module；根启动测试保留装配与 plugin Skill 投影验证，并改为 scoped TRACE。
 - 新增 Effects 无 runtime 的真实 SQLite 缺失/读失败区分测试；已有 Effect E2E 现在同时经公开 interface 查询 materialization 的 target status，两种 selector 指向同一 target。
 - 最终 `task test` 全量通过：Frontend lint/clean-stderr 测试、Rust workspace lint/测试、220 项 Backend 测试（另 1 项原有 ignored）、58 项 Tauri 和 7 项 E2E。生成漂移检查也通过。
+
+### 阶段 5a：feature 翻译资源（2026-09-06）
+
+- `i18n-instance.ts` 从 3437 行降到约 60 行，只保留唯一实例和同步初始化/locale 存储。14 组纯数据资源由 `i18n/resources.ts` 显式组合；feature 不动态注册，也不为加载翻译引入 React implementation。
+- workflow editor 拥有历史 `settings.workflow.*` 文案；Settings 的 plugins/Skills/Roles 分别拥有自己的文案和相关 contract errors。真正共享的 shell/transport copy 保留独立公共资源。
+- 对比 `0e1581f` 的完整字典：所有原有中文 1464 项和英文 1474 项的 key/value 均不变。唯一新增是未被使用的 `chat.selectedFileLines` 中文文案；英文多出的其他原始键来自 9 组合法 plural variants，不做机械复制或删除。
+- 组合校验按逻辑键比较两种语言，检查缺失复数形式和跨 feature 的重复所有权；保留具体 raw keys、fallback、`ora.locale` 和同步初始化语义。
+- 14 项 i18n 定向测试通过；新增语言切换、blocked-storage、独立纯资源加载、重复键与 plural 缺失验证。app-shell lint 和完整 clean-stderr 测试通过：137 个文件、1267 项测试；规则见 `docs/frontend-ownership.md`。
