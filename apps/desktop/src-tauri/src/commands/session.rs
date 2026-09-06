@@ -6,6 +6,24 @@ use ora_backend::Backend;
 use ora_contracts::*;
 use tauri::State;
 
+/// Starts history replay without embedding session creation in the shared transport dispatcher.
+pub(super) async fn start_load(
+    state: State<'_, DesktopState>,
+    request: LoadSessionRequest,
+    context: super::stream::StreamStart,
+) -> Result<(), CommandError> {
+    context.events(state.backend.load_session(request)).await
+}
+
+/// Starts a prompt using the session-owned backend while the context owns stream cancellation.
+pub(super) async fn start_prompt(
+    state: State<'_, DesktopState>,
+    request: PromptSessionRequest,
+    context: super::stream::StreamStart,
+) -> Result<(), CommandError> {
+    context.events(state.backend.prompt_session(request)).await
+}
+
 /// Creates and persists a provider session when a chat first sends.
 #[tauri::command]
 pub async fn start_session(

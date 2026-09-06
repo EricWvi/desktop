@@ -5,6 +5,7 @@ mod open_external;
 mod open_location;
 mod state;
 mod stream_forwarding;
+mod stream_registry;
 mod surface;
 mod update;
 mod workspace_files;
@@ -18,10 +19,9 @@ use ora_logging::{
     ora_info, ora_warn, register_gitlancer_logger,
 };
 use ora_runtime_settings::RuntimeLogLevelManager;
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
 /// Expands the shared command registry (`app_commands.rs`) into the Tauri invoke handler.
@@ -87,7 +87,16 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(include!("app_commands.rs"))
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!())
+        .map(|app| {
+            app.run(|handle, event| {
+                if matches!(event, tauri::RunEvent::Exit)
+                    && let Some(state) = handle.try_state::<DesktopState>()
+                {
+                    state.streams.shutdown();
+                }
+            })
+        });
     // Tauri has released managed backend state at this point, so process owners already had an
     // opportunity to shut down gracefully. The reaper now forcefully clears any survivors.
     if let Err(error) = ora_process::shutdown_reaper() {
@@ -201,7 +210,7 @@ fn bootstrap_desktop(
             runtime_log_level,
             workspace_files,
             binary_paths,
-            stream_cancellations: Arc::new(Mutex::new(HashMap::new())),
+            streams: stream_registry::StreamRegistry::default(),
             surfaces,
         },
         DesktopRuntimeGuard {

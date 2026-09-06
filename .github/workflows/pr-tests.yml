@@ -60,6 +60,8 @@ jobs:
               - 'crates/contracts/**'
               - 'xtask/**'
               - 'apps/desktop/web/**'
+              - 'apps/desktop/src-tauri/bindings.rs'
+              - 'apps/desktop/src-tauri/bindings/**'
               - 'apps/desktop/index.html'
               - 'apps/desktop/*.json'
               - 'apps/desktop/*.ts'
@@ -68,6 +70,8 @@ jobs:
               - *shared
               - 'crates/**'
               - 'xtask/**'
+              - 'apps/desktop/src-tauri/bindings.rs'
+              - 'apps/desktop/src-tauri/bindings/**'
             tauri:
               - *shared
               - 'crates/**'

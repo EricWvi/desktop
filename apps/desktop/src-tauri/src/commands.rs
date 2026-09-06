@@ -109,6 +109,7 @@ macro_rules! async_backend_command {
 
 pub(crate) mod agent;
 pub(crate) mod agent_runtime;
+pub(crate) mod app_events;
 pub(crate) mod effect;
 pub(crate) mod files;
 pub(crate) mod git_identity;
@@ -118,6 +119,7 @@ pub(crate) mod session;
 pub(crate) mod settings;
 pub(crate) mod skill;
 pub(crate) mod stream;
+mod stream_routes;
 pub(crate) mod task;
 pub(crate) mod workflow;
 pub(crate) mod workflow_run;

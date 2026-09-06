@@ -11,11 +11,29 @@ while Effect status belongs to its own module rather than plugin command impleme
 
 ## Shared Backend and Commands
 
+Desktop owns the build-time catalog in `apps/desktop/src-tauri/bindings.rs` and its
+domain-scoped `bindings/` files. Each unary binding names one logical operation, its Rust
+handler, and an explicit Webview permission. Streams name their domain startup handler;
+the shared stream/cancel commands and platform-only commands have separate native bindings.
+`task export-contracts` joins this catalog with the transport-neutral operation catalog and
+generates the private TypeScript map, typed stream decoder/dispatcher, `app_commands.rs`, and
+permission TOML files. The main and plugin Webview grants remain separate. Ordinary Tauri
+builds consume these checked-in files and retain the existing handler/permission build check;
+they never run xtask recursively. `task check:contracts` rejects drift and invalid bindings.
+
 Desktop constructs one cloneable `ora-backend::Backend`. A shared command wrapper assigns a canonical
 request id, opens the request span, invokes unary business logic, projects any backend error, and
 records at most one completion event. Session load, prompt, and `watchAppEvents` operations use `stream_contract`, which
 forwards ordered `data`, `error`, and `end` frames over a Tauri Channel. A private call id allows an
 `AbortSignal` to cancel only that stream, while one separate request id correlates the complete stream.
+
+The stream registry claims the call id before domain startup and retains it until its owning
+registration is dropped. Cancellation signals that owner instead of freeing the id for reuse.
+Startup already in progress is allowed to settle, because abandoning arbitrary domain work
+could orphan actor side effects; a resource created after cancellation is immediately dropped.
+The frontend signals cancellation even while startup is pending and repeats cleanup after it
+settles. Application exit cancels all starting/running registrations and refuses new ones.
+Domain modules supply event sources; they do not duplicate forwarding or request completion.
 
 The frontend injects `createTauriTransport()` into `createContractsClient`. The transport maps contract operation names to Tauri commands and forwards the original request DTO unchanged. Backend failures use the direct `{ code, params, requestId }` payload without a public message or outer envelope. Local Tauri invocation failures never invent a request id.
 

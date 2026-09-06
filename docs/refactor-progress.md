@@ -8,7 +8,7 @@
 | --------------- | ------ | ------------------------------------------------- |
 | 0：基线         | 已盘点 | 本文的登记点、command 与行为验证索引              |
 | 1：contracts    | 已完成 | 显式响应模式、生成 client/DTO exports、确定性生成 |
-| 2：Desktop      | 进行中 | 领域命令已拆分；binding 与 stream 接线待完成      |
+| 2：Desktop      | 已完成 | 领域 binding、生成接线和注册 guard                |
 | 3：Backend 试点 | 待实施 | settings 窄 interface                             |
 | 4：Backend 迁移 | 待实施 | 领域操作、生命周期协调和启动装配                  |
 | 5：前端归属     | 待实施 | feature 资源、查询和按需测试 transport            |
@@ -86,3 +86,11 @@
 - task/settings 原有入口已迁入同一领域目录；删除两套重复请求执行逻辑，文件读取也使用可注入 context 的通用阻塞执行方法。
 - workspace listing/diff/location、Effect status 和 workflow export 按职责归属；旧路径引用同步更新。command 名称、DTO 与 capability 集合未改变。
 - `task test:tauri` 通过：包含 Clippy、53 项 Desktop 测试；最终阶段 2 仍需验证生成 binding、stream 竞争及全量测试。
+
+### 阶段 2b：声明、分派与取消所有权（2026-09-06）
+
+- Desktop 的 `bindings/` 按领域拥有 handler、响应接线及显式授权；xtask 关联逻辑 catalog，生成 transport map、stream 分类、类型化请求分派、Rust registry 与权限清单。公共 manifest 不含 Tauri 路径或授权。
+- 与 `65ebdea` 逐项比对：主 Webview 的 130 项实际授权、plugin Webview 的唯一授权均不变；两个 capability JSON 逐字不变。生成过程去除了原权限列表中重复的一项 `rename_workflow_run`，不改变授权集合。
+- 注册 guard 在领域创建前取得 id；取消只发信号，释放资源后才允许复用 id，避免旧任务清掉新注册。退出时统一取消并拒绝新注册；创建中取消等待创建安全结束后释放资源。
+- 新增 catalog 完整性、错误模式、重复 handler、typed stream 增删和实际 plugin grant 校验；Rust 覆盖预取消、创建中取消、创建失败的 requestId、重复 id、shutdown。Frontend 覆盖创建中发出取消、终止错误及 requestId、未知 operation、预取消不启动 IPC；保留单次消费、顺序、end 与溢出验证。
+- 验证：xtask Clippy 和 20 项测试通过；Tauri Clippy 和 58 项测试通过；Desktop frontend 41 项测试通过。最终 `task test` 全量通过，包含 4 项 E2E。

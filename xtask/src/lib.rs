@@ -1,4 +1,7 @@
+#[path = "../../apps/desktop/src-tauri/bindings.rs"]
+mod desktop_bindings;
 mod export_contracts;
+mod export_desktop;
 mod export_plugin_protocol;
 mod frontend;
 mod generated_artifacts;

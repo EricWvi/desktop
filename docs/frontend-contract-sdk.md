@@ -47,6 +47,13 @@ Every `ContractTransportRequest` carries only the operation name and original co
 
 **Desktop** — `apps/desktop/web` exports `createTauriTransport`, injected as `createContractsClient(createTauriTransport())`. It maps operation names to snake-case Tauri commands and drives streams over a Tauri Channel using the same private frame shape. Unary failures and stream error frames use the shared decoder.
 
+The Desktop-owned `src-tauri/bindings/` catalog supplies handler paths and explicit grants,
+joined with the logical catalog during export. It generates `tauri-bindings.generated.ts`,
+Rust command registration and typed stream routes, and separate permission lists. None of
+that adapter metadata is exposed in the public manifest. Missing, duplicate, unknown, or
+wrong-response-mode bindings fail generation. Adding an operation does not require editing
+the transport's command map, a stream-name union, or permissions by hand.
+
 `watchAppEvents` is a best-effort invalidation broadcast, not a replayable event log. It carries no browser ownership metadata and permits concurrent transport subscribers. Before the Web App Shell mounts normal queries or opens this stream, its platform adapter acquires the same-origin `ora:app-window` Web Lock. A second tab waits for that lock and enters automatically when the active document closes or reloads. The Desktop adapter grants ownership immediately because the native host owns one main application window.
 
 ## Public errors and localization

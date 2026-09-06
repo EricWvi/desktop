@@ -8,6 +8,50 @@ use ora_contracts::*;
 use std::path::Path;
 use tauri::State;
 
+/// Resolves a task-owned checkout before creating the native watcher at the filesystem seam.
+pub(super) async fn start_workspace_watch(
+    state: State<'_, DesktopState>,
+    request: WatchWorkspaceRequest,
+    context: super::stream::StreamStart,
+) -> Result<(), CommandError> {
+    let backend = state.backend.clone();
+    let files = state.workspace_files.clone();
+    context
+        .watch(async move {
+            tauri::async_runtime::spawn_blocking(move || {
+                let root = backend.resolve_task_cwd(&request.task_id)?;
+                files.watch(&root).map_err(workspace_file_backend_error)
+            })
+            .await
+            .map_err(|error| {
+                BackendError::internal("Desktop workspace watcher setup failed", error)
+            })?
+        })
+        .await
+}
+
+/// Resolves a project-owned checkout while the shared context handles transport teardown.
+pub(super) async fn start_project_watch(
+    state: State<'_, DesktopState>,
+    request: WatchProjectRequest,
+    context: super::stream::StreamStart,
+) -> Result<(), CommandError> {
+    let backend = state.backend.clone();
+    let files = state.workspace_files.clone();
+    context
+        .watch(async move {
+            tauri::async_runtime::spawn_blocking(move || {
+                let root = backend.resolve_project_cwd(&request.project_id)?;
+                files.watch(&root).map_err(workspace_file_backend_error)
+            })
+            .await
+            .map_err(|error| {
+                BackendError::internal("Desktop project watcher setup failed", error)
+            })?
+        })
+        .await
+}
+
 /// Lists one immediate directory in the selected task workspace.
 #[tauri::command]
 pub async fn list_workspace_directory(

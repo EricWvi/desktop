@@ -1,15 +1,94 @@
-//! Desktop stream operations.
+//! Shared stream startup, cancellation, and forwarding; domain routing is generated.
 
+use super::stream_routes::{self, StreamOperation};
 use crate::stream_forwarding::{forward_contract_stream, forward_workspace_watch};
-use crate::workspace_files::workspace_file_backend_error;
+use crate::stream_registry::StreamRegistration;
 use crate::{error::CommandError, state::DesktopState};
-use ora_backend::{BackendError, RequestLifecycle, UuidRequestIdGenerator};
-use ora_contracts::*;
-use std::path::PathBuf;
+use ora_backend::{
+    BackendError, ErrorClassification, RequestLifecycle, SessionEventStream, UuidRequestIdGenerator,
+};
+use ora_contracts::{EmptyErrorParams, PublicError};
+use std::future::Future;
 use tauri::{State, ipc::Channel};
 use tokio_util::sync::CancellationToken;
 
-/// Starts one typed Session stream and forwards private transport frames over a Tauri Channel.
+/// Owns a request and registration until startup transfers them to a forwarding task.
+pub(super) struct StreamStart {
+    registration: StreamRegistration,
+    channel: Channel<serde_json::Value>,
+    lifecycle: RequestLifecycle,
+}
+
+/// Distinguishes cancelled startup from a resource ready to transfer to its forwarding task.
+enum Startup<T> {
+    Cancelled,
+    Ready(T),
+}
+
+impl StreamStart {
+    /// Starts an ordered backend event source and transfers exactly one lifecycle to forwarding.
+    pub(super) async fn events<T: serde::Serialize + Send + 'static>(
+        self,
+        source: impl Future<Output = Result<SessionEventStream<T>, BackendError>>,
+    ) -> Result<(), CommandError> {
+        match settle_startup(source, self.registration.cancellation(), &self.lifecycle).await? {
+            Startup::Cancelled => {}
+            Startup::Ready(stream) => {
+                tauri::async_runtime::spawn(forward_contract_stream(
+                    stream,
+                    self.registration,
+                    self.channel,
+                    self.lifecycle,
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Starts a native event source while using the same cancellation and request ownership rules.
+    pub(super) async fn watch(
+        self,
+        source: impl Future<Output = Result<ora_fs::WorkspaceWatcher, BackendError>>,
+    ) -> Result<(), CommandError> {
+        match settle_startup(source, self.registration.cancellation(), &self.lifecycle).await? {
+            Startup::Cancelled => {}
+            Startup::Ready(watcher) => {
+                tauri::async_runtime::spawn(forward_workspace_watch(
+                    watcher,
+                    self.registration,
+                    self.channel,
+                    self.lifecycle,
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Lets started domain work settle before dropping its resource; arbitrary startup futures may
+/// already have committed actor side effects and are not safe to abandon midway through creation.
+async fn settle_startup<T>(
+    source: impl Future<Output = Result<T, BackendError>>,
+    cancellation: &CancellationToken,
+    lifecycle: &RequestLifecycle,
+) -> Result<Startup<T>, CommandError> {
+    if cancellation.is_cancelled() {
+        lifecycle.complete_cancellation();
+        return Ok(Startup::Cancelled);
+    }
+    let resource = source
+        .await
+        .map_err(|error| CommandError::from_backend_with_lifecycle(error, lifecycle))?;
+    if cancellation.is_cancelled() {
+        drop(resource);
+        lifecycle.complete_cancellation();
+        Ok(Startup::Cancelled)
+    } else {
+        Ok(Startup::Ready(resource))
+    }
+}
+
+/// Validates a typed request and claims its id before any domain startup work can run.
 #[tauri::command]
 pub async fn stream_contract(
     state: State<'_, DesktopState>,
@@ -22,214 +101,37 @@ pub async fn stream_contract(
         format!("stream_contract:{operation_name}"),
         &UuidRequestIdGenerator,
     );
-    let cancellation = CancellationToken::new();
-
-    match operation_name.as_str() {
-        "loadSession" => {
-            let request =
-                serde_json::from_value::<LoadSessionRequest>(request).map_err(|source| {
-                    CommandError::from_backend_with_lifecycle(
-                        BackendError::internal("failed to decode stream request", source),
-                        &lifecycle,
-                    )
-                })?;
-            let stream =
-                state.backend.load_session(request).await.map_err(|error| {
-                    CommandError::from_backend_with_lifecycle(error, &lifecycle)
-                })?;
-            register_contract_stream(&state, &stream_call_id, &cancellation)
-                .map_err(|error| CommandError::from_backend_with_lifecycle(error, &lifecycle))?;
-            let registry = state.stream_cancellations.clone();
-            tauri::async_runtime::spawn(forward_contract_stream(
-                stream,
-                cancellation,
-                stream_call_id,
-                registry,
-                on_event,
-                lifecycle,
-            ));
-        }
-        "promptSession" => {
-            let request =
-                serde_json::from_value::<PromptSessionRequest>(request).map_err(|source| {
-                    CommandError::from_backend_with_lifecycle(
-                        BackendError::internal("failed to decode stream request", source),
-                        &lifecycle,
-                    )
-                })?;
-            let stream = state
-                .backend
-                .prompt_session(request)
-                .await
-                .map_err(|error| CommandError::from_backend_with_lifecycle(error, &lifecycle))?;
-            register_contract_stream(&state, &stream_call_id, &cancellation)
-                .map_err(|error| CommandError::from_backend_with_lifecycle(error, &lifecycle))?;
-            let registry = state.stream_cancellations.clone();
-            tauri::async_runtime::spawn(forward_contract_stream(
-                stream,
-                cancellation,
-                stream_call_id,
-                registry,
-                on_event,
-                lifecycle,
-            ));
-        }
-        "watchAppEvents" => {
-            let stream = state.backend.watch_app_events();
-            register_contract_stream(&state, &stream_call_id, &cancellation)
-                .map_err(|error| CommandError::from_backend_with_lifecycle(error, &lifecycle))?;
-            let registry = state.stream_cancellations.clone();
-            tauri::async_runtime::spawn(forward_contract_stream(
-                stream,
-                cancellation,
-                stream_call_id,
-                registry,
-                on_event,
-                lifecycle,
-            ));
-        }
-        "watchWorkspace" => {
-            let request =
-                serde_json::from_value::<WatchWorkspaceRequest>(request).map_err(|source| {
-                    CommandError::from_backend_with_lifecycle(
-                        BackendError::internal("failed to decode stream request", source),
-                        &lifecycle,
-                    )
-                })?;
-            let task_id = request.task_id;
-            let backend = state.backend.clone();
-            let root =
-                tauri::async_runtime::spawn_blocking(move || backend.resolve_task_cwd(&task_id))
-                    .await
-                    .map_err(|source| {
-                        CommandError::from_backend_with_lifecycle(
-                            BackendError::internal(
-                                "Desktop workspace root resolution failed",
-                                source,
-                            ),
-                            &lifecycle,
-                        )
-                    })?
-                    .map_err(|error| {
-                        CommandError::from_backend_with_lifecycle(error, &lifecycle)
-                    })?;
-            start_workspace_watch(
-                state,
-                root,
-                stream_call_id,
-                on_event,
-                lifecycle,
-                cancellation,
-            )
-            .await?;
-        }
-        "watchProject" => {
-            let request =
-                serde_json::from_value::<WatchProjectRequest>(request).map_err(|source| {
-                    CommandError::from_backend_with_lifecycle(
-                        BackendError::internal("failed to decode stream request", source),
-                        &lifecycle,
-                    )
-                })?;
-            let project_id = request.project_id;
-            let backend = state.backend.clone();
-            let root = tauri::async_runtime::spawn_blocking(move || {
-                backend.resolve_project_cwd(&project_id)
-            })
-            .await
-            .map_err(|source| {
-                CommandError::from_backend_with_lifecycle(
-                    BackendError::internal("Desktop workspace location resolution failed", source),
-                    &lifecycle,
-                )
-            })?
-            .map_err(|error| CommandError::from_backend_with_lifecycle(error, &lifecycle))?;
-            start_workspace_watch(
-                state,
-                root,
-                stream_call_id,
-                on_event,
-                lifecycle,
-                cancellation,
-            )
-            .await?;
-        }
-        _ => {
-            return Err(CommandError::from_backend_with_lifecycle(
-                BackendError::new(
-                    ora_backend::ErrorClassification::InvalidRequest,
-                    PublicError::InvalidRequest(EmptyErrorParams {}),
-                    "unsupported stream operation",
-                ),
-                &lifecycle,
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// Starts a native filesystem watcher for an already-resolved checkout root.
-async fn start_workspace_watch(
-    state: State<'_, DesktopState>,
-    root: PathBuf,
-    stream_call_id: String,
-    on_event: Channel<serde_json::Value>,
-    lifecycle: RequestLifecycle,
-    cancellation: CancellationToken,
-) -> Result<(), CommandError> {
-    let workspace_files = state.workspace_files.clone();
-    let watcher = tauri::async_runtime::spawn_blocking(move || workspace_files.watch(&root))
-        .await
-        .map_err(|source| {
-            CommandError::from_backend_with_lifecycle(
-                BackendError::internal("Desktop workspace watcher setup failed", source),
-                &lifecycle,
-            )
-        })?
-        .map_err(|error| {
-            CommandError::from_backend_with_lifecycle(
-                workspace_file_backend_error(error),
-                &lifecycle,
-            )
-        })?;
-    register_contract_stream(&state, &stream_call_id, &cancellation)
-        .map_err(|error| CommandError::from_backend_with_lifecycle(error, &lifecycle))?;
-    let registry = state.stream_cancellations.clone();
-    tauri::async_runtime::spawn(forward_workspace_watch(
-        watcher,
-        cancellation,
-        stream_call_id,
-        registry,
-        on_event,
-        lifecycle,
-    ));
-    Ok(())
-}
-
-/// Registers a successfully-created stream and rejects duplicate private call identifiers.
-pub(crate) fn register_contract_stream(
-    state: &DesktopState,
-    stream_call_id: &str,
-    cancellation: &CancellationToken,
-) -> Result<(), BackendError> {
-    let mut registrations = state.stream_cancellations.lock().map_err(|_poisoned| {
-        BackendError::internal(
-            "stream registration state is unavailable",
-            std::io::Error::other("stream registration lock poisoned"),
+    let operation = serde_json::from_value::<StreamOperation>(serde_json::json!({
+        "operationName": operation_name,
+        "request": request,
+    }))
+    .map_err(|error| {
+        CommandError::from_backend_with_lifecycle(
+            BackendError::new(
+                ErrorClassification::InvalidRequest,
+                PublicError::InvalidRequest(EmptyErrorParams {}),
+                format!("invalid stream request: {error}"),
+            ),
+            &lifecycle,
         )
     })?;
-    if registrations.contains_key(stream_call_id) {
-        return Err(BackendError::new(
-            ora_backend::ErrorClassification::Conflict,
-            PublicError::InvalidRequest(EmptyErrorParams {}),
-            "stream call id is already registered",
-        ));
-    }
-    registrations.insert(stream_call_id.to_string(), cancellation.clone());
-    Ok(())
+    let registration = state
+        .streams
+        .register(stream_call_id)
+        .map_err(|error| CommandError::from_backend_with_lifecycle(error, &lifecycle))?;
+    stream_routes::start(
+        state,
+        operation,
+        StreamStart {
+            registration,
+            channel: on_event,
+            lifecycle,
+        },
+    )
+    .await
 }
 
-/// Cancels one private stream registration without exposing its id as a business identifier.
+/// Cancels starting or running streams without prematurely releasing their private ids.
 #[tauri::command]
 pub async fn cancel_contract_stream(
     state: State<'_, DesktopState>,
@@ -238,31 +140,134 @@ pub async fn cancel_contract_stream(
     let lifecycle = RequestLifecycle::start("cancel_contract_stream", &UuidRequestIdGenerator);
     let request_span =
         ora_logging::span_with_request_id("tauri_command", &lifecycle.request_id().to_string());
-
-    // The body holds a registry lock and never awaits, so the span is entered with `in_scope`
-    // instead of `Instrument`, which would keep a guard alive across the async fn boundary.
     request_span.in_scope(|| {
-        let registration = state
-            .stream_cancellations
-            .lock()
-            .map(|mut registrations| registrations.remove(&stream_call_id))
-            .map_err(|_poisoned| {
-                CommandError::from_backend_with_lifecycle(
-                    BackendError::internal(
-                        "stream registration state is unavailable",
-                        std::io::Error::other("stream registration lock poisoned"),
-                    ),
-                    &lifecycle,
-                )
-            })?;
-
-        // Cancelling an already-finished stream is not an error: the forwarding task removes its
-        // own registration on completion, so a missing entry only means the race resolved first.
-        if let Some(cancellation) = registration {
-            cancellation.cancel();
-        }
-
+        state
+            .streams
+            .cancel(&stream_call_id)
+            .map_err(|error| CommandError::from_backend_with_lifecycle(error, &lifecycle))?;
         lifecycle.complete_success();
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::stream_routes::StreamOperation;
+    use super::{Startup, settle_startup};
+    use ora_backend::{BackendError, RequestLifecycle, UuidRequestIdGenerator};
+    use ora_logging::with_trace_logging;
+    use pretty_assertions::assert_eq;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use tokio_util::sync::CancellationToken;
+
+    struct Resource(Arc<AtomicUsize>);
+
+    impl Drop for Resource {
+        /// Records release of a resource that completed creation after its caller cancelled.
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// Pre-cancelled work is never polled; cancellation during creation waits for safe cleanup.
+    #[test]
+    fn cancellation_before_and_during_creation_releases_resources() {
+        with_trace_logging(|| {
+            tauri::async_runtime::block_on(async {
+                let token = CancellationToken::new();
+                token.cancel();
+                let lifecycle = RequestLifecycle::start("pre_cancel", &UuidRequestIdGenerator);
+                let polls = AtomicUsize::new(0);
+                let result = settle_startup(
+                    async {
+                        polls.fetch_add(1, Ordering::SeqCst);
+                        Ok::<(), BackendError>(())
+                    },
+                    &token,
+                    &lifecycle,
+                )
+                .await
+                .expect("pre-cancel succeeds");
+                assert!(matches!(result, Startup::Cancelled));
+                assert_eq!(polls.load(Ordering::SeqCst), 0);
+
+                let token = CancellationToken::new();
+                let drops = Arc::new(AtomicUsize::new(0));
+                let lifecycle =
+                    RequestLifecycle::start("cancel_during_creation", &UuidRequestIdGenerator);
+                let result = settle_startup(
+                    async {
+                        token.cancel();
+                        Ok(Resource(drops.clone()))
+                    },
+                    &token,
+                    &lifecycle,
+                )
+                .await
+                .expect("creation settles");
+                assert!(matches!(result, Startup::Cancelled));
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+            });
+        });
+    }
+
+    /// A creation failure remains a correlated failure even when cancellation races with it.
+    #[test]
+    fn startup_failure_preserves_the_request_id() {
+        with_trace_logging(|| {
+            tauri::async_runtime::block_on(async {
+                let token = CancellationToken::new();
+                let lifecycle = RequestLifecycle::start("failed_start", &UuidRequestIdGenerator);
+                let result = settle_startup(
+                    async {
+                        token.cancel();
+                        Err::<(), _>(BackendError::internal(
+                            "fixture startup",
+                            std::io::Error::other("failed"),
+                        ))
+                    },
+                    &token,
+                    &lifecycle,
+                )
+                .await;
+                let Err(error) = result else {
+                    panic!("startup must fail");
+                };
+                assert_eq!(
+                    serde_json::to_value(error).expect("serialize public error"),
+                    serde_json::json!({
+                        "code": "internal_error",
+                        "params": {},
+                        "requestId": lifecycle.request_id(),
+                    })
+                );
+            });
+        });
+    }
+
+    /// The generated decoder accepts only declared stream operations and their actual DTO shape.
+    #[test]
+    fn generated_stream_requests_reject_unknown_operations_and_bad_payloads() {
+        assert!(matches!(
+            serde_json::from_value::<StreamOperation>(
+                serde_json::json!({"operationName": "watchProject", "request": {"projectId": "fixture"}})
+            ),
+            Ok(StreamOperation::WatchProject(_))
+        ));
+        assert!(
+            serde_json::from_value::<StreamOperation>(
+                serde_json::json!({"operationName": "notDeclared", "request": {}})
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<StreamOperation>(
+                serde_json::json!({"operationName": "watchProject", "request": {}})
+            )
+            .is_err()
+        );
+    }
 }
