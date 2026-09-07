@@ -3,6 +3,10 @@ export const pluginTranslations = {
   "zh-CN": {
     "errors.plugin_not_found": "未找到该插件。",
     "errors.plugin_host_incompatible": "当前主机不支持此插件的发布制品。",
+    "errors.marketplace_s3_credentials_required":
+      "启用 S3 签名获取时，请填写 Access Key ID 和 Secret Access Key。",
+    "errors.marketplace_artifact_retrieval_field_invalid":
+      "插件包获取配置中的 {{field}} 无效，请修改后重试。",
     "errors.plugin_configuration_declaration_invalid": "插件的配置声明无效。",
     "errors.plugin_configuration_not_declared": "该插件没有声明配置。",
     "errors.configuration_revision_conflict":
@@ -266,6 +270,10 @@ export const pluginTranslations = {
     "errors.plugin_not_found": "The plugin was not found.",
     "errors.plugin_host_incompatible":
       "This plugin's release artifact is not supported on the current host.",
+    "errors.marketplace_s3_credentials_required":
+      "Enter an Access Key ID and Secret Access Key to enable S3 signed retrieval.",
+    "errors.marketplace_artifact_retrieval_field_invalid":
+      "The artifact retrieval field {{field}} is invalid. Correct it and try again.",
     "errors.plugin_configuration_declaration_invalid":
       "The plugin configuration declaration is invalid.",
     "errors.plugin_configuration_not_declared":

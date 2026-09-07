@@ -7,7 +7,7 @@ use crate::clock::SystemClock;
 use crate::effect_worker::EffectWorkerHandle;
 use crate::error::{BackendError, ErrorClassification};
 use crate::marketplace_sources::{
-    ConfiguredMarketplaceSource, MarketplaceSourceStore, MarketplaceSourceStoreError,
+    ConfiguredMarketplaceSource, MarketplaceSourceStore, map_marketplace_source_error,
 };
 use crate::proxy;
 use crate::settings::Settings;
@@ -333,6 +333,9 @@ impl PluginApi {
     }
 
     /// Adds and persists one marketplace source after validating its URL and branch.
+    ///
+    /// New sources start with Direct HTTPS. The source editor configures S3 SigV4 through
+    /// `update_marketplace_source` after adding the Git source.
     pub(crate) fn add_marketplace_source(
         &self,
         request: AddMarketplaceSourceRequest,
@@ -516,7 +519,7 @@ impl PluginApi {
             registry_sources.push((
                 registry_source,
                 source.source().use_proxy,
-                source.s3_config(),
+                source.s3_config().map_err(map_marketplace_source_error)?,
             ));
         }
 
@@ -835,36 +838,6 @@ impl PluginApi {
                 self.clock.now_timestamp_millis(),
             )
             .map_err(|error| BackendError::internal("failed to persist plugin Skills", error))
-    }
-}
-
-/** Maps marketplace source configuration failures onto their public classifications. */
-fn map_marketplace_source_error(error: MarketplaceSourceStoreError) -> BackendError {
-    match error {
-        MarketplaceSourceStoreError::Validation(error) => BackendError::new(
-            ErrorClassification::InvalidRequest,
-            PublicError::InvalidRequest(EmptyErrorParams {}),
-            format!("invalid plugin marketplace source: {error}"),
-        ),
-        MarketplaceSourceStoreError::Duplicate(url) => BackendError::new(
-            ErrorClassification::InvalidRequest,
-            PublicError::InvalidRequest(EmptyErrorParams {}),
-            format!("plugin marketplace source already exists: {url}"),
-        ),
-        MarketplaceSourceStoreError::NotFound(url) => BackendError::new(
-            ErrorClassification::NotFound,
-            PublicError::InvalidRequest(EmptyErrorParams {}),
-            format!("plugin marketplace source was not found: {url}"),
-        ),
-        MarketplaceSourceStoreError::ArtifactRetrieval(error) => BackendError::new(
-            ErrorClassification::InvalidRequest,
-            PublicError::InvalidRequest(EmptyErrorParams {}),
-            format!("invalid marketplace artifact retrieval: {error}"),
-        ),
-        error => BackendError::internal(
-            "failed to persist configured plugin marketplace sources",
-            error,
-        ),
     }
 }
 

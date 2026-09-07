@@ -121,12 +121,23 @@ accepts an object key, or a path-style HTTPS locator belonging to the configured
 bucket, and signs the request with that source's region and static credential pair. An S3 source
 rejects foreign HTTPS locators instead of falling back to unsigned retrieval.
 
+New sources start with Direct HTTPS. To use S3 SigV4, add the Git source first, then configure
+artifact retrieval in its source editor. HTTPS release locators use the URL parser's normalization,
+including case-insensitive schemes and surrounding ASCII whitespace.
+
 The source editor exposes the modes as “HTTPS 直接获取” and “S3 签名获取”. S3 endpoint, bucket,
 region, Access Key ID, and Secret Access Key are one complete configuration; existing credentials
 are write-only and can be preserved or atomically replaced, but are never returned by the source
 query contract or rendered in debug output. The current implementation stores this pair in the
 local SQLite database as plaintext configuration. It does not yet provide OS-keychain encryption,
 temporary credentials, or a provider credential chain.
+
+Credential-update serialization carries plaintext credentials for IPC transport; never serialize
+these requests into logs, traces, or telemetry. Use their redacted `Debug` representation for
+diagnostics. Invalid S3 endpoints fail configuration preparation with a recoverable error.
+Source updates return `marketplace_s3_credentials_required` when enabling S3 without credentials,
+or `marketplace_artifact_retrieval_field_invalid` with a `field` parameter naming the invalid field
+without its value. Corrupt persisted retrieval configuration is reported as an internal error.
 
 Both modes keep the source's proxy selection and the common download pipeline. SigV4 authenticates
 the request but does not establish package integrity: every artifact must still pass the release
