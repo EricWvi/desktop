@@ -1,18 +1,25 @@
 import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Checks the second generated layer in isolation so verification never repairs a stale checkout. */
 export async function checkContractSchema(): Promise<void> {
   const root = fileURLToPath(new URL("../", import.meta.url));
-  const sourceDirectory = path.join(root, "packages", "contracts", "src");
+  // ts-to-zod resolves `zod` for its "Validate generated types" step from the
+  // working directory's node_modules, so run it inside the package that owns it.
+  const contractsDirectory = path.join(root, "packages", "contracts");
+  const sourceDirectory = path.join(contractsDirectory, "src");
   const manifest = JSON.parse(
     await readFile(path.join(sourceDirectory, "..", "package.json"), "utf8"),
   );
   const generatorVersion: string = manifest.devDependencies["ts-to-zod"];
-  const temporary = await mkdtemp(path.join(tmpdir(), "ora-contract-schema-"));
+  // Keep the scratch output inside the package: ts-to-zod's validator composes
+  // relative imports from the output location, which breaks if it lives in a
+  // system temp directory.
+  const temporary = await mkdtemp(
+    path.join(contractsDirectory, ".schema-check-"),
+  );
   try {
     const output = path.join(temporary, "error.schema.ts");
     const generated = spawnSync(
@@ -21,10 +28,24 @@ export async function checkContractSchema(): Promise<void> {
         "run",
         "-A",
         `npm:ts-to-zod@${generatorVersion}`,
-        path.relative(root, path.join(sourceDirectory, "error.ts")),
-        path.relative(root, output),
+        path.relative(
+          contractsDirectory,
+          path.join(sourceDirectory, "error.ts"),
+        ),
+        path.relative(contractsDirectory, output),
       ],
-      { cwd: root, encoding: "utf8" },
+      {
+        cwd: contractsDirectory,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          // ts-to-zod (via @oclif/core) reads os.userInfo() when SHELL is unset,
+          // which Deno's node:os polyfill cannot do on Windows.
+          SHELL:
+            process.env.SHELL ??
+            (Deno.build.os === "windows" ? "cmd.exe" : "/bin/sh"),
+        },
+      },
     );
     if (generated.status !== 0)
       throw new Error(

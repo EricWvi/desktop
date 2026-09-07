@@ -150,8 +150,11 @@ return {
     workspace: {
       commitChanges: (request, options) => executeOperation("commitWorkspaceChanges", request, transport, options),
       getDiff: (request, options) => executeOperation("getWorkspaceDiff", request, transport, options),
+      getStatus: (request, options) => executeOperation("getWorkspaceStatus", request, transport, options),
       list: (request, options) => executeOperation("listWorkspaces", request, transport, options),
       pushBranch: (request, options) => executeOperation("pushWorkspaceBranch", request, transport, options),
+      stageChanges: (request, options) => executeOperation("stageWorkspaceChanges", request, transport, options),
+      unstageChanges: (request, options) => executeOperation("unstageWorkspaceChanges", request, transport, options),
     },
   };
 }

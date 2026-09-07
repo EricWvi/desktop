@@ -37,6 +37,27 @@ backend_command!(
     workspaces.push_branch,
     "Pushes one workspace checkout's branch through the shared Backend."
 );
+backend_command!(
+    get_workspace_status,
+    GetWorkspaceStatusRequest,
+    GetWorkspaceStatusResponse,
+    workspaces.get_status,
+    "Reads one workspace checkout's staging status through the shared Backend."
+);
+backend_command!(
+    stage_workspace_changes,
+    StageWorkspaceChangesRequest,
+    StageWorkspaceChangesResponse,
+    workspaces.stage_changes,
+    "Stages changes in one workspace checkout through the shared Backend."
+);
+backend_command!(
+    unstage_workspace_changes,
+    UnstageWorkspaceChangesRequest,
+    UnstageWorkspaceChangesResponse,
+    workspaces.unstage_changes,
+    "Unstages changes in one workspace checkout through the shared Backend."
+);
 
 /// Carries the empty request used to read the active worktree root.
 #[derive(Clone, Debug, Default, Deserialize)]

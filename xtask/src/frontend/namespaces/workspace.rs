@@ -37,4 +37,28 @@ pub(super) const ENDPOINTS: &[FrontendEndpoint] = &[
         response_type: "PushWorkspaceBranchResponse",
         response_mode: FrontendResponseMode::Unary,
     },
+    FrontendEndpoint {
+        operation_name: "getWorkspaceStatus",
+        namespace: NAMESPACE,
+        member_name: "getStatus",
+        request_type: "GetWorkspaceStatusRequest",
+        response_type: "GetWorkspaceStatusResponse",
+        response_mode: FrontendResponseMode::Unary,
+    },
+    FrontendEndpoint {
+        operation_name: "stageWorkspaceChanges",
+        namespace: NAMESPACE,
+        member_name: "stageChanges",
+        request_type: "StageWorkspaceChangesRequest",
+        response_type: "StageWorkspaceChangesResponse",
+        response_mode: FrontendResponseMode::Unary,
+    },
+    FrontendEndpoint {
+        operation_name: "unstageWorkspaceChanges",
+        namespace: NAMESPACE,
+        member_name: "unstageChanges",
+        request_type: "UnstageWorkspaceChangesRequest",
+        response_type: "UnstageWorkspaceChangesResponse",
+        response_mode: FrontendResponseMode::Unary,
+    },
 ];

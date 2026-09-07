@@ -4,12 +4,15 @@ use crate::task::resolve_workspace_cwd;
 use ora_application::{
     CommitWorkspaceChangesHandler, GitWorkspaceDiffReader, GitWorkspaceGitWriter,
     PushWorkspaceBranchHandler, ReadWorkspaceDiffRequest, ReadWorkspaceDiffScope,
-    WorkspaceDiffReader, WorkspaceDiffReaderError, WorktreeRepository,
+    StageWorkspaceChangesHandler, UnstageWorkspaceChangesHandler, WorkspaceDiffReader,
+    WorkspaceDiffReaderError, WorktreeRepository,
 };
 use ora_contracts::{
     CommitWorkspaceChangesRequest, CommitWorkspaceChangesResponse, GetWorkspaceDiffRequest,
-    GetWorkspaceDiffResponse, PushWorkspaceBranchRequest, PushWorkspaceBranchResponse,
-    WorkspaceDiffScope,
+    GetWorkspaceDiffResponse, GetWorkspaceStatusRequest, GetWorkspaceStatusResponse,
+    PushWorkspaceBranchRequest, PushWorkspaceBranchResponse, StageWorkspaceChangesRequest,
+    StageWorkspaceChangesResponse, UnstageWorkspaceChangesRequest, UnstageWorkspaceChangesResponse,
+    WorkspaceDiffScope, WorkspaceStatusEntry,
 };
 use ora_contracts::{EmptyErrorParams, PublicError};
 use ora_contracts::{
@@ -234,6 +237,73 @@ impl WorkspaceApi {
         .map_err(BackendError::from)
     }
 
+    /// Reads structured per-file staging status for one workspace checkout.
+    pub fn get_status(
+        &self,
+        request: GetWorkspaceStatusRequest,
+    ) -> Result<GetWorkspaceStatusResponse, BackendError> {
+        let workspace_id = WorkspaceId::new(request.workspace_id);
+        let workspace = self.load_workspace(&workspace_id)?;
+        // Shared use lease: see get_diff; status reads the checkout's index state.
+        let _worktree_use = self.git_cleanup.shared_worktree_use(workspace_id.as_ref());
+        let (repository_root, worktree_path) = self.worktree_context(&workspace, &workspace_id)?;
+        let snapshot = GitWorkspaceDiffReader::new(repository_root)
+            .read_workspace_status(&worktree_path)
+            .map_err(map_diff_reader_error)?;
+
+        Ok(GetWorkspaceStatusResponse {
+            entries: snapshot
+                .entries
+                .into_iter()
+                .map(|entry| WorkspaceStatusEntry {
+                    path: entry.path,
+                    is_staged: entry.is_staged,
+                    is_untracked: entry.is_untracked,
+                })
+                .collect(),
+        })
+    }
+
+    /// Stages the requested paths in one workspace checkout, verified against its recorded
+    /// branch when one is persisted (an isolated task worktree), or trusted as-is when none is.
+    pub fn stage_changes(
+        &self,
+        request: StageWorkspaceChangesRequest,
+    ) -> Result<StageWorkspaceChangesResponse, BackendError> {
+        let workspace_id = WorkspaceId::new(request.workspace_id.clone());
+        let workspace = self.load_workspace(&workspace_id)?;
+        // Shared use lease: see get_diff; staging mutates the checkout's index.
+        let _worktree_use = self.git_cleanup.shared_worktree_use(workspace_id.as_ref());
+        let (repository_root, worktree_path) = self.worktree_context(&workspace, &workspace_id)?;
+        StageWorkspaceChangesHandler::new(
+            SqliteWorktreeRepository::new(self.pool.clone()),
+            GitWorkspaceGitWriter::new(repository_root),
+            worktree_path,
+        )
+        .handle(request)
+        .map_err(BackendError::from)
+    }
+
+    /// Unstages the requested paths in one workspace checkout, verified against its recorded
+    /// branch when one is persisted (an isolated task worktree), or trusted as-is when none is.
+    pub fn unstage_changes(
+        &self,
+        request: UnstageWorkspaceChangesRequest,
+    ) -> Result<UnstageWorkspaceChangesResponse, BackendError> {
+        let workspace_id = WorkspaceId::new(request.workspace_id.clone());
+        let workspace = self.load_workspace(&workspace_id)?;
+        // Shared use lease: see get_diff; unstaging mutates the checkout's index.
+        let _worktree_use = self.git_cleanup.shared_worktree_use(workspace_id.as_ref());
+        let (repository_root, worktree_path) = self.worktree_context(&workspace, &workspace_id)?;
+        UnstageWorkspaceChangesHandler::new(
+            SqliteWorktreeRepository::new(self.pool.clone()),
+            GitWorkspaceGitWriter::new(repository_root),
+            worktree_path,
+        )
+        .handle(request)
+        .map_err(BackendError::from)
+    }
+
     /// Loads one visible workspace while keeping storage diagnostics behind the backend contract.
     fn load_workspace(&self, workspace_id: &WorkspaceId) -> Result<Workspace, BackendError> {
         SqliteWorkspaceRepository::new(self.pool.clone())
@@ -338,7 +408,8 @@ mod tests {
     use crate::{Backend, BackendPaths};
     use ora_contracts::{
         CommitWorkspaceChangesRequest, CreateProjectRequest, CreateTaskRequest, EmptyErrorParams,
-        GetWorkspaceDiffRequest, ListWorkspacesRequest, PublicError, PushWorkspaceBranchRequest,
+        GetWorkspaceDiffRequest, GetWorkspaceStatusRequest, ListWorkspacesRequest, PublicError,
+        PushWorkspaceBranchRequest, StageWorkspaceChangesRequest, UnstageWorkspaceChangesRequest,
         WorkspaceDiffScope,
     };
     use ora_test_support::GitTestScaffold;
@@ -446,6 +517,14 @@ mod tests {
 
         backend
             .workspaces()
+            .stage_changes(StageWorkspaceChangesRequest {
+                workspace_id: main_workspace_id.clone(),
+                paths: vec![],
+            })
+            .expect("stage main checkout change");
+
+        backend
+            .workspaces()
             .commit_changes(CommitWorkspaceChangesRequest {
                 workspace_id: main_workspace_id.clone(),
                 message: "project change".to_string(),
@@ -497,6 +576,89 @@ mod tests {
             error.public_error().clone(),
             PublicError::WorkspaceDiffBaselineUnavailable(EmptyErrorParams {})
         );
+    }
+
+    /// Verifies status, per-file staging, unstage, and commit-only-staged behavior end to end.
+    #[test]
+    fn stages_reads_status_and_commits_only_staged_changes() {
+        let temporary = TempDir::new().expect("create temporary backend directory");
+        let scaffold = GitTestScaffold::new("backend-workspace-diff-staging")
+            .expect("create Git test scaffold");
+        scaffold
+            .write_file(scaffold.repo_path(), "README.md", "seed\n")
+            .expect("write repository seed file");
+        scaffold
+            .stage_all_and_commit("initial")
+            .expect("create repository seed commit");
+        let backend = open_backend(&temporary);
+        let project_id = create_project(&backend, scaffold.repo_path());
+        let main_workspace_id = backend
+            .workspaces()
+            .list(ListWorkspacesRequest {})
+            .expect("list workspaces")
+            .workspaces
+            .into_iter()
+            .find(|workspace| workspace.project_id == project_id)
+            .expect("project has a main workspace")
+            .id;
+
+        fs::write(scaffold.repo_path().join("a.txt"), "a\n").expect("write a");
+        fs::write(scaffold.repo_path().join("b.txt"), "b\n").expect("write b");
+
+        let status = backend
+            .workspaces()
+            .get_status(GetWorkspaceStatusRequest {
+                workspace_id: main_workspace_id.clone(),
+            })
+            .expect("read initial staging status");
+        assert!(status.entries.iter().all(|entry| !entry.is_staged));
+
+        backend
+            .workspaces()
+            .stage_changes(StageWorkspaceChangesRequest {
+                workspace_id: main_workspace_id.clone(),
+                paths: vec!["a.txt".to_string(), "b.txt".to_string()],
+            })
+            .expect("stage both files");
+        backend
+            .workspaces()
+            .unstage_changes(UnstageWorkspaceChangesRequest {
+                workspace_id: main_workspace_id.clone(),
+                paths: vec!["b.txt".to_string()],
+            })
+            .expect("unstage b.txt only");
+
+        let status = backend
+            .workspaces()
+            .get_status(GetWorkspaceStatusRequest {
+                workspace_id: main_workspace_id.clone(),
+            })
+            .expect("read staging status");
+        let staged: Vec<_> = status
+            .entries
+            .iter()
+            .filter(|entry| entry.is_staged)
+            .map(|entry| entry.path.as_str())
+            .collect();
+        assert_eq!(staged, vec!["a.txt"]);
+
+        backend
+            .workspaces()
+            .commit_changes(CommitWorkspaceChangesRequest {
+                workspace_id: main_workspace_id.clone(),
+                message: "commit a".to_string(),
+            })
+            .expect("commit only the staged a.txt");
+
+        let unstaged = backend
+            .workspaces()
+            .get_diff(GetWorkspaceDiffRequest {
+                workspace_id: main_workspace_id.clone(),
+                scope: WorkspaceDiffScope::Unstaged,
+            })
+            .expect("read unstaged diff");
+        assert!(unstaged.patch.contains("b.txt"));
+        assert!(!unstaged.patch.contains("a.txt"));
     }
 
     /// Opens one isolated backend whose worktrees stay inside the test fixture.
