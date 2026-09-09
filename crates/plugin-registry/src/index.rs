@@ -673,6 +673,94 @@ mod tests {
         Ok(())
     }
 
+    /// Verifies a cache written under another schema version is refused rather than reinterpreted.
+    ///
+    /// The version field has always been written and never read. Reading it is what makes a shape
+    /// change survivable: `logo` turning from source text into an object is a type mismatch, so
+    /// deserializing the old file under the new schema would fail somewhere less specific — or,
+    /// for a field that happened to stay compatible, succeed and hand back a half-understood
+    /// index.
+    #[test]
+    fn refuses_a_cache_written_under_another_schema_version()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        write_manifest(root.path(), "a", &valid_manifest("a", "A plugin"))?;
+        let source = official_source(root.path());
+        let target = root.path().join("registry_index.json");
+        RegistryIndex::build_all(&[&source], UPDATED_AT)
+            .index()
+            .write(&target)?;
+
+        let mut stored: serde_json::Value = serde_json::from_str(&fs::read_to_string(&target)?)?;
+        stored["version"] = serde_json::Value::String("1.0".to_owned());
+        fs::write(&target, serde_json::to_string(&stored)?)?;
+
+        assert!(matches!(
+            RegistryIndex::load(&target),
+            Err(RegistryError::UnsupportedIndexVersion { .. })
+        ));
+        Ok(())
+    }
+
+    /// Verifies the three ways a cache can be unreadable are one situation with one remedy.
+    ///
+    /// Absent, corrupt and written-by-another-schema all mean the derived file has to be rebuilt
+    /// by a sync; a genuine failure such as an unparseable manifest does not, and must stay
+    /// distinguishable so it can still surface as an error.
+    #[test]
+    fn classifies_every_unreadable_cache_as_one_that_must_be_rebuilt()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        let corrupt = root.path().join("corrupt.json");
+        fs::write(&corrupt, "{ not json")?;
+        let stale = root.path().join("stale.json");
+        fs::write(&stale, r#"{"updated_at":1,"version":"0.9","plugins":[]}"#)?;
+
+        let missing = RegistryIndex::load(&root.path().join("absent.json"))
+            .expect_err("a missing cache does not load");
+        let corrupt = RegistryIndex::load(&corrupt).expect_err("a corrupt cache does not load");
+        let stale = RegistryIndex::load(&stale).expect_err("a stale cache does not load");
+        let unrelated = RegistryError::MissingCloneParent(root.path().to_path_buf());
+
+        assert_eq!(
+            [
+                RegistryIndex::is_unusable_cache(&missing),
+                RegistryIndex::is_unusable_cache(&corrupt),
+                RegistryIndex::is_unusable_cache(&stale),
+                RegistryIndex::is_unusable_cache(&unrelated),
+            ],
+            [true, true, true, false]
+        );
+        Ok(())
+    }
+
+    /// Verifies an index rewritten in the current shape reads back normally afterwards.
+    #[test]
+    fn a_rebuilt_index_reads_back_normally() -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        let manifest_path = write_manifest(root.path(), "a", &valid_manifest("a", "A plugin"))?;
+        let entry_dir = manifest_path
+            .parent()
+            .ok_or_else(|| std::io::Error::other("no parent"))?;
+        fs::write(
+            entry_dir.join("logo.svg"),
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="8"/></svg>"#,
+        )?;
+        let source = official_source(root.path());
+        let target = root.path().join("registry_index.json");
+
+        // A cache from before the shape change, then the rewrite one sync performs.
+        fs::write(&target, r#"{"updated_at":1,"version":"1.0","plugins":[]}"#)?;
+        assert!(RegistryIndex::load(&target).is_err());
+        let rebuilt = RegistryIndex::build_all(&[&source], UPDATED_AT)
+            .index()
+            .clone();
+        rebuilt.write(&target)?;
+
+        assert_eq!(RegistryIndex::load(&target)?, rebuilt);
+        Ok(())
+    }
+
     /// Verifies loading a missing file surfaces an error instead of an empty index.
     #[test]
     fn load_missing_file_is_an_error() -> Result<(), Box<dyn std::error::Error>> {
