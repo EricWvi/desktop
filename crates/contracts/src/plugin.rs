@@ -175,6 +175,29 @@ pub enum PluginRuntimeStatus {
     Failed { failure_reason: String },
 }
 
+/// Locates one plugin's icon as host-local asset URLs, never as icon content.
+///
+/// The host serves the bytes from its own `ora-plugin` protocol, so the payload of every listing
+/// stays constant no matter how large or how many icons there are, the bytes of a listing that
+/// is never drawn are never read, and the icon's format stops being visible to the contract at
+/// all — which is what lets an icon be a bitmap rather than only inline SVG source.
+///
+/// The two shapes are an enum rather than a pair of optional URLs so that a half-built theme
+/// pair cannot be expressed: the host decides once which files back which theme, and the
+/// renderer only picks a branch. `Universal` is drawn under both themes; `Themed` always carries
+/// both halves, which may come from different files and different image formats.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(
+    tag = "variant",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export_to = "plugin.ts")]
+pub enum PluginLogo {
+    Universal { url: String },
+    Themed { light: String, dark: String },
+}
+
 /// Describes one installed plugin discovered from its `orax.toml` manifest.
 ///
 /// `id` is the canonical `<namespace>/<name>` spelling and is what every plugin request carries

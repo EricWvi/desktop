@@ -6,10 +6,8 @@
 use crate::surface::gateway::SurfacePluginGateway;
 use crate::surface::service::SurfaceService;
 use ora_logging::{ora_debug, ora_info};
-use ora_surface::{
-    ASSET_SCHEME, AssetRequest, AssetUrlForm, SurfaceRegistry, SurfaceSource, asset_base,
-    asset_content_type, workbench_csp,
-};
+use ora_plugin_asset::{ASSET_SCHEME, AssetUrlForm, asset_content_type};
+use ora_surface::{AssetRequest, SurfaceRegistry, SurfaceSource, asset_base, workbench_csp};
 use ora_utils::path::{CanonicalPathRoot, PortableRelativePath};
 use std::borrow::Cow;
 use tauri::http::{Request, Response, StatusCode, header};

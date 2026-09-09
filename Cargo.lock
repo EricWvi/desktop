@@ -3205,6 +3205,7 @@ dependencies = [
  "ora-domain",
  "ora-fs",
  "ora-logging",
+ "ora-plugin-asset",
  "ora-plugin-lifecycle",
  "ora-plugin-manager",
  "ora-plugin-manifest",
@@ -3340,6 +3341,23 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ora-plugin-asset"
+version = "0.0.0"
+dependencies = [
+ "ora-contracts",
+ "ora-domain",
+ "ora-logging",
+ "ora-utils",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -3538,6 +3556,7 @@ version = "0.0.0"
 dependencies = [
  "ora-domain",
  "ora-logging",
+ "ora-plugin-asset",
  "ora-plugin-config",
  "ora-plugin-manager",
  "ora-plugin-manifest",
