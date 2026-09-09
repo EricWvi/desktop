@@ -483,6 +483,43 @@ mod tests {
         Ok(())
     }
 
+    /// Verifies an id resolves to an entry directory only in the source whose namespace owns it.
+    ///
+    /// This is what keeps the icon protocol's second root from becoming a way to address any
+    /// directory in any checkout: the namespace is part of the id, so a source that does not
+    /// publish that namespace answers nothing at all rather than searching its own tree.
+    #[test]
+    fn resolves_an_entry_directory_only_in_the_owning_source()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        let manifest_path = write_manifest(
+            root.path(),
+            "weather",
+            &valid_manifest("weather", "Weather plugin"),
+        )?;
+        let entry_dir = manifest_path
+            .parent()
+            .ok_or_else(|| std::io::Error::other("no parent"))?
+            .to_path_buf();
+        let official = official_source(root.path());
+        let third_party = third_party_source(root.path());
+        let id = PluginId::new("official", "weather").expect("plugin id");
+
+        assert_eq!(
+            (
+                RegistryIndex::resolve_entry_directory(&official, &id)?,
+                // The same checkout, read through a source publishing another namespace.
+                RegistryIndex::resolve_entry_directory(&third_party, &id)?,
+                RegistryIndex::resolve_entry_directory(
+                    &official,
+                    &PluginId::new("official", "absent").expect("plugin id"),
+                )?,
+            ),
+            (Some(entry_dir), None, None)
+        );
+        Ok(())
+    }
+
     /// Verifies detail-page resolution reads the README beside the matching manifest.
     #[test]
     fn resolves_readme_beside_a_manifest() -> Result<(), Box<dyn std::error::Error>> {

@@ -65,3 +65,209 @@ pub fn resolve_logo_asset(plugins: &Plugins, label: &str, request_path: &str) ->
         Err(_) => AssetOutcome::NotFound("icon could not be read"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_logo_asset;
+    use crate::surface::MAIN_WINDOW_LABEL;
+    use crate::surface::workbench_assets::AssetOutcome;
+    use ora_backend::{Backend, BackendPaths, Plugins};
+    use pretty_assertions::assert_eq;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use tempfile::TempDir;
+
+    const PLUGIN: &str = "acme.hub";
+    const SAFE_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="8"/></svg>"#;
+
+    /// Builds a PNG whose `IHDR` declares a 64 by 64 canvas.
+    fn png() -> Vec<u8> {
+        let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+        bytes.extend_from_slice(&13u32.to_be_bytes());
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&64u32.to_be_bytes());
+        bytes.extend_from_slice(&64u32.to_be_bytes());
+        bytes.extend_from_slice(&[8, 6, 0, 0, 0]);
+        bytes
+    }
+
+    /// Writes one installed agent package carrying a mixed-format theme pair.
+    fn write_installed_package(home: &Path) -> PathBuf {
+        let package_root = home
+            .join("plugins")
+            .join("installed")
+            .join("official")
+            .join(PLUGIN)
+            .join("1.0.0");
+        fs::create_dir_all(&package_root).expect("create the package directory");
+        fs::write(
+            package_root.join("orax.toml"),
+            format!(
+                "resolver = 1\n\
+                 identifier = \"{PLUGIN}\"\n\
+                 kind = \"agent\"\n\
+                 version = \"1.0.0\"\n\
+                 description = \"Example plugin\"\n"
+            ),
+        )
+        .expect("write the package manifest");
+        fs::write(package_root.join("main.js"), "export default {};").expect("write entrypoint");
+        fs::write(package_root.join("logo.light.svg"), SAFE_SVG).expect("write the light icon");
+        fs::write(package_root.join("logo.dark.png"), png()).expect("write the dark icon");
+        // A package file that is not an icon candidate, used to show the URL cannot name one.
+        fs::write(package_root.join("secret.txt"), "private").expect("write a non-icon file");
+        package_root
+    }
+
+    /// Opens a backend over a temporary home that already holds the fixture package.
+    fn backend_with_installed_plugin(temporary: &TempDir) -> (Backend, Plugins) {
+        ora_logging::initialize_test_clock();
+        let home = temporary.path().join("home");
+        write_installed_package(&home);
+        let backend = Backend::open(BackendPaths {
+            app_data_directory: temporary.path().join("data"),
+            home_directory: home,
+            deno_path: PathBuf::from("deno"),
+            relative_path_base: temporary.path().to_path_buf(),
+            timezone: "Asia/Shanghai".parse().expect("local timezone"),
+        })
+        .expect("open backend");
+        let plugins = backend.plugins();
+        (backend, plugins)
+    }
+
+    /// Reduces one outcome to what a caller can observe: the content type, or the refusal.
+    fn served(outcome: &AssetOutcome) -> Result<(&'static str, usize), &'static str> {
+        match outcome {
+            AssetOutcome::Serve {
+                content_type, body, ..
+            } => Ok((content_type, body.len())),
+            AssetOutcome::NotFound(reason) => Err(reason),
+        }
+    }
+
+    /// Each half of a theme pair is served with the content type its own extension maps to.
+    ///
+    /// The type comes from the extension alone, which is sound because the extension was already
+    /// checked against the file's magic bytes when the icon was resolved; the response therefore
+    /// sniffs nothing and reads no index.
+    #[tokio::test]
+    async fn serves_each_half_of_a_pair_with_the_type_its_extension_maps_to() {
+        let temporary = tempfile::tempdir().expect("temporary backend root");
+        let (_backend, plugins) = backend_with_installed_plugin(&temporary);
+
+        let light = resolve_logo_asset(
+            &plugins,
+            MAIN_WINDOW_LABEL,
+            &format!("/logo/official/{PLUGIN}/light.svg"),
+        );
+        let dark = resolve_logo_asset(
+            &plugins,
+            MAIN_WINDOW_LABEL,
+            &format!("/logo/official/{PLUGIN}/dark.png"),
+        );
+
+        assert_eq!(
+            (served(&light), served(&dark)),
+            (
+                Ok(("image/svg+xml", SAFE_SVG.len())),
+                Ok(("image/png", png().len())),
+            )
+        );
+    }
+
+    /// Only the main window may ask for an arbitrary plugin's icon.
+    ///
+    /// A plugin's own workbench or webview has no legitimate reason to reach this branch, and it
+    /// serves an installed package root and an untrusted checkout, so the caller check is the
+    /// first thing in the chain rather than a later refinement of it.
+    #[tokio::test]
+    async fn refuses_every_caller_but_the_main_window() {
+        let temporary = tempfile::tempdir().expect("temporary backend root");
+        let (_backend, plugins) = backend_with_installed_plugin(&temporary);
+        let path = format!("/logo/official/{PLUGIN}/light.svg");
+
+        let refusals = ["surface-7", "", "Main", "main "]
+            .map(|label| served(&resolve_logo_asset(&plugins, label, &path)));
+
+        assert_eq!(
+            refusals,
+            [Err("icons are served to the main window only"); 4]
+        );
+    }
+
+    /// Everything outside the three closed sets is refused before any path is built.
+    #[tokio::test]
+    async fn refuses_requests_outside_the_closed_sets() {
+        let temporary = tempfile::tempdir().expect("temporary backend root");
+        let (_backend, plugins) = backend_with_installed_plugin(&temporary);
+
+        let refusals = [
+            // A theme role and an extension that are not among the fixed spellings.
+            format!("/logo/official/{PLUGIN}/themed.svg"),
+            format!("/logo/official/{PLUGIN}/dark.gif"),
+            // A path segment or a traversal in place of the candidate name.
+            format!("/logo/official/{PLUGIN}/nested/dark.svg"),
+            format!("/logo/official/{PLUGIN}/../secret.txt"),
+            "/logo/official/../../secret/dark.svg".to_owned(),
+            // The same traversal percent-encoded: it is decoded exactly once, before parsing,
+            // so the decoded separators face the id grammar rather than slipping past it.
+            "/logo/official/%2e%2e%2f%2e%2e/dark.svg".to_owned(),
+            format!("/logo/official/{PLUGIN}/%64ark.svg%2f%2e%2e"),
+            // An id segment outside the id grammar.
+            format!("/logo/Official/{PLUGIN}/dark.svg"),
+        ]
+        .map(|path| served(&resolve_logo_asset(&plugins, MAIN_WINDOW_LABEL, &path)));
+
+        assert_eq!(
+            refusals,
+            [Err("path is not a plugin id, role and extension"); 8]
+        );
+    }
+
+    /// A non-icon file in the package cannot be reached, because the URL never names a file.
+    ///
+    /// The candidate filename is rebuilt from the role and the extension, so the only thing a
+    /// request contributes to the resolved path is a plugin id that passed the id grammar.
+    #[tokio::test]
+    async fn cannot_reach_a_package_file_that_is_not_an_icon_candidate() {
+        let temporary = tempfile::tempdir().expect("temporary backend root");
+        let (_backend, plugins) = backend_with_installed_plugin(&temporary);
+
+        let outcome = served(&resolve_logo_asset(
+            &plugins,
+            MAIN_WINDOW_LABEL,
+            &format!("/logo/official/{PLUGIN}/secret.txt"),
+        ));
+
+        assert_eq!(outcome, Err("path is not a plugin id, role and extension"));
+    }
+
+    /// A candidate the plugin does not ship, and an id no root owns, are both plain refusals.
+    #[tokio::test]
+    async fn refuses_an_absent_candidate_and_an_unknown_plugin() {
+        let temporary = tempfile::tempdir().expect("temporary backend root");
+        let (_backend, plugins) = backend_with_installed_plugin(&temporary);
+
+        let absent = served(&resolve_logo_asset(
+            &plugins,
+            MAIN_WINDOW_LABEL,
+            &format!("/logo/official/{PLUGIN}/universal.webp"),
+        ));
+        // No installed package and no marketplace checkout owns this id, so there is no root to
+        // resolve against — not a different root, and not the requesting plugin's own.
+        let unknown = served(&resolve_logo_asset(
+            &plugins,
+            MAIN_WINDOW_LABEL,
+            "/logo/official/absent.plugin/universal.svg",
+        ));
+
+        assert_eq!(
+            (absent, unknown),
+            (
+                Err("icon does not resolve inside the plugin root"),
+                Err("no installed package or registry entry owns this id"),
+            )
+        );
+    }
+}
