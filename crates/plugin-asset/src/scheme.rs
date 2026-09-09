@@ -60,3 +60,58 @@ pub fn asset_content_type(extension: &str) -> &'static str {
         _ => "application/octet-stream",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AssetUrlForm, asset_content_type};
+    use pretty_assertions::assert_eq;
+
+    /// The origin differs per platform, which is why no code may match a single spelling.
+    #[test]
+    fn spells_the_origin_per_platform() {
+        assert_eq!(
+            (
+                AssetUrlForm::CustomScheme.origin(),
+                AssetUrlForm::HttpLocalhost.origin(),
+            ),
+            (
+                "ora-plugin://localhost/".to_owned(),
+                "http://ora-plugin.localhost/".to_owned(),
+            )
+        );
+    }
+
+    /// Known extensions get their type; unknown ones are octet-stream, never sniffed.
+    ///
+    /// The five icon extensions are part of the same closed table the workbench uses, which is
+    /// what lets an icon response answer from its URL alone without re-reading the bytes.
+    #[test]
+    fn content_types_are_a_closed_table() {
+        assert_eq!(
+            [
+                asset_content_type("html"),
+                asset_content_type("mjs"),
+                asset_content_type("wasm"),
+                asset_content_type("svg"),
+                asset_content_type("png"),
+                asset_content_type("webp"),
+                asset_content_type("jpg"),
+                asset_content_type("jpeg"),
+                asset_content_type("gif"),
+                asset_content_type("exe"),
+            ],
+            [
+                "text/html; charset=utf-8",
+                "text/javascript; charset=utf-8",
+                "application/wasm",
+                "image/svg+xml",
+                "image/png",
+                "image/webp",
+                "image/jpeg",
+                "image/jpeg",
+                "application/octet-stream",
+                "application/octet-stream",
+            ]
+        );
+    }
+}

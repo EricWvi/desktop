@@ -112,3 +112,170 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>, LogoRejection> {
     }
     Ok(bytes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::candidate::LogoExtension;
+    use super::super::fixtures::{
+        SAFE_SVG, UNSAFE_SVG, animated_webp, gif, jpeg, png, webp, write,
+    };
+    use super::{LogoRejection, MAX_LOGO_BYTES, MAX_LOGO_PIXELS, accepts_candidate};
+    use pretty_assertions::assert_eq;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    /// Writes one candidate and reports how the read judged it, as a short label.
+    fn verdict(directory: &Path, file_name: &str, extension: LogoExtension) -> &'static str {
+        match accepts_candidate(&directory.join(file_name), extension) {
+            Ok(()) => "accepted",
+            Err(LogoRejection::Unreadable(_)) => "unreadable",
+            Err(LogoRejection::TooLarge) => "too large",
+            Err(LogoRejection::NotUtf8) => "not utf-8",
+            Err(LogoRejection::UnsafeSvg(_)) => "unsafe svg",
+            Err(LogoRejection::UnusableRaster(_)) => "unusable raster",
+            Err(LogoRejection::FormatMismatch { .. }) => "format mismatch",
+            Err(LogoRejection::TooManyPixels { .. }) => "too many pixels",
+        }
+    }
+
+    /// Every whitelisted extension is accepted when its bytes agree with its name.
+    #[test]
+    fn accepts_each_whitelisted_extension() -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        write(root.path(), "logo.svg", SAFE_SVG);
+        write(root.path(), "logo.png", png(64, 64));
+        write(root.path(), "logo.webp", webp(64, 64));
+        write(root.path(), "logo.jpg", jpeg(64, 64));
+        write(root.path(), "logo.jpeg", jpeg(64, 64));
+
+        assert_eq!(
+            [
+                verdict(root.path(), "logo.svg", LogoExtension::Svg),
+                verdict(root.path(), "logo.png", LogoExtension::Png),
+                verdict(root.path(), "logo.webp", LogoExtension::Webp),
+                verdict(root.path(), "logo.jpg", LogoExtension::Jpg),
+                verdict(root.path(), "logo.jpeg", LogoExtension::Jpeg),
+            ],
+            ["accepted"; 5]
+        );
+        Ok(())
+    }
+
+    /// The format comes from the bytes, so a file whose name disagrees with them is refused.
+    ///
+    /// Trusting the extension instead would let a `logo.png` full of SVG source walk past every
+    /// SVG security check, and would leave the served content type describing the wrong bytes.
+    #[test]
+    fn refuses_a_candidate_whose_bytes_contradict_its_extension()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        write(root.path(), "logo.png", UNSAFE_SVG);
+        write(root.path(), "logo.webp", png(64, 64));
+        // Raster bytes under an `.svg` name fail the SVG branch rather than being re-typed:
+        // the policy admits text only, so the binary payload never reaches a response.
+        write(root.path(), "logo.svg", png(64, 64));
+
+        assert_eq!(
+            [
+                verdict(root.path(), "logo.png", LogoExtension::Png),
+                verdict(root.path(), "logo.webp", LogoExtension::Webp),
+                verdict(root.path(), "logo.svg", LogoExtension::Svg),
+            ],
+            ["unusable raster", "format mismatch", "not utf-8"]
+        );
+        Ok(())
+    }
+
+    /// Formats outside the whitelist are refused however they are named.
+    #[test]
+    fn refuses_formats_outside_the_whitelist() -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        write(root.path(), "logo.png", gif());
+        write(root.path(), "logo.webp", animated_webp(64, 64));
+
+        assert_eq!(
+            [
+                verdict(root.path(), "logo.png", LogoExtension::Png),
+                verdict(root.path(), "logo.webp", LogoExtension::Webp),
+            ],
+            ["unusable raster", "unusable raster"]
+        );
+        Ok(())
+    }
+
+    /// An unsafe SVG is refused by the existing icon security policy, unchanged.
+    #[test]
+    fn refuses_an_unsafe_svg() -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        write(root.path(), "logo.svg", UNSAFE_SVG);
+
+        assert_eq!(
+            verdict(root.path(), "logo.svg", LogoExtension::Svg),
+            "unsafe svg"
+        );
+        Ok(())
+    }
+
+    /// The byte ceiling applies to every extension and is judged before the format is known.
+    #[test]
+    fn refuses_an_oversized_candidate_of_any_extension() -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        // Neither file is a valid image, yet both are refused for size: the byte gate closes
+        // before anything asks what the bytes are.
+        write(root.path(), "logo.svg", "a".repeat(MAX_LOGO_BYTES + 1));
+        write(root.path(), "logo.png", vec![0u8; MAX_LOGO_BYTES + 1]);
+
+        assert_eq!(
+            [
+                verdict(root.path(), "logo.svg", LogoExtension::Svg),
+                verdict(root.path(), "logo.png", LogoExtension::Png),
+            ],
+            ["too large", "too large"]
+        );
+        Ok(())
+    }
+
+    /// The pixel ceiling holds independently of the byte ceiling.
+    ///
+    /// A highly compressible image sails through the byte gate and still expands into a
+    /// decompression bomb in the webview's decoder, which a marketplace list would hit dozens of
+    /// times at once.
+    #[test]
+    fn refuses_an_oversized_canvas_that_passes_the_byte_ceiling()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        let bomb = png(8000, 8000);
+        write(root.path(), "logo.png", &bomb);
+        write(
+            root.path(),
+            "logo.webp",
+            webp(MAX_LOGO_PIXELS, MAX_LOGO_PIXELS),
+        );
+
+        assert_eq!(
+            (
+                bomb.len() < MAX_LOGO_BYTES,
+                verdict(root.path(), "logo.png", LogoExtension::Png),
+                verdict(root.path(), "logo.webp", LogoExtension::Webp),
+            ),
+            (true, "too many pixels", "accepted")
+        );
+        Ok(())
+    }
+
+    /// A candidate that is not there is reported as absent, which callers keep silent.
+    #[test]
+    fn reports_an_absent_candidate_separately_from_a_bad_one()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = TempDir::new()?;
+        write(root.path(), "logo.png", gif());
+
+        let absent = accepts_candidate(&root.path().join("logo.svg"), LogoExtension::Svg)
+            .expect_err("a missing file is rejected");
+        let present = accepts_candidate(&root.path().join("logo.png"), LogoExtension::Png)
+            .expect_err("a GIF is rejected");
+
+        assert_eq!((absent.is_absent(), present.is_absent()), (true, false));
+        Ok(())
+    }
+}

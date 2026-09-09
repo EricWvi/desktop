@@ -103,3 +103,155 @@ pub fn plugin_logo(
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::variants::PluginLogoVariants;
+    use super::{LogoAssetRequest, LogoExtension, LogoRole, logo_asset_url, plugin_logo};
+    use crate::scheme::AssetUrlForm;
+    use ora_contracts::PluginLogo;
+    use ora_domain::PluginId;
+    use pretty_assertions::assert_eq;
+
+    /// The plugin every URL in this module is built for.
+    fn plugin() -> PluginId {
+        PluginId::new("official", "acme.hub").expect("plugin id")
+    }
+
+    /// A URL names the plugin id, the role and the extension, in both platform spellings.
+    #[test]
+    fn spells_the_icon_url_in_both_platform_forms() {
+        let url = |form| {
+            logo_asset_url(form, &plugin(), LogoRole::Dark, LogoExtension::Png)
+                .expect("icon url")
+                .to_string()
+        };
+
+        assert_eq!(
+            (
+                url(AssetUrlForm::CustomScheme),
+                url(AssetUrlForm::HttpLocalhost)
+            ),
+            (
+                "ora-plugin://localhost/logo/official/acme.hub/dark.png".to_owned(),
+                "http://ora-plugin.localhost/logo/official/acme.hub/dark.png".to_owned(),
+            )
+        );
+    }
+
+    /// A well-formed request parses back into the three closed-set parts the URL carries.
+    #[test]
+    fn parses_a_well_formed_icon_request() {
+        assert_eq!(
+            LogoAssetRequest::parse("/logo/official/acme.hub/light.jpeg"),
+            Some(LogoAssetRequest {
+                plugin_id: plugin(),
+                role: LogoRole::Light,
+                extension: LogoExtension::Jpeg,
+            })
+        );
+    }
+
+    /// Every URL a request round-trips from is one the parser accepts again.
+    #[test]
+    fn round_trips_every_url_it_builds() {
+        let url = logo_asset_url(
+            AssetUrlForm::CustomScheme,
+            &plugin(),
+            LogoRole::Universal,
+            LogoExtension::Webp,
+        )
+        .expect("icon url");
+
+        assert_eq!(
+            LogoAssetRequest::parse(url.path()),
+            Some(LogoAssetRequest {
+                plugin_id: plugin(),
+                role: LogoRole::Universal,
+                extension: LogoExtension::Webp,
+            })
+        );
+    }
+
+    /// Anything outside the three closed sets is refused before a filename is ever built.
+    ///
+    /// The refusals matter more than the acceptances here: this branch serves an installed
+    /// package root and an untrusted checkout, so a request that could smuggle a path segment,
+    /// a traversal, or an unlisted extension past the parser would be an arbitrary file read.
+    #[test]
+    fn refuses_everything_outside_the_closed_sets() {
+        let refused = [
+            // A role or extension that is not one of the fixed spellings.
+            "/logo/official/acme.hub/themed.svg",
+            "/logo/official/acme.hub/dark.gif",
+            "/logo/official/acme.hub/dark.exe",
+            // A path segment where the filename belongs, and a deeper path below it.
+            "/logo/official/acme.hub/nested/dark.svg",
+            "/logo/official/acme.hub/dark.svg/extra",
+            // Traversal spelled directly, and spelled through the id segments.
+            "/logo/official/../../secret/dark.svg",
+            "/logo/../acme.hub/dark.svg",
+            "/logo/official/./dark.svg",
+            // An id segment outside the id grammar, uppercase and separators included.
+            "/logo/Official/acme.hub/dark.svg",
+            "/logo/official/acme hub/dark.svg",
+            "/logo//acme.hub/dark.svg",
+            // A request that is not an icon request at all.
+            "/7/index.html",
+            "/logo/official/acme.hub",
+            "/logo",
+            "",
+        ];
+
+        assert_eq!(
+            refused.map(|path| LogoAssetRequest::parse(path).is_some()),
+            [false; 15]
+        );
+    }
+
+    /// A percent-encoded traversal does not survive, because it is never decoded a second time.
+    ///
+    /// The caller decodes exactly once before parsing; these paths arrive still encoded, and the
+    /// id grammar refuses the `%` outright instead of letting a decode turn it into a separator.
+    #[test]
+    fn refuses_percent_encoded_traversal_without_decoding_it() {
+        assert_eq!(
+            (
+                LogoAssetRequest::parse("/logo/official/%2e%2e%2f%2e%2e/dark.svg"),
+                LogoAssetRequest::parse("/logo/official/acme.hub/dark%2e%2e%2fsvg"),
+                LogoAssetRequest::parse("/logo/%2e%2e/acme.hub/dark.svg"),
+            ),
+            (None, None, None)
+        );
+    }
+
+    /// Each composition maps onto the contract shape the frontend branches on.
+    #[test]
+    fn maps_both_compositions_onto_the_contract() {
+        let universal = PluginLogoVariants::from_roles(None, None, Some(LogoExtension::Svg))
+            .expect("a universal candidate resolves");
+        let themed = PluginLogoVariants::from_roles(
+            Some(LogoExtension::Svg),
+            None,
+            Some(LogoExtension::Png),
+        )
+        .expect("a themed pair resolves");
+
+        assert_eq!(
+            (
+                plugin_logo(AssetUrlForm::CustomScheme, &plugin(), &universal),
+                plugin_logo(AssetUrlForm::CustomScheme, &plugin(), &themed),
+            ),
+            (
+                Some(PluginLogo::Universal {
+                    url: "ora-plugin://localhost/logo/official/acme.hub/universal.svg".to_owned(),
+                }),
+                // The dark half is backed by `logo.png`, so it addresses the universal role.
+                Some(PluginLogo::Themed {
+                    light: "ora-plugin://localhost/logo/official/acme.hub/light.svg".to_owned(),
+                    dark: "ora-plugin://localhost/logo/official/acme.hub/universal.png".to_owned(),
+                }),
+            )
+        );
+    }
+}

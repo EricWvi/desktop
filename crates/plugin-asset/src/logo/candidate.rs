@@ -113,3 +113,91 @@ pub fn candidate_file_name(role: LogoRole, extension: LogoExtension) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        LOGO_EXTENSION_PRIORITY, LOGO_ROLES, LogoExtension, LogoRole, candidate_file_name,
+    };
+    use pretty_assertions::assert_eq;
+
+    /// The fifteen candidate names are exactly three roles crossed with five extensions.
+    #[test]
+    fn spells_all_fifteen_candidate_file_names() {
+        let names: Vec<String> = LOGO_ROLES
+            .into_iter()
+            .flat_map(|role| {
+                LOGO_EXTENSION_PRIORITY
+                    .into_iter()
+                    .map(move |extension| candidate_file_name(role, extension))
+            })
+            .collect();
+
+        assert_eq!(
+            names,
+            vec![
+                "logo.light.svg",
+                "logo.light.png",
+                "logo.light.webp",
+                "logo.light.jpg",
+                "logo.light.jpeg",
+                "logo.dark.svg",
+                "logo.dark.png",
+                "logo.dark.webp",
+                "logo.dark.jpg",
+                "logo.dark.jpeg",
+                "logo.svg",
+                "logo.png",
+                "logo.webp",
+                "logo.jpg",
+                "logo.jpeg",
+            ]
+        );
+    }
+
+    /// Roles and extensions parse only from their own closed sets.
+    #[test]
+    fn parses_only_closed_set_spellings() {
+        assert_eq!(
+            (
+                LogoRole::parse("dark"),
+                LogoRole::parse("Dark"),
+                LogoRole::parse("themed"),
+                LogoRole::parse(""),
+                LogoExtension::parse("jpeg"),
+                LogoExtension::parse("gif"),
+                LogoExtension::parse("SVG"),
+            ),
+            (
+                Some(LogoRole::Dark),
+                None,
+                None,
+                None,
+                Some(LogoExtension::Jpeg),
+                None,
+                None,
+            )
+        );
+    }
+
+    /// The two JPEG extensions stay distinct values even though they name one format.
+    #[test]
+    fn keeps_the_two_jpeg_extensions_apart() {
+        assert_eq!(
+            (
+                LogoExtension::Jpg == LogoExtension::Jpeg,
+                candidate_file_name(LogoRole::Universal, LogoExtension::Jpg),
+                candidate_file_name(LogoRole::Universal, LogoExtension::Jpeg),
+                LogoExtension::Jpg.promised_raster_format(),
+                LogoExtension::Jpeg.promised_raster_format(),
+            ),
+            (
+                false,
+                "logo.jpg".to_owned(),
+                "logo.jpeg".to_owned(),
+                Some(ora_utils::image::ImageFormat::Jpeg),
+                Some(ora_utils::image::ImageFormat::Jpeg),
+            )
+        );
+    }
+}

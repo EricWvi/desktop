@@ -6,6 +6,8 @@
 //! an author can add or drop an icon without a schema change.
 
 mod candidate;
+#[cfg(test)]
+mod fixtures;
 mod read;
 mod resolve;
 mod url;

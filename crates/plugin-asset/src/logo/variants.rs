@@ -77,3 +77,142 @@ impl PluginLogoVariants {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{LogoCandidate, LogoExtension, LogoRole, PluginLogoVariants};
+    use pretty_assertions::assert_eq;
+
+    /// Names the candidate a role and extension address.
+    fn candidate(role: LogoRole, extension: LogoExtension) -> LogoCandidate {
+        LogoCandidate { role, extension }
+    }
+
+    /// All eight existence combinations produce a defined result, and none of them is an error.
+    ///
+    /// This is the whole decision table in one assertion: an author who ships any subset of the
+    /// three roles gets an icon composition rather than a diagnostic, so no combination can ever
+    /// remove a plugin from a listing or leave it with an undefined variant.
+    #[test]
+    fn every_role_combination_resolves_to_a_defined_variant() {
+        let svg = Some(LogoExtension::Svg);
+        let png = Some(LogoExtension::Png);
+        let webp = Some(LogoExtension::Webp);
+        let resolved = [
+            PluginLogoVariants::from_roles(svg, png, webp),
+            PluginLogoVariants::from_roles(svg, png, None),
+            PluginLogoVariants::from_roles(svg, None, webp),
+            PluginLogoVariants::from_roles(svg, None, None),
+            PluginLogoVariants::from_roles(None, png, webp),
+            PluginLogoVariants::from_roles(None, png, None),
+            PluginLogoVariants::from_roles(None, None, webp),
+            PluginLogoVariants::from_roles(None, None, None),
+        ];
+
+        assert_eq!(
+            resolved,
+            [
+                // A theme pair wins whenever both halves exist; the universal file is ignored,
+                // which is what leaves it in place for an older host that only reads `logo.svg`.
+                Some(PluginLogoVariants::Themed {
+                    light: candidate(LogoRole::Light, LogoExtension::Svg),
+                    dark: candidate(LogoRole::Dark, LogoExtension::Png),
+                }),
+                Some(PluginLogoVariants::Themed {
+                    light: candidate(LogoRole::Light, LogoExtension::Svg),
+                    dark: candidate(LogoRole::Dark, LogoExtension::Png),
+                }),
+                // One themed file plus the universal one is a pair: shipping a themed icon says
+                // the unmarked file was drawn for the other theme.
+                Some(PluginLogoVariants::Themed {
+                    light: candidate(LogoRole::Light, LogoExtension::Svg),
+                    dark: candidate(LogoRole::Universal, LogoExtension::Webp),
+                }),
+                // With nothing to complete the pair with, the lone file serves both themes.
+                Some(PluginLogoVariants::Universal {
+                    universal: candidate(LogoRole::Light, LogoExtension::Svg),
+                }),
+                Some(PluginLogoVariants::Themed {
+                    light: candidate(LogoRole::Universal, LogoExtension::Webp),
+                    dark: candidate(LogoRole::Dark, LogoExtension::Png),
+                }),
+                Some(PluginLogoVariants::Universal {
+                    universal: candidate(LogoRole::Dark, LogoExtension::Png),
+                }),
+                Some(PluginLogoVariants::Universal {
+                    universal: candidate(LogoRole::Universal, LogoExtension::Webp),
+                }),
+                None,
+            ]
+        );
+    }
+
+    /// A half completed by the universal file keeps naming the file that exists on disk.
+    ///
+    /// Without this the dark half of `logo.light.svg` + `logo.svg` would address
+    /// `logo.dark.svg`, a filename the author never shipped, and the icon would 404.
+    #[test]
+    fn a_completed_half_addresses_the_universal_file_it_came_from() {
+        assert_eq!(
+            PluginLogoVariants::from_roles(
+                Some(LogoExtension::Svg),
+                None,
+                Some(LogoExtension::Svg)
+            ),
+            Some(PluginLogoVariants::Themed {
+                light: candidate(LogoRole::Light, LogoExtension::Svg),
+                dark: candidate(LogoRole::Universal, LogoExtension::Svg),
+            })
+        );
+    }
+
+    /// The two halves of a pair may use different extensions.
+    #[test]
+    fn allows_a_pair_whose_halves_use_different_extensions() {
+        assert_eq!(
+            PluginLogoVariants::from_roles(
+                Some(LogoExtension::Svg),
+                Some(LogoExtension::Jpeg),
+                None
+            ),
+            Some(PluginLogoVariants::Themed {
+                light: candidate(LogoRole::Light, LogoExtension::Svg),
+                dark: candidate(LogoRole::Dark, LogoExtension::Jpeg),
+            })
+        );
+    }
+
+    /// The persisted shape records extensions, so `.jpg` and `.jpeg` survive a round trip.
+    #[test]
+    fn round_trips_through_json_without_losing_the_extension_spelling() {
+        let jpg = PluginLogoVariants::from_roles(None, None, Some(LogoExtension::Jpg))
+            .expect("a universal candidate resolves");
+        let pair = PluginLogoVariants::from_roles(
+            Some(LogoExtension::Svg),
+            Some(LogoExtension::Jpeg),
+            None,
+        )
+        .expect("a themed pair resolves");
+
+        let jpg_json = serde_json::to_value(jpg).expect("serialize");
+        let pair_json = serde_json::to_value(pair).expect("serialize");
+
+        assert_eq!(
+            (
+                jpg_json.clone(),
+                pair_json.clone(),
+                serde_json::from_value::<PluginLogoVariants>(jpg_json).expect("deserialize"),
+                serde_json::from_value::<PluginLogoVariants>(pair_json).expect("deserialize"),
+            ),
+            (
+                serde_json::json!({ "universal": { "role": "universal", "extension": "jpg" } }),
+                serde_json::json!({
+                    "light": { "role": "light", "extension": "svg" },
+                    "dark": { "role": "dark", "extension": "jpeg" },
+                }),
+                jpg,
+                pair,
+            )
+        );
+    }
+}
