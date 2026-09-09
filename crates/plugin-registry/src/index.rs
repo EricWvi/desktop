@@ -113,6 +113,20 @@ impl RegistryIndex {
         crate::readme::read_beside_manifest(&path)
     }
 
+    /// Resolves the entry directory `id` is published from in `source`.
+    ///
+    /// This is what the icon protocol resolves a plugin id against for a listing that is not
+    /// installed: the entry directory is the only place a marketplace icon exists, and it is
+    /// already the directory `resolve_readme` reads by id, so no new part of the checkout becomes
+    /// reachable.
+    pub fn resolve_entry_directory(
+        source: &RegistrySource,
+        id: &PluginId,
+    ) -> Result<Option<PathBuf>, RegistryError> {
+        Ok(Self::find_manifest_path(source, id)?
+            .and_then(|path| path.parent().map(Path::to_path_buf)))
+    }
+
     /// Locates the manifest in `source` whose identity under that source's namespace equals `id`.
     fn find_manifest_path(
         source: &RegistrySource,

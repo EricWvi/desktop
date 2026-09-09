@@ -1,4 +1,5 @@
 mod listing;
+mod logo_roots;
 mod marketplace;
 mod operations;
 pub use operations::Plugins;
