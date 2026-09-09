@@ -3,6 +3,7 @@ use ora_contracts::{
     PluginConfigurationSummary, PluginInstallationValidity, PluginRuntimeStatus,
 };
 use ora_domain::PluginId;
+use ora_plugin_asset::{AssetUrlForm, plugin_logo};
 use ora_plugin_config::{ConfigurationCompleteness, ConfigurationService, ConfigurationSummary};
 use ora_plugin_manager::InstalledPlugin as DiscoveredPlugin;
 use ora_plugin_manager::{PluginConfigurationDeclarationValidity, PluginContribution};
@@ -203,7 +204,9 @@ pub(super) fn discovered_plugin_contract<Runtime>(
         homepage: plugin.homepage.clone(),
         license: plugin.license.clone(),
         contribution,
-        logo: plugin.logo.clone(),
+        logo: plugin
+            .logo
+            .and_then(|variants| plugin_logo(AssetUrlForm::CURRENT, &plugin.id, &variants)),
         installation_validity,
         configuration,
         runtime,

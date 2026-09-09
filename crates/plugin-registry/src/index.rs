@@ -7,11 +7,14 @@ use ora_plugin_manifest::PluginManifest;
 
 use crate::entry::{RegistryEntry, entry_id};
 use crate::error::RegistryError;
-use crate::logo;
 use crate::source::RegistrySource;
 
 /// The index schema version reported in every built index file.
-const INDEX_VERSION: &str = "1.0";
+///
+/// It is bumped whenever a persisted field changes shape rather than merely appearing: a new
+/// field with a serde default is readable from an older cache, but `logo` turning from SVG
+/// source text into an object is a type mismatch that no default can absorb.
+const INDEX_VERSION: &str = "2.0";
 
 /// Holds one immutable registry index that lists every discoverable marketplace plugin.
 ///
@@ -45,7 +48,10 @@ impl RegistryIndex {
             for path in orax_manifest_paths(&source.registry_dir()) {
                 match parse_manifest(&path) {
                     Ok(manifest) => {
-                        let logo = logo::read_beside_manifest(&path);
+                        // The icon lives beside the manifest under one of the fixed candidate
+                        // names; the same scan runs against an installed package root, so a
+                        // listing and its install can never resolve to different icons.
+                        let logo = path.parent().and_then(ora_plugin_asset::resolve_logo);
                         entries.push(RegistryEntry::from_manifest(
                             &manifest,
                             source.namespace(),
@@ -148,10 +154,40 @@ impl RegistryIndex {
         Ok(None)
     }
 
-    /// Loads an index from a previously written JSON file so consumers can read it without rescanning.
+    /// Loads an index from a previously written JSON file so consumers can read it without
+    /// rescanning, refusing one written under a different schema version.
+    ///
+    /// The version check is what the field was always for. Without it a host upgraded past a
+    /// shape change would try to deserialize a cache it cannot understand, and the failure would
+    /// surface as a broken marketplace rather than as an index that simply has to be rebuilt.
     pub fn load(path: &Path) -> Result<Self, RegistryError> {
         let bytes = fs::read(path)?;
-        Ok(serde_json::from_slice(&bytes)?)
+        let index: Self = serde_json::from_slice(&bytes)?;
+        if index.version != INDEX_VERSION {
+            return Err(RegistryError::UnsupportedIndexVersion {
+                found: index.version,
+                expected: INDEX_VERSION.to_owned(),
+            });
+        }
+        Ok(index)
+    }
+
+    /// Returns whether `error` means the cached index cannot be read and must be rebuilt.
+    ///
+    /// A cache is a derived artifact, so "written by another schema", "corrupt" and "not there
+    /// yet" are one situation with one remedy — sync again. Callers use this to fold all three
+    /// into the same not-yet-synced response instead of turning two of them into an error the
+    /// user cannot act on.
+    pub fn is_unusable_cache(error: &RegistryError) -> bool {
+        match error {
+            RegistryError::Io(error) => error.kind() == std::io::ErrorKind::NotFound,
+            RegistryError::Json(_) | RegistryError::UnsupportedIndexVersion { .. } => true,
+            RegistryError::Git(_)
+            | RegistryError::Manifest(_)
+            | RegistryError::SourceUrl(_)
+            | RegistryError::SourceBranch(_)
+            | RegistryError::MissingCloneParent(_) => false,
+        }
     }
 
     /// Atomically replaces `path` with this index's JSON serialization through a same-directory
@@ -253,6 +289,7 @@ mod tests {
     use super::*;
     use gitlancer::BranchName;
     use ora_domain::PluginNamespace;
+    use ora_plugin_asset::{LogoCandidate, LogoExtension, LogoRole, PluginLogoVariants};
     use pretty_assertions::assert_eq;
     use std::fs;
     use tempfile::TempDir;
@@ -462,9 +499,10 @@ mod tests {
         Ok(())
     }
 
-    /// Verifies the `logo.svg` beside a manifest is inlined into that entry's index record.
+    /// Verifies the icon beside a manifest is indexed as the composition it resolves to.
     #[test]
-    fn inlines_the_logo_beside_each_manifest() -> Result<(), Box<dyn std::error::Error>> {
+    fn indexes_the_logo_composition_beside_each_manifest() -> Result<(), Box<dyn std::error::Error>>
+    {
         let root = TempDir::new()?;
         let logo = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="8"/></svg>"#;
         let manifest_path = write_manifest(root.path(), "a", &valid_manifest("a", "A plugin"))?;
@@ -477,8 +515,21 @@ mod tests {
 
         let build = RegistryIndex::build_all(&[&source], UPDATED_AT);
 
-        assert_eq!(build.index().plugins()[0].logo(), Some(logo));
-        assert_eq!(build.index().plugins()[1].logo(), None);
+        assert_eq!(
+            (
+                build.index().plugins()[0].logo(),
+                build.index().plugins()[1].logo(),
+            ),
+            (
+                Some(PluginLogoVariants::Universal {
+                    universal: LogoCandidate {
+                        role: LogoRole::Universal,
+                        extension: LogoExtension::Svg,
+                    },
+                }),
+                None,
+            )
+        );
         Ok(())
     }
 

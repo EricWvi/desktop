@@ -217,12 +217,8 @@ pub struct InstalledPlugin {
     #[serde(flatten)]
     #[ts(flatten)]
     pub contribution: InstalledPluginContribution,
-    /// Security-validated SVG source for the package icon, absent when the package ships none.
-    ///
-    /// The icon travels as inline source instead of a filesystem path because the webview cannot
-    /// read the plugin directory; surfaces render it from a `data:` URL and fall back to a
-    /// generic mark when it is absent.
-    pub logo: Option<String>,
+    /// Host-local asset URLs for the package icon, absent when the package ships none.
+    pub logo: Option<PluginLogo>,
     pub installation_validity: PluginInstallationValidity,
     pub configuration: PluginConfigurationSummary,
     #[serde(flatten)]
@@ -252,8 +248,8 @@ pub struct AvailablePlugin {
     pub source_url: String,
     pub version: String,
     pub description: String,
-    /// Security-validated SVG source for the marketplace icon, absent when none is published.
-    pub logo: Option<String>,
+    /// Host-local asset URLs for the marketplace icon, absent when none is published.
+    pub logo: Option<PluginLogo>,
     /// Host compatibility as a closed enum so a listing cannot be both compatible and carry a
     /// reason, or incompatible without one.
     #[serde(flatten)]
@@ -762,6 +758,7 @@ pub(crate) fn export(config: &ts_rs::Config) -> Result<(), ts_rs::ExportError> {
     PluginSettingDetails::export(config)?;
     PluginConfigurationDetails::export(config)?;
     PluginRuntimeStatus::export(config)?;
+    PluginLogo::export(config)?;
     InstalledPlugin::export(config)?;
     PluginHostCompatibility::export(config)?;
     AvailablePlugin::export(config)?;
@@ -822,7 +819,7 @@ mod tests {
         ListMarketplaceSourcesRequest, ListMarketplaceSourcesResponse,
         MarketplaceArtifactRetrieval, MarketplaceArtifactRetrievalUpdate,
         MarketplaceS3CredentialsUpdate, MarketplaceSource, PluginConfigurationSummary,
-        PluginInstallationValidity, PluginRuntimeStatus, ReadPluginReadmeRequest,
+        PluginInstallationValidity, PluginLogo, PluginRuntimeStatus, ReadPluginReadmeRequest,
         ReadPluginReadmeResponse, SyncAvailablePluginsRequest, SyncAvailablePluginsResponse,
         UpdateMarketplaceSourceRequest, UpdateMarketplaceSourceResponse, UpdatePluginRequest,
         UpdatePluginResponse,
@@ -845,7 +842,10 @@ mod tests {
             contribution: InstalledPluginContribution::Agent {
                 agent_display_name: "Claude Code".to_string(),
             },
-            logo: Some("<svg/>".to_string()),
+            logo: Some(PluginLogo::Themed {
+                light: "ora-plugin://localhost/logo/official/ora.claude-code/light.svg".to_string(),
+                dark: "ora-plugin://localhost/logo/official/ora.claude-code/dark.png".to_string(),
+            }),
             installation_validity: PluginInstallationValidity::Valid,
             configuration: PluginConfigurationSummary::NotDeclared,
             runtime: PluginRuntimeStatus::Stopped,
@@ -872,7 +872,11 @@ mod tests {
                     "license": "Apache-2.0",
                     "kind": "agent",
                     "agentDisplayName": "Claude Code",
-                    "logo": "<svg/>",
+                    "logo": {
+                        "variant": "themed",
+                        "light": "ora-plugin://localhost/logo/official/ora.claude-code/light.svg",
+                        "dark": "ora-plugin://localhost/logo/official/ora.claude-code/dark.png"
+                    },
                     "installationValidity": { "validity": "valid" },
                     "configuration": { "state": "not_declared" },
                     "runtime": "stopped"
