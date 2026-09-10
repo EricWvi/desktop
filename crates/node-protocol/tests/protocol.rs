@@ -7,6 +7,8 @@ use tokio::io::duplex;
 
 #[path = "protocol/completed.rs"]
 mod completed;
+#[path = "protocol/rejections.rs"]
+mod rejections;
 
 #[derive(Debug, Error)]
 enum TestError {
