@@ -18,5 +18,5 @@ pub use candidate::{
 };
 pub use read::{MAX_LOGO_BYTES, MAX_LOGO_PIXELS};
 pub use resolve::resolve_logo;
-pub use url::{LOGO_URL_PREFIX, LogoAssetRequest, logo_asset_url, plugin_logo};
+pub use url::{LOGO_URL_PREFIX, LogoAssetRequest, LogoAssetRoot, logo_asset_url, plugin_logo};
 pub use variants::{LogoCandidate, PluginLogoVariants};

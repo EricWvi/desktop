@@ -1,7 +1,7 @@
 //! Projection of one cached registry entry into the marketplace summary the frontend renders.
 
 use ora_contracts::{AvailablePlugin, PluginHostCompatibility};
-use ora_plugin_asset::{AssetUrlForm, plugin_logo};
+use ora_plugin_asset::{AssetUrlForm, LogoAssetRoot, plugin_logo};
 use ora_plugin_registry::RegistryEntry;
 
 /// Converts one registry entry into the frontend-facing marketplace summary.
@@ -15,9 +15,16 @@ pub(super) fn available_plugin(entry: &RegistryEntry) -> AvailablePlugin {
         source_url: entry.source_url().to_owned(),
         version: entry.version().to_string(),
         description: entry.description().to_owned(),
-        logo: entry
-            .logo()
-            .and_then(|variants| plugin_logo(AssetUrlForm::CURRENT, entry.id(), &variants)),
+        logo: entry.logo().and_then(|variants| {
+            // The card is about the listing, so it draws what the source publishes now,
+            // which is also the only directory the index resolved these variants from.
+            plugin_logo(
+                AssetUrlForm::CURRENT,
+                LogoAssetRoot::Registry,
+                entry.id(),
+                &variants,
+            )
+        }),
         compatibility: match entry.host_compatibility() {
             Ok(()) => PluginHostCompatibility::Compatible,
             Err(reason) => PluginHostCompatibility::Incompatible { reason },
@@ -117,8 +124,8 @@ mod tests {
         assert_eq!(
             listed.logo,
             Some(PluginLogo::Themed {
-                light: format!("{origin}logo/official/acme.hub/light.svg"),
-                dark: format!("{origin}logo/official/acme.hub/dark.png"),
+                light: format!("{origin}logo/registry/official/acme.hub/light.svg"),
+                dark: format!("{origin}logo/registry/official/acme.hub/dark.png"),
             })
         );
         Ok(())

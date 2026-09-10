@@ -1,31 +1,45 @@
-//! Resolves one plugin id to the single directory its icon candidates may be read from.
+//! Resolves one plugin id, under one named root, to the directory its icon may be read from.
 //!
-//! An icon exists in exactly two places, and a plugin is in at most one state: an installed
-//! package has a package root, and a marketplace listing has an entry directory in the checkout
-//! of the source that publishes it. Returning one directory rather than a list is what keeps the
-//! protocol handler from searching: it either has a root for this id or it refuses.
+//! An icon exists in two independent places: an installed package has a package root, and a
+//! marketplace listing has an entry directory in the checkout of the source that publishes it.
+//! The two resolve separately and can disagree, so the caller says which one it means rather
+//! than this deciding for it — a precedence rule here would serve one surface's URL out of the
+//! other surface's directory, and the mismatch would surface as a missing icon.
 
 use super::PluginApi;
 use ora_domain::PluginId;
 use ora_logging::ora_warn;
+use ora_plugin_asset::LogoAssetRoot;
 use ora_plugin_registry::RegistryIndex;
 use std::path::PathBuf;
 
 impl PluginApi {
-    /// Returns the directory `plugin_id`'s icon candidates live in, if the host knows the plugin.
+    /// Returns the directory `plugin_id`'s icon candidates live in under `root`, if it exists.
     ///
-    /// The installed package wins over the marketplace entry, so an installed plugin is drawn
-    /// from the bytes it actually runs from rather than from whatever its source publishes now.
-    /// A source whose namespace differs from the id's cannot answer, so an id can never resolve
-    /// into another source's checkout.
-    ///
-    /// A source that cannot be read is skipped with a warning: an icon must never be the reason
-    /// a marketplace listing fails, and the caller treats an absent root exactly like an absent
-    /// file.
-    pub(crate) fn logo_directory(&self, plugin_id: &PluginId) -> Option<PathBuf> {
-        if let Some(installed) = self.lifecycle.installed_plugin(plugin_id) {
-            return Some(installed.package_root);
+    /// There is no fallback between the two roots. A locally imported plugin has no marketplace
+    /// entry at all, and an installed package may lag whatever its source publishes today, so a
+    /// root that has nothing for this id means the request was for an icon that is not there —
+    /// not that the other root should answer in its place.
+    pub(crate) fn logo_directory(
+        &self,
+        root: LogoAssetRoot,
+        plugin_id: &PluginId,
+    ) -> Option<PathBuf> {
+        match root {
+            LogoAssetRoot::Installed => self
+                .lifecycle
+                .installed_plugin(plugin_id)
+                .map(|installed| installed.package_root),
+            LogoAssetRoot::Registry => self.registry_entry_directory(plugin_id),
         }
+    }
+
+    /// Finds the entry directory `plugin_id` is published from, across the configured sources.
+    ///
+    /// A source whose namespace differs from the id's cannot answer, so an id never resolves
+    /// into another source's checkout. A source that cannot be read is skipped with a warning:
+    /// an icon must never be the reason a marketplace listing fails.
+    fn registry_entry_directory(&self, plugin_id: &PluginId) -> Option<PathBuf> {
         let sources = self
             .registry_sources()
             .inspect_err(|error| {

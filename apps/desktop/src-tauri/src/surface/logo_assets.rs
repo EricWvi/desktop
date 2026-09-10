@@ -18,9 +18,9 @@ use ora_utils::path::{CanonicalPathRoot, PortableRelativePath};
 ///
 /// Refusals are indistinguishable to the caller, as on the workbench branch; the reason only
 /// reaches the log. The chain is: the caller must be the main window, the URL must parse into a
-/// plugin id, theme role and extension that all come from closed sets, the host must know that
-/// plugin, and the candidate filename the host builds from the role and extension must resolve
-/// inside that plugin's own root.
+/// root, plugin id, theme role and extension that all come from closed sets, that root must hold
+/// that plugin, and the candidate filename the host builds from the role and extension must
+/// resolve inside it.
 pub fn resolve_logo_asset(plugins: &Plugins, label: &str, request_path: &str) -> AssetOutcome {
     // The only caller with a legitimate reason to ask for an arbitrary plugin's icon is the
     // trusted shell; a plugin's own workbench or webview has no business reaching this branch.
@@ -33,10 +33,13 @@ pub fn resolve_logo_asset(plugins: &Plugins, label: &str, request_path: &str) ->
         return AssetOutcome::NotFound("path is not valid UTF-8");
     };
     let Some(request) = LogoAssetRequest::parse(&decoded) else {
-        return AssetOutcome::NotFound("path is not a plugin id, role and extension");
+        return AssetOutcome::NotFound("path is not a root, plugin id, role and extension");
     };
-    let Some(directory) = plugins.logo_directory(&request.plugin_id) else {
-        return AssetOutcome::NotFound("no installed package or registry entry owns this id");
+    // The URL names the root the composition was resolved from, and this reads back that same
+    // one. Falling through to the other root would hide a disagreement between them behind an
+    // icon drawn from a directory nobody resolved.
+    let Some(directory) = plugins.logo_directory(request.root, &request.plugin_id) else {
+        return AssetOutcome::NotFound("the named root holds no such plugin");
     };
     // The filename never comes from the URL: it is rebuilt from two closed sets, so the only
     // thing the request contributes to the path is a plugin id that passed the id grammar.
@@ -159,12 +162,12 @@ mod tests {
         let light = resolve_logo_asset(
             &plugins,
             MAIN_WINDOW_LABEL,
-            &format!("/logo/official/{PLUGIN}/light.svg"),
+            &format!("/logo/installed/official/{PLUGIN}/light.svg"),
         );
         let dark = resolve_logo_asset(
             &plugins,
             MAIN_WINDOW_LABEL,
-            &format!("/logo/official/{PLUGIN}/dark.png"),
+            &format!("/logo/installed/official/{PLUGIN}/dark.png"),
         );
 
         assert_eq!(
@@ -185,7 +188,7 @@ mod tests {
     async fn refuses_every_caller_but_the_main_window() {
         let temporary = tempfile::tempdir().expect("temporary backend root");
         let (_backend, plugins) = backend_with_installed_plugin(&temporary);
-        let path = format!("/logo/official/{PLUGIN}/light.svg");
+        let path = format!("/logo/installed/official/{PLUGIN}/light.svg");
 
         let refusals = ["surface-7", "", "Main", "main "]
             .map(|label| served(&resolve_logo_asset(&plugins, label, &path)));
@@ -203,25 +206,29 @@ mod tests {
         let (_backend, plugins) = backend_with_installed_plugin(&temporary);
 
         let refusals = [
+            // A root outside the two fixed spellings, and the shape the URL had before the
+            // root was part of it.
+            format!("/logo/cache/official/{PLUGIN}/light.svg"),
+            format!("/logo/official/{PLUGIN}/light.svg"),
             // A theme role and an extension that are not among the fixed spellings.
-            format!("/logo/official/{PLUGIN}/themed.svg"),
-            format!("/logo/official/{PLUGIN}/dark.gif"),
+            format!("/logo/installed/official/{PLUGIN}/themed.svg"),
+            format!("/logo/installed/official/{PLUGIN}/dark.gif"),
             // A path segment or a traversal in place of the candidate name.
-            format!("/logo/official/{PLUGIN}/nested/dark.svg"),
-            format!("/logo/official/{PLUGIN}/../secret.txt"),
-            "/logo/official/../../secret/dark.svg".to_owned(),
+            format!("/logo/installed/official/{PLUGIN}/nested/dark.svg"),
+            format!("/logo/installed/official/{PLUGIN}/../secret.txt"),
+            "/logo/installed/official/../../secret/dark.svg".to_owned(),
             // The same traversal percent-encoded: it is decoded exactly once, before parsing,
             // so the decoded separators face the id grammar rather than slipping past it.
-            "/logo/official/%2e%2e%2f%2e%2e/dark.svg".to_owned(),
-            format!("/logo/official/{PLUGIN}/%64ark.svg%2f%2e%2e"),
+            "/logo/installed/official/%2e%2e%2f%2e%2e/dark.svg".to_owned(),
+            format!("/logo/installed/official/{PLUGIN}/%64ark.svg%2f%2e%2e"),
             // An id segment outside the id grammar.
-            format!("/logo/Official/{PLUGIN}/dark.svg"),
+            format!("/logo/installed/Official/{PLUGIN}/dark.svg"),
         ]
         .map(|path| served(&resolve_logo_asset(&plugins, MAIN_WINDOW_LABEL, &path)));
 
         assert_eq!(
             refusals,
-            [Err("path is not a plugin id, role and extension"); 8]
+            [Err("path is not a root, plugin id, role and extension"); 10]
         );
     }
 
@@ -237,10 +244,13 @@ mod tests {
         let outcome = served(&resolve_logo_asset(
             &plugins,
             MAIN_WINDOW_LABEL,
-            &format!("/logo/official/{PLUGIN}/secret.txt"),
+            &format!("/logo/installed/official/{PLUGIN}/secret.txt"),
         ));
 
-        assert_eq!(outcome, Err("path is not a plugin id, role and extension"));
+        assert_eq!(
+            outcome,
+            Err("path is not a root, plugin id, role and extension")
+        );
     }
 
     /// A candidate the plugin does not ship, and an id no root owns, are both plain refusals.
@@ -252,21 +262,55 @@ mod tests {
         let absent = served(&resolve_logo_asset(
             &plugins,
             MAIN_WINDOW_LABEL,
-            &format!("/logo/official/{PLUGIN}/universal.webp"),
+            &format!("/logo/installed/official/{PLUGIN}/universal.webp"),
         ));
         // No installed package and no marketplace checkout owns this id, so there is no root to
         // resolve against — not a different root, and not the requesting plugin's own.
         let unknown = served(&resolve_logo_asset(
             &plugins,
             MAIN_WINDOW_LABEL,
-            "/logo/official/absent.plugin/universal.svg",
+            "/logo/installed/official/absent.plugin/universal.svg",
         ));
 
         assert_eq!(
             (absent, unknown),
             (
                 Err("icon does not resolve inside the plugin root"),
-                Err("no installed package or registry entry owns this id"),
+                Err("the named root holds no such plugin"),
+            )
+        );
+    }
+
+    /// The root named by the URL is the root that answers, with no fallback to the other one.
+    ///
+    /// This is the case the two roots exist to keep apart: the marketplace entry publishes a
+    /// theme pair while the installed package still ships a single `logo.svg`, so one id has two
+    /// different compositions at once. Were the handler to pick a root by precedence instead of
+    /// reading back the one the URL names, the marketplace card's `light.svg` request would be
+    /// answered from the installed package — which has no `logo.light.svg` — and the card would
+    /// draw a broken image even though both directories hold a perfectly good icon.
+    #[tokio::test]
+    async fn answers_from_the_root_the_url_names_rather_than_by_precedence() {
+        let temporary = tempfile::tempdir().expect("temporary backend root");
+        let (_backend, plugins) = backend_with_installed_plugin(&temporary);
+        // The installed package holds `logo.light.svg`; the fixture ships no registry checkout,
+        // so the registry root holds nothing for this id at all.
+        let installed = served(&resolve_logo_asset(
+            &plugins,
+            MAIN_WINDOW_LABEL,
+            &format!("/logo/installed/official/{PLUGIN}/light.svg"),
+        ));
+        let registry = served(&resolve_logo_asset(
+            &plugins,
+            MAIN_WINDOW_LABEL,
+            &format!("/logo/registry/official/{PLUGIN}/light.svg"),
+        ));
+
+        assert_eq!(
+            (installed, registry),
+            (
+                Ok(("image/svg+xml", SAFE_SVG.len())),
+                Err("the named root holds no such plugin"),
             )
         );
     }

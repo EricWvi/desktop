@@ -11,8 +11,8 @@ mod logo;
 mod scheme;
 
 pub use logo::{
-    LOGO_EXTENSION_PRIORITY, LOGO_ROLES, LOGO_URL_PREFIX, LogoAssetRequest, LogoCandidate,
-    LogoExtension, LogoRole, MAX_LOGO_BYTES, MAX_LOGO_PIXELS, PluginLogoVariants,
+    LOGO_EXTENSION_PRIORITY, LOGO_ROLES, LOGO_URL_PREFIX, LogoAssetRequest, LogoAssetRoot,
+    LogoCandidate, LogoExtension, LogoRole, MAX_LOGO_BYTES, MAX_LOGO_PIXELS, PluginLogoVariants,
     candidate_file_name, logo_asset_url, plugin_logo, resolve_logo,
 };
 pub use scheme::{ASSET_SCHEME, AssetUrlForm, asset_content_type};

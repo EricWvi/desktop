@@ -1190,7 +1190,7 @@ const PACKAGE_LOGO: &str = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect widt
 fn universal_logo(plugin_id: &str) -> ora_contracts::PluginLogo {
     ora_contracts::PluginLogo::Universal {
         url: format!(
-            "{}logo/{plugin_id}/universal.svg",
+            "{}logo/installed/{plugin_id}/universal.svg",
             ora_plugin_asset::AssetUrlForm::CURRENT.origin()
         ),
     }
