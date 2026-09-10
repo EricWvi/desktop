@@ -5,6 +5,9 @@ use std::io;
 use thiserror::Error;
 use tokio::io::duplex;
 
+#[path = "protocol/completed.rs"]
+mod completed;
+
 #[derive(Debug, Error)]
 enum TestError {
     #[error(transparent)]

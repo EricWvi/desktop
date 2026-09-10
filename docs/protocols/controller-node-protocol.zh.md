@@ -129,6 +129,10 @@ Node incarnation、outcome，以及实际 worktree 路径、分支和 base commi
 
 `GetExecutionStatus` 使用原有操作和执行身份对账。`ExecutionStatus` 用 enum 表示
 `Unknown`、`Accepted`、`Running` 或带原终态结果的 `Completed`，不使用多个可选字段组合状态。
+外层 `ExecutionStatus.node` 标识当前报告者；`Completed` 内层结果保留原始 Node 运行实例身份。
+内外 `NodeId` 必须一致，重启后的 `NodeIncarnationId` 可以不同。公共 codec 的收发路径均以
+`CompletedNodeMismatch` 拒绝跨 Node 结果。会话／Controller 仍须核对报告者与会话绑定、执行派发
+目标是否一致；消息内部一致性不代表报告者可信。
 `Unknown` 只表示 Node 没有足够证据回答，不允许调用方因此更换身份重试。
 `EventAck` 确认精确的 `(execution_id, sequence)`；确认前持久化和确认后清理重放记录的
 行为不在本 PR 实现。

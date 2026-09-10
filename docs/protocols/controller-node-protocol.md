@@ -145,6 +145,11 @@ Client paths.
 `GetExecutionStatus` reconciles using the original operation and execution identities.
 `ExecutionStatus` uses an enum to represent `Unknown`, `Accepted`, `Running`, or `Completed` with
 the original terminal result; it does not encode state through combinations of optional fields.
+The outer `ExecutionStatus.node` identifies the current reporter. A `Completed` result retains its
+original Node runtime identity: its `NodeId` must match the reporter, while its `NodeIncarnationId`
+may differ after a restart. Both public codec directions reject a mismatch with
+`CompletedNodeMismatch`. Session/Controller code must additionally verify the reporter against the
+session binding and the execution's dispatched Node; internal consistency does not establish trust.
 `Unknown` means only that the Node lacks sufficient evidence to answer and does not permit the
 caller to retry under new identities. `EventAck` acknowledges one exact
 `(execution_id, sequence)` pair. Persist-before-ack behaviour and replay-record cleanup are not

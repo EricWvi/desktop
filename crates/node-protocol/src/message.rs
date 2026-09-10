@@ -76,6 +76,7 @@ pub enum ExecutionState {
 }
 
 /// Execution status associated with the Node incarnation reporting it.
+/// Completed results retain their original incarnation but must belong to the reporting NodeId.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ExecutionStatus {
@@ -203,6 +204,8 @@ pub enum MessageValidationError {
     WorktreeCapabilityMissing,
     #[error("hello-accepted advertises a capability more than once")]
     DuplicateCapability,
+    #[error("completed result Node {result} differs from reporting Node {reporter}")]
+    CompletedNodeMismatch { reporter: NodeId, result: NodeId },
 }
 
 /// Centralizes wire invariants used identically for outbound and decoded messages.
@@ -366,6 +369,19 @@ impl ValidateMessage for NodeToControllerMessage {
                     result
                         .validate()
                         .map_err(|field| MessageValidationError::EmptyField { field })?;
+                    let result_node = match result {
+                        WorktreeExecutionResult::Ready(result) => &result.node,
+                        WorktreeExecutionResult::Failed(result) => &result.node,
+                        WorktreeExecutionResult::Removed(result) => &result.node,
+                        WorktreeExecutionResult::RemovalFailed(result) => &result.node,
+                    };
+                    // Restarted Nodes may report retained results without rewriting their origin.
+                    if payload.node.node_id != result_node.node_id {
+                        return Err(MessageValidationError::CompletedNodeMismatch {
+                            reporter: payload.node.node_id.clone(),
+                            result: result_node.node_id.clone(),
+                        });
+                    }
                 }
                 Ok(())
             }
