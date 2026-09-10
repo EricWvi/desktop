@@ -2,231 +2,164 @@
 
 English | [中文](controller-node-protocol.zh.md)
 
-This document is the implementation plan for the
-`feat(node-protocol): define worktree execution contracts` PR and lands as its first docs commit.
-The PR adds a new `ora-node-protocol` crate and defines the session, execution, and framing
-contracts needed by the local Worktree loop. It does not implement a transport, start a Node
-process, execute Git operations, or add Controller persistence. A final docs commit in the PR will
-remove plan-oriented language and synchronize this document with the implemented interface.
+`ora-node-protocol` defines the version 1 wire contract for Controller–Node session messages and
+Worktree execution. It provides typed messages and a validated asynchronous frame codec. Transport,
+session orchestration, Git operations and durable execution belong to its consumers.
 
-The first loop targets Desktop, one local Node, and a Workspace whose Main Workspace already exists
-on that Node. Cloud, SSH, and other transports reuse this protocol after the local slice is proven.
+The contract supports a Worktree loop in which the target Node already has a Main Workspace.
+Node-scoped resource references keep the same meaning across local IPC, SSH and network transports.
+The crate has no dependency on `ora-domain`, `ora-plugin-protocol`, filesystem or persistence
+implementations; its public API is exported from
+[`lib.rs`](../../crates/node-protocol/src/lib.rs).
 
-## Module seam
+## Using the codec
 
-`ora-node-protocol` is the shared protocol seam between Controller and Node. Both sides depend on
-its public message and framing interface; transport adapters depend on the same interface without
-changing message semantics.
+Function names identify the **sender**, including for read operations:
 
-The crate owns:
+| Caller     | Send                                                      | Receive                                                       |
+| ---------- | --------------------------------------------------------- | ------------------------------------------------------------- |
+| Controller | `write_controller_message` with `ControllerToNodeMessage` | `read_node_message` returning `NodeToControllerMessage`       |
+| Node       | `write_node_message` with `NodeToControllerMessage`       | `read_controller_message` returning `ControllerToNodeMessage` |
 
-- protocol identities and version values;
-- session handshake, heartbeat, execution-status query, and result-acknowledgement messages;
-- message envelopes and Worktree command/result types;
-- the protocol-side Node domain model used by those commands and results;
-- length-delimited frame encoding and decoding;
-- protocol-level validation errors;
-- tests that prove fragmented I/O, malformed frames, and message round trips.
+The public functions accept `AsyncRead + Unpin` or `AsyncWrite + Unpin` streams. Message types are
+fixed by direction; arbitrary serializable messages are not a public codec extension point.
+Use these functions at the transport boundary: constructors and direct Serde conversion do not
+perform the codec's semantic validation.
 
-The crate does not own:
+Each read returns one validated message, or `None` for EOF before a new frame. Each write validates,
+serializes, checks frame size, writes and flushes one message. Validation, serialization and size
+rejection occur before any message bytes are written. An I/O failure can leave partial bytes;
+successful flush does not imply peer receipt, execution or durable acceptance.
 
-- Unix sockets, Windows Named Pipes, stdio process management, SSH, or TLS;
-- Node startup, registration persistence, event replay storage, or deduplication state;
-- Git, filesystem, worktree lifecycle, or Controller reconciliation;
-- Client–Controller application contracts or Cloud tenant semantics.
+Give each stream direction one owner and serialize complete writes. These operations do not retain
+partial-frame progress across cancellation: do not cancel a read or write and then resume framing
+on the same stream. The codec also provides no resynchronization after an error. A connection owner
+should discard that stream and let session recovery reconcile outstanding work.
 
-`ora-plugin-protocol` is the reference for the frame implementation, but `ora-node-protocol` does
-not depend on it. The two crates have different protocol ownership and must be able to evolve
-independently.
-
-## Crate shape
+## Wire format and validation
 
 ```text
-crates/node-protocol/
-├── Cargo.toml
-└── src/
-    ├── lib.rs
-    ├── frame.rs       # length-delimited envelope codec
-    ├── identity.rs    # protocol identity values
-    ├── message.rs     # session and protocol messages
-    ├── domain.rs      # protocol-side Node domain module
-    └── domain/
-        └── worktree.rs # first vertical slice commands and results
+4-byte big-endian length | 1-byte frame type | JSON envelope
 ```
 
-The initial dependency set should remain small: `serde`, `serde_json`, and Tokio's async I/O
-utilities. The protocol crate should define opaque, serializable identity values instead of
-depending on `ora-domain`; domain persistence types must not become a wire compatibility boundary.
+The length covers the type byte and JSON bytes, excluding the four-byte length prefix.
+`MAX_FRAME_LENGTH` is 16 MiB, so the JSON payload is at most 16 MiB minus one byte.
+All messages use `NODE_MESSAGE_FRAME_TYPE = 0x01`; the JSON `message_type` selects the business
+message. This is binary framing around JSON, with no alternate `JsonDebug` encoding.
 
-## Frame codec
+Every envelope contains `protocol_version`, `message_type` and `payload`. Correlation fields
+depend on the message:
 
-The initial codec follows `crates/plugin-protocol/src/frame.rs`:
+| Direction         | Messages                                                                      | Required correlation                       | Optional correlation |
+| ----------------- | ----------------------------------------------------------------------------- | ------------------------------------------ | -------------------- |
+| Controller → Node | `Hello`                                                                       | None                                       | None                 |
+| Controller → Node | `EnsureWorktree`, `RemoveWorktree`                                            | `operation_id`, `execution_id`             | `request_id`         |
+| Controller → Node | `GetExecutionStatus`                                                          | `operation_id`, `execution_id`             | None                 |
+| Controller → Node | `EventAck`                                                                    | `operation_id`, `execution_id`, `sequence` | None                 |
+| Node → Controller | `HelloAccepted`, `Heartbeat`                                                  | None                                       | None                 |
+| Node → Controller | `ExecutionStatus`                                                             | `operation_id`, `execution_id`             | None                 |
+| Node → Controller | `WorktreeReady`, `WorktreeFailed`, `WorktreeRemoved`, `WorktreeRemovalFailed` | `operation_id`, `execution_id`, `sequence` | `request_id`         |
 
-```text
-4-byte big-endian length
-1-byte frame type
-JSON envelope payload
+Names and enum tags use snake_case on the wire. For example, the JSON inside a Hello frame is:
+
+```json
+{
+  "protocol_version": 1,
+  "message_type": "hello",
+  "payload": {
+    "controller_id": "controller-1",
+    "supported_versions": [1]
+  }
+}
 ```
 
-The length includes the frame type byte. The codec must reject zero-length frames, frames above the
-maximum supported size, unknown frame types, invalid JSON, and truncated headers or payloads before
-the payload is accepted. A clean EOF before a new frame returns `None`; a partial frame returns an
-I/O error.
+Both codec directions enforce envelope version 1. `Hello` advertises a nonempty, duplicate-free
+version list containing the envelope version; it may also advertise other versions.
+`HelloAccepted` selects the envelope version and advertises a duplicate-free capability set
+containing `worktree_execution`, currently the only defined capability. These checks establish
+message self-consistency. Matching the response to a previous Hello and enforcing handshake order
+require a session implementation. A heartbeat carries the current Node identity, not execution evidence.
 
-The codec is generic over `AsyncRead` and `AsyncWrite` and over serializable message types. It does
-not perform request deduplication, event acknowledgement, retries, or recovery. Concurrent writers
-must be serialized by the caller or by a later session adapter; the codec must never interleave
-bytes from two frames.
+Required fields, known enum variants and direction are checked during decoding. Payload compatibility
+means satisfying the selected message's structure: create and remove commands intentionally share
+the same spec shape. Unknown object fields are generally ignored, so decoding is not a strict
+rejection of every extra field.
 
-The production wire format is binary from the first implementation. A separate `JsonDebug` encoding
-is not part of the protocol. Logging is deferred under `todo-87602f0b`; this slice emits no protocol
-logs. English TODOs at the actual codec success and failure sites in
-`crates/node-protocol/src/frame.rs` specify future events, levels and available fields.
-Future `ora_logging` diagnostics use TRACE for validated typed messages and frame metadata/error
-categories for failures before a typed value exists. Sensitive-value redaction remains outside this
-slice. See the [event-to-source map](controller-node-logging.md) and
-[validation evidence](controller-node-validation.md).
+`FrameError` distinguishes `Io`, `InvalidLength`, `UnsupportedFrameType`, `EncodeJson`,
+`DecodeJson` and `InvalidMessage`. Missing fields, wrong-direction messages and incompatible
+payload shapes are decoding errors; structurally valid messages that violate semantic constraints
+carry a `MessageValidationError`. Truncated frames retain the I/O error kind, distinct from clean EOF.
 
-The frame envelope carries protocol metadata separately from its payload:
+## Identity and Worktree boundaries
 
-```text
-protocol_version
-message_type
-request_id       (when associated with a Client command)
-operation_id     (when associated with a business operation)
-execution_id     (when associated with a Node execution attempt)
-sequence         (when associated with an ordered event)
-payload
-```
+Identity values serialize as opaque strings. The codec rejects empty or whitespace-only identities
+and required domain strings, but preserves accepted values without trimming or normalization.
 
-`operation_id` and `execution_id` are distinct. A network retry, coordination re-claim, or process
-restart keeps the same execution identity. The codec preserves these values but does not decide
-whether an operation may be retried.
+| Identity                    | Meaning                                                          |
+| --------------------------- | ---------------------------------------------------------------- |
+| `ControllerId`, `NodeId`    | Persistent peer identities                                       |
+| `NodeIncarnationId`         | One running instance of a Node                                   |
+| `RequestId`                 | Original logical Client command, when propagated                 |
+| `OperationId`               | Controller-owned business operation                              |
+| `ExecutionId`               | Execution attempt for that operation                             |
+| `WorkspaceId`, `WorktreeId` | Workspace and managed task worktree                              |
+| `Sequence`                  | Event position within an execution, serialized as a `u64` number |
 
-The first implementation may use the same one-byte frame type for every valid Node message. Keeping
-the type field in the envelope leaves room for future frame classes without coupling the codec to
-the Worktree message enum.
+`OperationId` and `ExecutionId` are distinct. The Worktree contract retains the original identities
+and input on retransmission or restart; an unknown outcome does not authorize a new execution
+identity. The codec carries these values without generating identities, tracking attempts or checking
+sequence monotonicity. Zero is representable as a sequence; ordering is a consumer responsibility.
 
-## Initial protocol messages
+Both Worktree commands carry a `WorktreeExecutionSpec`: resource identities, an opaque
+`RepositoryRef`, Main Workspace binding, base ref, expected branch and a
+`NodeManaged { directory_name }` path policy. Node chooses and authorizes the worktree root.
+The codec checks required values are nonblank; it does not resolve repositories, validate Git syntax,
+normalize paths or enforce containment. Even a nonblank directory name still requires Node-side
+path validation before filesystem use.
 
-The first message set is intentionally limited to the session and execution contracts required by
-the Worktree loop:
+Creation success returns Node-scoped path, branch and base commit facts. Removal success distinguishes
+`Removed` from idempotent `AlreadyAbsent`; failures carry a stable code and nonblank diagnostic
+message. Consumers use the code for decisions and treat `NodePath` as a value in the target Node's
+filesystem namespace, never as a local Controller or Client path.
 
-```text
-Controller → Node:
-  Hello
-  EnsureWorktree
-  RemoveWorktree
-  GetExecutionStatus
-  EventAck
+## Status, historical results and acknowledgement
 
-Node → Controller:
-  HelloAccepted
-  Heartbeat
-  ExecutionStatus
-  WorktreeReady
-  WorktreeFailed
-  WorktreeRemoved
-  WorktreeRemovalFailed
-```
+`GetExecutionStatus` addresses the original operation and execution on a Node.
+`ExecutionStatus` represents `Unknown`, `Accepted`, `Running`, or `Completed` with a retained
+terminal result. `Unknown` means insufficient evidence; it is not permission to repeat an external
+side effect.
 
-`Hello` carries the persistent Controller identity and supported protocol versions;
-`HelloAccepted` selects a version and returns the persistent Node identity, current incarnation,
-and capability set. `Heartbeat` proves session liveness but says nothing about whether an execution
-has succeeded or failed. This PR defines and verifies these typed contracts only; the handshake
-state machine, timeouts, heartbeat scheduling, and reconnection behaviour belong to later session
-and transport implementations.
+The outer `ExecutionStatus.node` identifies the current reporter. A Completed result preserves its
+original runtime identity across all four terminal variants:
 
-Each Worktree command carries its operation and execution identities in the envelope. Its payload
-carries the target Node identity, `workspace_id`, `worktree_id`, RepositoryRef, Main Workspace
-binding, base ref, expected branch, and path policy. A result is correlated with its operation,
-execution, and sequence through the envelope. Its payload carries the Node identity, Node
-incarnation, outcome, and Node-scoped facts such as the actual worktree path, branch, and base
-commit. Absolute paths are facts scoped to the Node; they are never interpreted as Controller or
-Client paths.
+| Reporter               | Retained result        | Codec outcome                         |
+| ---------------------- | ---------------------- | ------------------------------------- |
+| Node A / incarnation 2 | Node A / incarnation 1 | Accepted, both identities preserved   |
+| Node A / incarnation 2 | Node B / incarnation 1 | Rejected with `CompletedNodeMismatch` |
 
-`GetExecutionStatus` reconciles using the original operation and execution identities.
-`ExecutionStatus` uses an enum to represent `Unknown`, `Accepted`, `Running`, or `Completed` with
-the original terminal result; it does not encode state through combinations of optional fields.
-The outer `ExecutionStatus.node` identifies the current reporter. A `Completed` result retains its
-original Node runtime identity: its `NodeId` must match the reporter, while its `NodeIncarnationId`
-may differ after a restart. Both public codec directions reject a mismatch with
-`CompletedNodeMismatch`. Session/Controller code must additionally verify the reporter against the
-session binding and the execution's dispatched Node; internal consistency does not establish trust.
-`Unknown` means only that the Node lacks sufficient evidence to answer and does not permit the
-caller to retry under new identities. `EventAck` acknowledges one exact
-`(execution_id, sequence)` pair. Persist-before-ack behaviour and replay-record cleanup are not
-implemented in this PR.
+Only persistent NodeId equality is required. Session/Controller code must also verify the reporter
+against the authenticated session and the execution's dispatched Node. Internal consistency alone
+does not establish trust.
 
-Status reconciliation and event delivery follow
-[protocol decision D4](../../specs/decisions/node/protocol/0-controller-node-protocol.md#d4身份能力和会话恢复).
-`ExecutionStatus` carries no `sequence`; even a `Completed` reply is neither event delivery nor an
-acknowledgement. After session recovery, Node actively replays original unacknowledged events.
-Controller sends `EventAck` for the original `(execution_id, sequence)` only after durable acceptance.
-Replay does not depend on a preceding status query, and querying does not stop replay. Status replies
-and original events may arrive in either order without triggering duplicate downstream business
-processing. A lost acknowledgement is sent again using durable records. Querying an already
-acknowledged execution does not restart replay of a cleaned-up event or require another acknowledgement.
-These rules retain one event delivery and acknowledgement path instead of making status queries a
-second delivery path.
+Status replies have no event sequence and do not acknowledge or deliver an original event.
+`EventAck` identifies the exact `(execution_id, sequence)` being acknowledged.
+The [recovery contract in D4](../../specs/decisions/node/protocol/0-controller-node-protocol.md#d4身份能力和会话恢复)
+requires durable acceptance before acknowledgement and active replay of unacknowledged events,
+independent of status queries. Consumers must handle either arrival order without duplicate business
+effects; lost acknowledgements may be repeated, while queries of acknowledged executions do not
+restart cleaned-up event delivery.
 
-The public interface uses separate Controller-to-Node and Node-to-Controller message enums. Every
-message is an explicit variant rather than an untyped JSON payload. A wrong-direction message, a
-`message_type` that disagrees with the payload variant, or a message missing envelope identities
-required for that variant must be rejected at the protocol layer.
+The crate provides the message representation for that contract. Session binding, reconnect,
+deduplication, persist-before-side-effect, persist-before-ack and crash recovery require stateful
+Node and Controller implementations and their own tests.
 
-## Identity rules
+## Diagnostics and verification
 
-The crate defines serializable opaque values for:
+Protocol logging is deferred under `todo-87602f0b`; the codec currently emits no logs.
+English TODOs at the actual codec call sites specify future events and fields. Planned
+`ora_logging` diagnostics use TRACE for typed messages and available frame metadata/error categories
+for failures before decoding. See the [logging event map](controller-node-logging.md).
 
-| Identity            | Meaning                                                    |
-| ------------------- | ---------------------------------------------------------- |
-| `ControllerId`      | Persistent identity of the Controller opening the session  |
-| `NodeId`            | Persistent identity of an execution Node                   |
-| `NodeIncarnationId` | One running instance of a Node                             |
-| `RequestId`         | One logical Client command, when the command is propagated |
-| `OperationId`       | One Controller-owned business operation                    |
-| `ExecutionId`       | One execution attempt for that operation                   |
-| `Sequence`          | Monotonic ordering within an execution/event stream        |
-
-The first Worktree slice creates one execution attempt per create or remove operation. Retransmission
-uses the original identities and payload. The protocol crate preserves identity and ordering data;
-Node and Controller implementations enforce durable deduplication and recovery.
-
-## Acceptance criteria for the first implementation commit
-
-The implementation commit that follows this plan is complete when:
-
-1. `ora-node-protocol` is a workspace crate with a documented public interface.
-2. A message written to an in-memory duplex stream can be read back after fragmented writes.
-3. Clean EOF, truncated input, oversized frames, unknown frame types, malformed JSON, and invalid
-   message envelopes produce distinguishable errors.
-4. Handshake, heartbeat, Worktree commands and results, execution-status queries, and result
-   acknowledgements all round-trip through the public interface without losing identities,
-   sequence, or Node-scoped facts.
-5. The crate has no transport, Git, filesystem, persistence, or `ora-domain` dependency.
-6. Tests exercise the public codec and message interface rather than private implementation details.
-7. Every identity has one consistent serialized representation across message kinds; wrong
-   directions, metadata/payload mismatches, and illegal execution states are unrepresentable or
-   rejected during decoding validation.
-
-This commit establishes the protocol seam only. The next commit adds durable Node-side Worktree
-execution and recovery behind this interface.
-
-“Durable execution” means that Node persists the minimum execution ledger before starting an external
-side effect. The ledger keeps the `operation_id`, `execution_id`, target resource, normalized input,
-state, result or unknown marker, event sequence, and acknowledgement state. It does not attempt to
-make Git transactional or persist the complete Node process.
-
-After a restart, Node uses the ledger and the actual worktree to deduplicate requests, replay
-unacknowledged results, and reconcile ambiguous outcomes. A result is acknowledged only after the
-Controller has durably accepted it. If Node crashes after Git has changed the worktree but before the
-result is persisted, recovery reports `Unknown` until the resource is checked; it must not blindly
-run the operation again. The next implementation commit is complete only when these ordering and
-recovery guarantees are tested behind this protocol interface.
-
-Later recovery acceptance must also cover active replay after disconnection during result delivery,
-queries not stopping replay, either arrival order of status replies and events, repeated acknowledgement
-after a lost ACK, and queries of acknowledged executions not requiring event redelivery. These scenarios
-belong to the Node, Controller, and session implementations. This PR's message round trips verify the
-contract representation, not that the recovery flow already works.
+The [validation evidence](controller-node-validation.md) maps protocol guarantees to public-interface
+tests and records unverified boundaries. Run `cargo test -p ora-node-protocol` and
+`cargo clippy -p ora-node-protocol --all-targets -- -D warnings` for the crate's tests and lint.

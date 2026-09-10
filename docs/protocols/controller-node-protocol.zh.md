@@ -2,198 +2,144 @@
 
 [English](controller-node-protocol.md) | 中文
 
-本文是 `feat(node-protocol): define worktree execution contracts` PR 的实现计划，作为
-PR 中首个 docs commit 提交。该 PR 新增 `ora-node-protocol` crate，定义本机 Worktree
-闭环所需的会话、执行与 framing 契约。本 PR 不实现 Transport，不启动 Node 进程，
-不执行 Git 操作，也不加入 Controller 持久化。PR 末尾的 docs commit 再根据最终实现
-移除 plan 表述并同步最终接口。
+`ora-node-protocol` 定义 Controller–Node 会话消息和 Worktree 执行的 version 1 wire 契约，
+提供类型化消息和带校验的异步 frame codec。Transport、会话编排、Git 操作和持久执行由消费端负责。
 
-首个闭环限定为 Desktop、一个本机 Node，以及目标 Node 上已经存在 Main Workspace 的 Workspace。
-Cloud、SSH 和其他 Transport 在本机切片验证后复用同一协议。
+该契约支持目标 Node 已有 Main Workspace 的 Worktree 闭环。Node 作用域内的资源引用在本地 IPC、
+SSH 和网络传输中保持相同含义。crate 不依赖 `ora-domain`、`ora-plugin-protocol`、文件系统
+或持久化实现；公开 API 从 [`lib.rs`](../../crates/node-protocol/src/lib.rs) 导出。
 
-## 模块 seam
+## 使用 codec
 
-`ora-node-protocol` 是 Controller 与 Node 之间共享的协议 seam。两侧都依赖它公开的消息和 framing
-接口；Transport adapter 也依赖同一接口，但不改变消息语义。
+函数名表示**发送方**，读取函数也遵循这一规则：
 
-这个 crate 负责：
+| 调用方     | 发送                                                       | 接收                                                      |
+| ---------- | ---------------------------------------------------------- | --------------------------------------------------------- |
+| Controller | `write_controller_message`，传入 `ControllerToNodeMessage` | `read_node_message`，返回 `NodeToControllerMessage`       |
+| Node       | `write_node_message`，传入 `NodeToControllerMessage`       | `read_controller_message`，返回 `ControllerToNodeMessage` |
 
-- 协议身份和版本值；
-- 会话握手、心跳、执行状态查询和结果确认消息；
-- 消息 envelope 及 Worktree 命令／结果类型；
-- 这些命令和结果使用的协议侧 Node domain model；
-- 定长分隔的 frame 编码和解码；
-- 协议层校验错误；
-- 验证分片 I/O、畸形 frame 和消息往返的测试。
+公开函数接收 `AsyncRead + Unpin` 或 `AsyncWrite + Unpin` 字节流。消息类型由方向固定，
+任意可序列化消息不是公开 codec 的扩展入口。Transport 边界应使用这些函数：构造函数和直接
+Serde 转换不执行 codec 的语义校验。
 
-这个 crate 不负责：
+每次读取返回一条已校验消息；新 frame 开始前遇到 EOF 返回 `None`。每次发送依次完成校验、
+序列化、长度检查、写入和 flush。校验、序列化或长度拒绝发生在任何消息字节写出之前。I/O
+失败可能留下部分字节；flush 成功不代表对端已收到、已执行或已持久接管。
 
-- Unix socket、Windows Named Pipe、stdio 进程管理、SSH 或 TLS；
-- Node 启动、注册持久化、事件重放存储或去重状态；
-- Git、文件系统、worktree 生命周期或 Controller 协调；
-- Client–Controller 应用契约或 Cloud 租户语义。
+每个流方向应由单一所有者管理，完整消息的写入必须串行化。这些操作不会跨取消保留部分 frame
+进度，不能取消读写后在同一流上重新开始 framing。codec 也不提供错误后的重新同步；连接管理方
+应丢弃该流，由会话恢复流程对账尚未完成的工作。
 
-`ora-plugin-protocol` 是 frame 实现的参考，但 `ora-node-protocol` 不依赖它。两个 crate 分别拥有
-不同协议，必须能够独立演进。
-
-## Crate 结构
+## Wire 格式与校验
 
 ```text
-crates/node-protocol/
-├── Cargo.toml
-└── src/
-    ├── lib.rs
-    ├── frame.rs       # 定长分隔的 envelope codec
-    ├── identity.rs    # 协议身份值
-    ├── message.rs     # 会话和协议消息
-    ├── domain.rs      # 协议侧 Node domain 模块
-    └── domain/
-        └── worktree.rs # 首个垂直切片的命令和结果
+4 字节 big-endian 长度 | 1 字节 frame type | JSON envelope
 ```
 
-初始依赖应保持精简：`serde`、`serde_json` 和 Tokio 的异步 I/O 工具。协议 crate 应定义不透明、可
-序列化的身份值，而不是依赖 `ora-domain`；领域持久化类型不应成为 wire 兼容性边界。
+长度包含 type 字节和 JSON 字节，不包含四字节长度前缀。`MAX_FRAME_LENGTH` 为 16 MiB，
+因此 JSON payload 最大为 16 MiB 减一字节。全部消息使用 `NODE_MESSAGE_FRAME_TYPE = 0x01`，
+业务消息由 JSON 中的 `message_type` 区分。实际编码为二进制 framing 加 JSON，没有另一套
+`JsonDebug` 编码。
 
-## Frame codec
+每个 envelope 都包含 `protocol_version`、`message_type` 和 `payload`。关联字段按消息确定：
 
-初始 codec 参考 `crates/plugin-protocol/src/frame.rs`：
+| 方向              | 消息                                                                          | 必需关联字段                               | 可选关联字段 |
+| ----------------- | ----------------------------------------------------------------------------- | ------------------------------------------ | ------------ |
+| Controller → Node | `Hello`                                                                       | 无                                         | 无           |
+| Controller → Node | `EnsureWorktree`、`RemoveWorktree`                                            | `operation_id`、`execution_id`             | `request_id` |
+| Controller → Node | `GetExecutionStatus`                                                          | `operation_id`、`execution_id`             | 无           |
+| Controller → Node | `EventAck`                                                                    | `operation_id`、`execution_id`、`sequence` | 无           |
+| Node → Controller | `HelloAccepted`、`Heartbeat`                                                  | 无                                         | 无           |
+| Node → Controller | `ExecutionStatus`                                                             | `operation_id`、`execution_id`             | 无           |
+| Node → Controller | `WorktreeReady`、`WorktreeFailed`、`WorktreeRemoved`、`WorktreeRemovalFailed` | `operation_id`、`execution_id`、`sequence` | `request_id` |
 
-```text
-4 字节 big endian 长度
-1 字节 frame type
-JSON envelope payload
+Wire 字段名和 enum tag 使用 snake_case。例如 Hello frame 内的 JSON 为：
+
+```json
+{
+  "protocol_version": 1,
+  "message_type": "hello",
+  "payload": {
+    "controller_id": "controller-1",
+    "supported_versions": [1]
+  }
+}
 ```
 
-长度包含 frame type 字节。codec 必须拒绝零长度 frame、超过最大支持长度的 frame、未知 frame type、
-无效 JSON，以及截断的 header 或 payload，并且要在接受 payload 前完成检查。新 frame 开始前遇到
-clean EOF 时返回 `None`；遇到不完整 frame 时返回 I/O 错误。
+Codec 的收发路径均要求 envelope version 为 1。`Hello` 的版本列表非空、无重复且包含 envelope
+version，也可以声明其他版本。`HelloAccepted` 选择的版本必须等于 envelope version，能力集
+无重复且包含 `worktree_execution`，这是当前唯一定义的能力。这些检查保证单条消息自洽；
+将回复与先前的 Hello 匹配、约束握手顺序需要会话实现。心跳携带当前 Node 身份，不是执行证据。
 
-codec 对 `AsyncRead`、`AsyncWrite` 以及可序列化消息类型使用泛型。它不执行请求去重、事件确认、重试
-或恢复。并发写入必须由调用方或后续 session adapter 串行化；codec 不能交错两个 frame 的字节。
+解码检查必需字段、已知 enum variant 和消息方向。Payload 匹配表示满足所选消息的结构要求：
+创建和删除命令有意共用同一种 spec 结构。未知对象字段通常被忽略，因此解码不承诺拒绝所有
+额外字段。
 
-正式 wire format 从第一版开始就是二进制协议，不额外定义 `JsonDebug` 编码。协议日志延期至
-`todo-87602f0b`，本切片不产生协议日志。`crates/node-protocol/src/frame.rs` 中实际收发成功与
-失败位置的英文 TODO 指定未来事件、级别和可用字段。后续使用 `ora_logging`，正常 typed message
-诊断采用 TRACE；尚无 typed value 的失败记录 frame 元数据及错误分类。敏感值脱敏仍不在本切片
-范围。参见[事件与源码位置映射](controller-node-logging.md)及[校验测试证据](controller-node-validation.md)。
+`FrameError` 区分 `Io`、`InvalidLength`、`UnsupportedFrameType`、`EncodeJson`、
+`DecodeJson` 和 `InvalidMessage`。字段缺失、方向错误和 payload 结构不兼容属于解码错误；
+结构合法但违反语义约束的消息携带 `MessageValidationError`。截断 frame 保留 I/O 错误类别，
+与 clean EOF 区分。
 
-frame envelope 将协议元数据与 payload 分开承载：
+## 身份与 Worktree 边界
 
-```text
-protocol_version
-message_type
-request_id       （关联 Client 命令时使用）
-operation_id     （关联业务操作时使用）
-execution_id     （关联 Node 执行尝试时使用）
-sequence         （关联有序事件时使用）
-payload
-```
+身份值序列化为不透明字符串。Codec 拒绝空或纯空白身份及必需领域字符串，接受的值原样保留，
+不裁剪空白或规范化。
 
-`operation_id` 和 `execution_id` 是不同的身份。网络重试、重新领取协调工作或进程重启都保留同一执行
-身份。codec 保留这些值，但不决定某个操作是否允许重试。
+| 身份                        | 含义                                  |
+| --------------------------- | ------------------------------------- |
+| `ControllerId`、`NodeId`    | 对端的持久身份                        |
+| `NodeIncarnationId`         | Node 的一次运行实例                   |
+| `RequestId`                 | 原逻辑 Client 命令，被透传时使用      |
+| `OperationId`               | Controller 接管的业务操作             |
+| `ExecutionId`               | 该操作的一次执行尝试                  |
+| `WorkspaceId`、`WorktreeId` | Workspace 和受管理的 task worktree    |
+| `Sequence`                  | 执行内的事件位置，序列化为 `u64` 数字 |
 
-第一版可以让所有合法 Node 消息使用同一个单字节 frame type。保留 type 字段可以为未来的 frame
-类别留出空间，同时不把 codec 绑定到 Worktree 消息 enum。
+`OperationId` 与 `ExecutionId` 是不同身份。Worktree 契约要求重传或重启保留原身份和输入；
+结果未知不授权更换执行身份。Codec 承载这些值，不生成身份、跟踪执行尝试或检查 sequence
+单调性。Sequence 可以表示零，顺序约束由消费端负责。
 
-## 首批协议消息
+两个 Worktree 命令都携带 `WorktreeExecutionSpec`，包含资源身份、不透明的 `RepositoryRef`、
+Main Workspace 绑定、base ref、期望分支和 `NodeManaged { directory_name }` 路径策略。
+Node 选择并授权 worktree 根目录。Codec 检查必需值非空白，不解析仓库、校验 Git 语法、
+规范化路径或验证路径包含关系。非空白的目录名在用于文件系统操作前，仍须由 Node 校验路径安全。
 
-第一版消息集合只覆盖 Worktree 闭环所需的会话和执行契约：
+创建成功返回 Node 作用域内的路径、分支和 base commit 事实。删除成功区分 `Removed` 与幂等的
+`AlreadyAbsent`；失败包含稳定错误码和非空白诊断消息。消费端使用错误码作判断，并将
+`NodePath` 视为目标 Node 文件系统命名空间中的值，不能当作 Controller 或 Client 的本地路径。
 
-```text
-Controller → Node:
-  Hello
-  EnsureWorktree
-  RemoveWorktree
-  GetExecutionStatus
-  EventAck
+## 状态、历史结果与确认
 
-Node → Controller:
-  HelloAccepted
-  Heartbeat
-  ExecutionStatus
-  WorktreeReady
-  WorktreeFailed
-  WorktreeRemoved
-  WorktreeRemovalFailed
-```
+`GetExecutionStatus` 查询目标 Node 上原操作和执行的状态。`ExecutionStatus` 表示
+`Unknown`、`Accepted`、`Running`，或带已保留终态结果的 `Completed`。
+`Unknown` 表示证据不足，不授权重复执行外部副作用。
 
-`Hello` 携带 Controller 身份和支持的协议版本；`HelloAccepted` 选定版本并返回持久
-Node 身份、本次运行实例和能力集。`Heartbeat` 证明会话活性，但不表示某个执行
-成功或失败。本 PR 只定义和验证这些 typed contract；握手状态机、超时、心跳调度和
-重连行为属于后续 session 和 Transport 实现。
+外层 `ExecutionStatus.node` 标识当前报告者。Completed 的四种终态 variant 均保留结果原始
+运行实例身份：
 
-每个 Worktree 命令通过 envelope 携带操作和执行身份，payload 携带目标 Node 身份、
-`workspace_id`、`worktree_id`、RepositoryRef、Main Workspace 绑定、base ref、期望分支和
-路径策略。结果通过 envelope 关联操作、执行和 sequence，payload 携带 Node 身份、
-Node incarnation、outcome，以及实际 worktree 路径、分支和 base commit 等 Node-scoped
-事实。绝对路径是 Node 作用域内的事实，不能被解释为 Controller 或 Client 路径。
+| 报告者          | 保留的结果      | Codec 处理                      |
+| --------------- | --------------- | ------------------------------- |
+| Node A / 实例 2 | Node A / 实例 1 | 接受，两份身份均保留            |
+| Node A / 实例 2 | Node B / 实例 1 | 以 `CompletedNodeMismatch` 拒绝 |
 
-`GetExecutionStatus` 使用原有操作和执行身份对账。`ExecutionStatus` 用 enum 表示
-`Unknown`、`Accepted`、`Running` 或带原终态结果的 `Completed`，不使用多个可选字段组合状态。
-外层 `ExecutionStatus.node` 标识当前报告者；`Completed` 内层结果保留原始 Node 运行实例身份。
-内外 `NodeId` 必须一致，重启后的 `NodeIncarnationId` 可以不同。公共 codec 的收发路径均以
-`CompletedNodeMismatch` 拒绝跨 Node 结果。会话／Controller 仍须核对报告者与会话绑定、执行派发
-目标是否一致；消息内部一致性不代表报告者可信。
-`Unknown` 只表示 Node 没有足够证据回答，不允许调用方因此更换身份重试。
-`EventAck` 确认精确的 `(execution_id, sequence)`；确认前持久化和确认后清理重放记录的
-行为不在本 PR 实现。
+这里仅要求持久 NodeId 相等。会话／Controller 还须验证报告者匹配已认证会话，且执行确实派发给
+该 Node；消息内部一致性不代表报告者可信。
 
-状态查询与事件交付的职责遵循
-[协议根决策 D4](../../specs/decisions/node/protocol/0-controller-node-protocol.md#d4身份能力和会话恢复)：
-`ExecutionStatus` 不携带 `sequence`，即使返回 `Completed` 也不构成事件交付或确认。
-会话恢复后，Node 主动重放未确认的原事件；Controller 持久接管后，用该事件的
-`(execution_id, sequence)` 发送 `EventAck`。重放不依赖先查询状态，查询也不会停止重放。
-查询回复与原事件任意先后到达均不能重复触发业务后续处理；确认丢失时依据持久记录重新确认。
-已确认并清理的事件不会因后续状态查询重新进入重放，查询回复也不需要另行确认。
-这些约束保留单一的事件交付与确认路径，而不是让状态查询兼任事件交付。
+状态回复没有事件序号，不承担原事件的交付或确认。`EventAck` 标识被确认的精确
+`(execution_id, sequence)`。
+[D4 恢复契约](../../specs/decisions/node/protocol/0-controller-node-protocol.md#d4身份能力和会话恢复)
+要求先持久接管再确认，且未确认事件的主动重放独立于状态查询。消费端须处理查询回复与事件的
+任意到达顺序，避免重复业务副作用；确认丢失可重复确认，查询已确认执行不会重新交付已清理的事件。
 
-公开接口使用分开的 Controller-to-Node 和 Node-to-Controller 消息 enum。所有消息都是
-显式 variant，不能塞进无类型 JSON payload。方向错误、`message_type` 与 payload variant
-不匹配、或某类消息缺少必需 envelope 身份时，都必须在协议层被拒绝。
+Crate 提供上述契约的消息表示。会话绑定、重连、去重、副作用前持久化、确认前持久化和崩溃恢复
+需要有状态的 Node、Controller 实现及各自的测试证据。
 
-## 身份规则
+## 诊断与验证
 
-crate 定义以下可序列化的不透明值：
+协议日志延期至 `todo-87602f0b`，codec 当前不产生日志。实际调用点的英文 TODO 指定未来事件
+和字段；计划使用 `ora_logging`，typed message 诊断采用 TRACE，尚未解码为类型值的失败使用
+可获得的 frame 元数据和错误分类。参见[日志事件映射](controller-node-logging.md)。
 
-| 身份                | 含义                                     |
-| ------------------- | ---------------------------------------- |
-| `ControllerId`      | 建立会话的 Controller 持久身份           |
-| `NodeId`            | 执行 Node 的持久身份                     |
-| `NodeIncarnationId` | Node 的一次运行实例                      |
-| `RequestId`         | 一次逻辑 Client 命令（命令被透传时使用） |
-| `OperationId`       | 一次由 Controller 接管的业务操作         |
-| `ExecutionId`       | 该操作的一次执行尝试                     |
-| `Sequence`          | 执行或事件流内的单调顺序                 |
-
-首个 Worktree 切片中，每个创建或删除操作只建立一次执行尝试。重传使用原有身份和 payload。协议
-crate 保留身份和顺序数据；Node 和 Controller 的实现负责持久去重和恢复。
-
-## 首个实现 commit 的验收标准
-
-后续实现 commit 在满足以下条件时完成：
-
-1. `ora-node-protocol` 是一个带有文档化公开接口的 workspace crate。
-2. 写入内存 duplex stream 的消息在分片写入后仍可被完整读回。
-3. clean EOF、截断输入、超大 frame、未知 frame type、畸形 JSON 和无效消息 envelope 能产生可区分
-   的错误。
-4. 握手、心跳、Worktree 命令与结果、执行状态查询和结果确认全部通过公开接口
-   完成往返，且身份、sequence 和 Node-scoped 事实没有丢失。
-5. crate 不依赖 Transport、Git、文件系统、持久化或 `ora-domain`。
-6. 测试通过公开 codec 和消息接口验证行为，而不是依赖私有实现细节。
-7. 同一身份在各类消息中的序列化表示一致；方向错误、元数据与 payload 不匹配和
-   非法执行状态无法被构造或会被解码校验拒绝。
-
-这个 commit 只建立协议 seam。下一个 commit 在该接口之后加入 Node 侧 Worktree 的持久执行和恢复。
-
-“持久执行”表示 Node 在启动外部副作用前，先持久化最小 execution ledger。ledger 保存
-`operation_id`、`execution_id`、目标资源、规范化输入、状态、结果或未知标记、事件 sequence 和确认
-状态。它不试图让 Git 具备事务能力，也不保存完整的 Node 进程状态。
-
-Node 重启后使用 ledger 和实际 worktree 完成请求去重、未确认结果重放和不明确结果对账。只有
-Controller 已经持久接管结果后，结果才允许被确认。如果 Node 在 Git 已改变 worktree、结果尚未
-持久化时崩溃，恢复必须先检查资源并报告 `Unknown`，不能盲目再次执行。后续实现 commit 只有在
-该协议接口之后测试这些顺序和恢复保证，才算完成。
-
-后续恢复验收还须覆盖：结果发送时断线后的主动重放、查询不停止重放、查询回复与事件乱序、
-确认丢失后的重复确认，以及查询已确认执行不重新要求事件交付。这些场景分属 Node、Controller
-和 session 的实现责任；本 PR 的消息往返测试只验证契约表达，不证明恢复流程已成立。
+[校验证据](controller-node-validation.md) 将协议保证映射到公开接口测试，并记录未验证边界。
+使用 `cargo test -p ora-node-protocol` 和
+`cargo clippy -p ora-node-protocol --all-targets -- -D warnings` 运行该 crate 的测试和 lint。
