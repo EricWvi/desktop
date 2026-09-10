@@ -71,10 +71,11 @@ clean EOF 时返回 `None`；遇到不完整 frame 时返回 I/O 错误。
 codec 对 `AsyncRead`、`AsyncWrite` 以及可序列化消息类型使用泛型。它不执行请求去重、事件确认、重试
 或恢复。并发写入必须由调用方或后续 session adapter 串行化；codec 不能交错两个 frame 的字节。
 
-正式 wire format 从第一版开始就是二进制协议，不额外定义 `JsonDebug` 编码。开发调试在 frame
-反序列化为 typed value 后使用 `ora_logging` 的 trace 事件。第一版可以在 TRACE 级别直接打印
-typed value；敏感值脱敏暂不纳入本切片。解码失败时还没有 typed value，只记录 frame 元数据和错误
-分类。
+正式 wire format 从第一版开始就是二进制协议，不额外定义 `JsonDebug` 编码。协议日志延期至
+`todo-87602f0b`，本切片不产生协议日志。`crates/node-protocol/src/frame.rs` 中实际收发成功与
+失败位置的英文 TODO 指定未来事件、级别和可用字段。后续使用 `ora_logging`，正常 typed message
+诊断采用 TRACE；尚无 typed value 的失败记录 frame 元数据及错误分类。敏感值脱敏仍不在本切片
+范围。参见[事件与源码位置映射](controller-node-logging.md)及[校验测试证据](controller-node-validation.md)。
 
 frame envelope 将协议元数据与 payload 分开承载：
 

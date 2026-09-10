@@ -79,10 +79,13 @@ must be serialized by the caller or by a later session adapter; the codec must n
 bytes from two frames.
 
 The production wire format is binary from the first implementation. A separate `JsonDebug` encoding
-is not part of the protocol. Development diagnostics use `ora_logging` trace events after a frame has
-been decoded into a typed value. The initial implementation may print the typed value directly at
-TRACE; sensitive-value redaction is intentionally out of scope for this slice. Decode failures log
-frame metadata and the error classification because no typed value exists yet.
+is not part of the protocol. Logging is deferred under `todo-87602f0b`; this slice emits no protocol
+logs. English TODOs at the actual codec success and failure sites in
+`crates/node-protocol/src/frame.rs` specify future events, levels and available fields.
+Future `ora_logging` diagnostics use TRACE for validated typed messages and frame metadata/error
+categories for failures before a typed value exists. Sensitive-value redaction remains outside this
+slice. See the [event-to-source map](controller-node-logging.md) and
+[validation evidence](controller-node-validation.md).
 
 The frame envelope carries protocol metadata separately from its payload:
 
