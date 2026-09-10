@@ -1,4 +1,4 @@
-use crate::{NodeId, NodeIncarnationId, WorkspaceId, WorktreeId};
+use crate::{NodeId, NodeRuntimeIdentity, WorkspaceId, WorktreeId};
 use serde::{Deserialize, Serialize};
 
 /// Opaque reference used by a Node to resolve a registered repository.
@@ -108,14 +108,6 @@ pub struct WorktreeExecutionSpec {
     pub base_ref: GitRef,
     pub expected_branch: BranchName,
     pub path_policy: WorktreePathPolicy,
-}
-
-/// Node identity attached to observations so paths cannot be reused across runtimes accidentally.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct NodeRuntimeIdentity {
-    pub node_id: NodeId,
-    pub incarnation_id: NodeIncarnationId,
 }
 
 /// Facts confirmed after a task worktree has been created or reconciled.
@@ -244,19 +236,6 @@ impl WorktreeExecutionSpec {
             }
             WorktreePathPolicy::NodeManaged { .. } => Ok(()),
         }
-    }
-}
-
-impl NodeRuntimeIdentity {
-    /// Ensures observations carry both persistent and incarnation Node identities.
-    pub(crate) fn validate(&self) -> Result<(), &'static str> {
-        if self.node_id.is_empty() {
-            return Err("node.node_id");
-        }
-        if self.incarnation_id.is_empty() {
-            return Err("node.incarnation_id");
-        }
-        Ok(())
     }
 }
 

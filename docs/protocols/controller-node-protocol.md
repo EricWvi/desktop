@@ -12,6 +12,25 @@ The crate has no dependency on `ora-domain`, `ora-plugin-protocol`, filesystem o
 implementations; its public API is exported from
 [`lib.rs`](../../crates/node-protocol/src/lib.rs).
 
+## Implementation ownership
+
+Private `message/session.rs`, `message/worktree.rs`, and `message/execution.rs` modules own
+complete message envelopes and their semantic validation. `message.rs` registers the two direction
+enums and exhaustively dispatches validation; `frame.rs` depends only on those enums and the internal
+validation interface. Public types are explicitly re-exported by `lib.rs`.
+
+Each enum variant wraps its concrete envelope, for example
+`ControllerToNodeMessage::Hello(HelloMessage { protocol_version, payload })`; `Hello` remains the
+payload type. The `*Message` structures contain each message's required and optional metadata.
+They serialize into the existing flat envelope, with no business namespace or extra wrapper.
+An absent Worktree `request_id` is omitted rather than serialized as null.
+
+`identity.rs` owns `NodeRuntimeIdentity` and its checks. Worktree inputs, facts, failures and terminal
+results retain their invariants in `domain/worktree.rs`. Execution's `Completed` still directly
+contains `WorktreeExecutionResult`; another execution capability should motivate any future result
+abstraction. Correlation fields stay explicit on each envelope, with shared identity checks rather
+than an `ExecutionCorrelation` wrapper; this keeps applicable fields visible without Serde flatten.
+
 ## Using the codec
 
 Function names identify the **sender**, including for read operations:

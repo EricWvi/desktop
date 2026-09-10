@@ -9,6 +9,23 @@
 SSH 和网络传输中保持相同含义。crate 不依赖 `ora-domain`、`ora-plugin-protocol`、文件系统
 或持久化实现；公开 API 从 [`lib.rs`](../../crates/node-protocol/src/lib.rs) 导出。
 
+## 实现归属
+
+私有的 `message/session.rs`、`message/worktree.rs`、`message/execution.rs` 分别拥有完整消息
+结构及其语义校验。`message.rs` 登记两个方向 enum 并穷尽分派校验；`frame.rs` 只依赖方向
+消息和内部校验接口。公开类型由 `lib.rs` 显式导出。
+
+每个 enum variant 包含具体消息结构，例如
+`ControllerToNodeMessage::Hello(HelloMessage { protocol_version, payload })`；`Hello` 仍为
+payload 类型。`*Message` 结构明确声明各消息必需和可选的 metadata，序列化仍使用原有平面
+信封，不增加业务 namespace 或包装层。Worktree `request_id` 缺省时省略，不输出 null。
+
+`identity.rs` 拥有 `NodeRuntimeIdentity` 及其校验；Worktree 输入、事实、失败和终态结果的
+不变量保留在 `domain/worktree.rs`。Execution 的 `Completed` 仍直接包含
+`WorktreeExecutionResult`，未来应由第二种执行能力的实际需求推动结果抽象。各消息继续显式
+声明 correlation 字段并共享身份校验，不提取 `ExecutionCorrelation` 包装结构，从而无需
+Serde flatten 就能直接看出适用字段。
+
 ## 使用 codec
 
 函数名表示**发送方**，读取函数也遵循这一规则：
