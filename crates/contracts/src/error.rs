@@ -153,6 +153,9 @@ pub enum PublicError {
     SessionNotFound(EmptyErrorParams),
     AgentNotInstalled(EmptyErrorParams),
     AgentRuntimeUnavailable(EmptyErrorParams),
+    AgentStartFailed(EmptyErrorParams),
+    AgentTimedOut(EmptyErrorParams),
+    AgentModelDiscoveryFailed(EmptyErrorParams),
     SessionBusy(EmptyErrorParams),
     SessionStopped(EmptyErrorParams),
     SessionLoadUnsupported(EmptyErrorParams),
@@ -272,6 +275,9 @@ impl PublicError {
             Self::SessionNotFound(_) => "session_not_found",
             Self::AgentNotInstalled(_) => "agent_not_installed",
             Self::AgentRuntimeUnavailable(_) => "agent_runtime_unavailable",
+            Self::AgentStartFailed(_) => "agent_start_failed",
+            Self::AgentTimedOut(_) => "agent_timed_out",
+            Self::AgentModelDiscoveryFailed(_) => "agent_model_discovery_failed",
             Self::SessionBusy(_) => "session_busy",
             Self::SessionStopped(_) => "session_stopped",
             Self::SessionLoadUnsupported(_) => "session_load_unsupported",
@@ -452,6 +458,9 @@ mod tests {
             PublicError::SessionNotFound(empty),
             PublicError::AgentNotInstalled(empty),
             PublicError::AgentRuntimeUnavailable(empty),
+            PublicError::AgentStartFailed(empty),
+            PublicError::AgentTimedOut(empty),
+            PublicError::AgentModelDiscoveryFailed(empty),
             PublicError::SessionBusy(empty),
             PublicError::SessionStopped(empty),
             PublicError::SessionLoadUnsupported(empty),
@@ -563,6 +572,9 @@ mod tests {
                 | PublicError::SessionNotFound(_)
                 | PublicError::AgentNotInstalled(_)
                 | PublicError::AgentRuntimeUnavailable(_)
+                | PublicError::AgentStartFailed(_)
+                | PublicError::AgentTimedOut(_)
+                | PublicError::AgentModelDiscoveryFailed(_)
                 | PublicError::SessionBusy(_)
                 | PublicError::SessionStopped(_)
                 | PublicError::SessionLoadUnsupported(_)
@@ -642,7 +654,7 @@ mod tests {
     #[test]
     fn public_error_codes_match_serde_tags_for_every_variant() {
         let samples = public_error_samples();
-        assert_eq!(samples.len(), 98);
+        assert_eq!(samples.len(), 101);
 
         for error in samples {
             let serialized = serde_json::to_value(&error).unwrap();
