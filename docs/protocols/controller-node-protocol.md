@@ -150,6 +150,18 @@ caller to retry under new identities. `EventAck` acknowledges one exact
 `(execution_id, sequence)` pair. Persist-before-ack behaviour and replay-record cleanup are not
 implemented in this PR.
 
+Status reconciliation and event delivery follow
+[protocol decision D4](../../specs/decisions/node/protocol/0-controller-node-protocol.md#d4身份能力和会话恢复).
+`ExecutionStatus` carries no `sequence`; even a `Completed` reply is neither event delivery nor an
+acknowledgement. After session recovery, Node actively replays original unacknowledged events.
+Controller sends `EventAck` for the original `(execution_id, sequence)` only after durable acceptance.
+Replay does not depend on a preceding status query, and querying does not stop replay. Status replies
+and original events may arrive in either order without triggering duplicate downstream business
+processing. A lost acknowledgement is sent again using durable records. Querying an already
+acknowledged execution does not restart replay of a cleaned-up event or require another acknowledgement.
+These rules retain one event delivery and acknowledgement path instead of making status queries a
+second delivery path.
+
 The public interface uses separate Controller-to-Node and Node-to-Controller message enums. Every
 message is an explicit variant rather than an untyped JSON payload. A wrong-direction message, a
 `message_type` that disagrees with the payload variant, or a message missing envelope identities
@@ -204,3 +216,9 @@ Controller has durably accepted it. If Node crashes after Git has changed the wo
 result is persisted, recovery reports `Unknown` until the resource is checked; it must not blindly
 run the operation again. The next implementation commit is complete only when these ordering and
 recovery guarantees are tested behind this protocol interface.
+
+Later recovery acceptance must also cover active replay after disconnection during result delivery,
+queries not stopping replay, either arrival order of status replies and events, repeated acknowledgement
+after a lost ACK, and queries of acknowledged executions not requiring event redelivery. These scenarios
+belong to the Node, Controller, and session implementations. This PR's message round trips verify the
+contract representation, not that the recovery flow already works.

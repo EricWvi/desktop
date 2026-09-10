@@ -133,6 +133,15 @@ Node incarnation、outcome，以及实际 worktree 路径、分支和 base commi
 `EventAck` 确认精确的 `(execution_id, sequence)`；确认前持久化和确认后清理重放记录的
 行为不在本 PR 实现。
 
+状态查询与事件交付的职责遵循
+[协议根决策 D4](../../specs/decisions/node/protocol/0-controller-node-protocol.md#d4身份能力和会话恢复)：
+`ExecutionStatus` 不携带 `sequence`，即使返回 `Completed` 也不构成事件交付或确认。
+会话恢复后，Node 主动重放未确认的原事件；Controller 持久接管后，用该事件的
+`(execution_id, sequence)` 发送 `EventAck`。重放不依赖先查询状态，查询也不会停止重放。
+查询回复与原事件任意先后到达均不能重复触发业务后续处理；确认丢失时依据持久记录重新确认。
+已确认并清理的事件不会因后续状态查询重新进入重放，查询回复也不需要另行确认。
+这些约束保留单一的事件交付与确认路径，而不是让状态查询兼任事件交付。
+
 公开接口使用分开的 Controller-to-Node 和 Node-to-Controller 消息 enum。所有消息都是
 显式 variant，不能塞进无类型 JSON payload。方向错误、`message_type` 与 payload variant
 不匹配、或某类消息缺少必需 envelope 身份时，都必须在协议层被拒绝。
@@ -179,3 +188,7 @@ Node 重启后使用 ledger 和实际 worktree 完成请求去重、未确认结
 Controller 已经持久接管结果后，结果才允许被确认。如果 Node 在 Git 已改变 worktree、结果尚未
 持久化时崩溃，恢复必须先检查资源并报告 `Unknown`，不能盲目再次执行。后续实现 commit 只有在
 该协议接口之后测试这些顺序和恢复保证，才算完成。
+
+后续恢复验收还须覆盖：结果发送时断线后的主动重放、查询不停止重放、查询回复与事件乱序、
+确认丢失后的重复确认，以及查询已确认执行不重新要求事件交付。这些场景分属 Node、Controller
+和 session 的实现责任；本 PR 的消息往返测试只验证契约表达，不证明恢复流程已成立。
