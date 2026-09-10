@@ -2,6 +2,7 @@
 members = [
     "apps/desktop/src-tauri",
     "apps/ora-reaper",
+    "apps/ora-node",
     "crates/application",
     "crates/acp",
     "crates/backend",
@@ -15,6 +16,7 @@ members = [
     "crates/history",
     "crates/logging",
     "crates/node-protocol",
+    "crates/node-db",
     "crates/plugin-asset",
     "crates/plugin-config",
     "crates/plugin-manifest",
@@ -37,6 +39,7 @@ members = [
 ]
 default-members = [
     "apps/ora-reaper",
+    "apps/ora-node",
     "crates/application",
     "crates/acp",
     "crates/backend",
@@ -50,6 +53,7 @@ default-members = [
     "crates/history",
     "crates/logging",
     "crates/node-protocol",
+    "crates/node-db",
     "crates/plugin-asset",
     "crates/plugin-config",
     "crates/plugin-manifest",
@@ -96,6 +100,7 @@ ora-fs = { path = "crates/fs" }
 gitlancer = { path = "crates/gitlancer" }
 ora-history = { path = "crates/history" }
 ora-logging = { path = "crates/logging" }
+ora-node-db = { path = "crates/node-db" }
 ora-node-protocol = { path = "crates/node-protocol" }
 ora-plugin-asset = { path = "crates/plugin-asset" }
 ora-plugin-config = { path = "crates/plugin-config" }
