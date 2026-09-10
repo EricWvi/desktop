@@ -1,5 +1,7 @@
 # Deferred Controller–Node logging
 
+English | [中文](controller-node-logging.zh.md)
+
 Tracking: `todo-87602f0b`. No logging calls or logging behavior tests are implemented in this slice.
 Every location below has an English TODO in `crates/node-protocol/src/frame.rs`. The shared generic
 codec is the single recording site for both peer directions; wrappers must not duplicate events.

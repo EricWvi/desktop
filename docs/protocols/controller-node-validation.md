@@ -1,5 +1,7 @@
 # Controller–Node validation evidence
 
+English | [中文](controller-node-validation.zh.md)
+
 All tests below use the public codec in `crates/node-protocol/tests/protocol.rs` and its
 `protocol/` submodules. Invalid receive inputs are framed directly, without the public writer.
 The review baseline had 12 tests; the Completed repair adds one, and the rejection matrix adds four.
